@@ -1,0 +1,10 @@
+summary: Post-earnings check — 7 AM SGT daily
+schedule: '0 0 7 * * *'
+timezone: Asia/Singapore
+script_path: u/admin/portfolio_earnings_post_check
+is_flow: false
+args:
+  portfolio_db: $res:u/admin/portfolio_db
+  finnhub_key: $var:u/admin/finnhub_key
+  wm_token: $var:u/admin/wm_token
+enabled: true

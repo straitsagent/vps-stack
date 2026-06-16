@@ -1,0 +1,25 @@
+summary: ''
+description: ''
+lock: '!inline u/admin/portfolio_analyst_alert.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    portfolio_db:
+      type: object
+      description: Portfolio PostgreSQL connection
+      default: "$res:u/admin/portfolio_db"
+    finnhub_key:
+      type: string
+      description: Finnhub API key
+      default: "$var:u/admin/finnhub_key"
+    telegram_bot_token:
+      type: string
+      description: Telegram bot token
+      default: "$var:u/admin/telegram_bot_token"
+    telegram_owner_id:
+      type: string
+      description: Telegram chat ID of the owner
+      default: "$var:u/admin/telegram_owner_id"
+  required: []

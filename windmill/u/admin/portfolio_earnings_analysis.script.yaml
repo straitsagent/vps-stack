@@ -1,0 +1,57 @@
+summary: ''
+description: ''
+lock: '!inline u/admin/portfolio_earnings_analysis.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    analysis_type:
+      type: string
+      description: ''
+      default: pre
+      originalType: string
+    exa_key:
+      type: string
+      description: ''
+      default: $var:u/admin/exa_key
+      originalType: string
+    finnhub_key:
+      type: string
+      description: ''
+      default: $var:u/admin/finnhub_key
+      originalType: string
+    gmail_smtp:
+      type: object
+      description: ''
+      default: {}
+      format: resource-smtp
+    portfolio_db:
+      type: object
+      description: ''
+      default: {}
+      format: resource-postgresql
+    telegram_bot_token:
+      type: string
+      description: ''
+      default: $var:u/admin/telegram_bot_token
+      originalType: string
+    ticker:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+    xai_key:
+      type: string
+      description: ''
+      default: $var:u/admin/xai_key
+      originalType: string
+    telegram_owner_id:
+      type: string
+      description: Telegram chat ID of the owner
+      default: "$var:u/admin/telegram_owner_id"
+    recipient_email:
+      type: string
+      description: Email address to send the analysis report to
+      default: "$var:u/admin/recipient_email"
+  required: []

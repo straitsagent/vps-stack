@@ -1,0 +1,12 @@
+schedule: '0 0 6 * * 1-5'
+timezone: Asia/Singapore
+enabled: true
+script_path: u/admin/portfolio_email
+is_flow: false
+summary: 'Portfolio Email — US Close (6:00 AM SGT, Mon-Fri)'
+permissioned_as: u/admin
+no_flow_overlap: true
+args:
+  portfolio_db: "$res:u/admin/portfolio_db"
+  gmail_smtp: "$res:u/admin/gmail_smtp"
+  recipient_email: "$var:u/admin/recipient_email"

@@ -1,0 +1,34 @@
+summary: Workflow 5.2 — Windmill Error Alert
+description: Global error handler. Sends an email alert whenever any Windmill job fails.
+lock: '!inline u/admin/error_alert.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    recipient_email:
+      type: string
+      description: Email address to send the error alert to
+      default: "$var:u/admin/recipient_email"
+    email:
+      type: string
+    error:
+      type: string
+    job_id:
+      type: string
+    path:
+      type: string
+    schedule_path:
+      type: string
+    smtp_resource:
+      type: object
+      format: resource-smtp
+    started_at:
+      type: string
+    workspace_id:
+      type: string
+  required:
+    - smtp_resource
+    - path
+    - job_id
+    - error

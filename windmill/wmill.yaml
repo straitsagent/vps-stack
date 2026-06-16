@@ -1,0 +1,26 @@
+# yaml-language-server: $schema=wmill.schema.json
+# wmill.yaml — Windmill sync configuration
+
+defaultTs: bun
+
+# Only sync our scripts — skip all built-in hub content
+includes:
+  - "u/**"
+
+skipResourceTypes: true   # 200+ built-in types, not our code
+skipResources: true       # contain credentials — managed in Windmill UI only
+skipVariables: true
+skipSecrets: true
+skipApps: true
+skipFolders: true
+skipWorkspaceDependencies: true
+
+includeSchedules: true    # track cron schedules in git
+
+nonDottedPaths: true
+syncBehavior: v1
+
+workspaces:
+  admins:
+    baseUrl: http://<YOUR_VPS_IP>:8080
+    workspaceId: admins

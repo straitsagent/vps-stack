@@ -1,0 +1,20 @@
+summary: 'F1 — Fundamentals Fetcher'
+description: 'Weekly fundamental data fetch for all 33 portfolio tickers. US: Finnhub + yfinance + FMP. HK: yfinance only. Upserts into fundamental_data PostgreSQL table. Schedule: Sunday 6PM SGT.'
+lock: '!inline u/admin/fundamentals_fetcher.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    portfolio_db:
+      type: object
+      description: Portfolio PostgreSQL connection
+      x-windmill-resource: postgresql
+      default: "$res:u/admin/portfolio_db"
+    finnhub_key:
+      type: string
+      description: Finnhub API key
+      default: "$var:u/admin/finnhub_key"
+  required:
+    - portfolio_db
+    - finnhub_key

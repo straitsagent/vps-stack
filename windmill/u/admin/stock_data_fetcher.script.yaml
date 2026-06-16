@@ -1,0 +1,29 @@
+summary: Stock Data Fetcher — fetch and persist structured data for a single ticker
+description: >
+  Generic single-ticker data collector. Fetches: company profile, 3yr financials
+  (income/BS/CF/health), valuation multiples, ownership, insider transactions,
+  earnings calendar, key management, peer comparisons.
+  Persists to 14 PostgreSQL research tables. Does NOT fetch MD&A synopsis or board
+  of directors (both kept as live fetches in research_tool).
+  Caller is responsible for looping across multiple tickers (portfolio, watchlist, index).
+lock: '!inline u/admin/stock_data_fetcher.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    ticker:
+      type: string
+      description: "Stock ticker symbol (required) — e.g. NVDA, AAPL, 0005.HK"
+    portfolio_db:
+      type: object
+      description: "PostgreSQL resource (u/admin/portfolio_db) for persisting structured data"
+      default: {}
+    finnhub_key:
+      type: string
+      default: ""
+      description: "Finnhub API key for peer comparison data (US tickers only)"
+  required:
+    - ticker
+    - portfolio_db
+    - finnhub_key

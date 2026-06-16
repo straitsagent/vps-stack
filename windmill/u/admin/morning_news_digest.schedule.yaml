@@ -1,0 +1,10 @@
+summary: Morning News Digest — daily 6:30 AM SGT
+schedule: '0 30 6 * * *'
+timezone: Asia/Singapore
+script_path: u/admin/morning_news_digest
+is_flow: false
+args:
+  smtp_resource: $res:u/admin/gmail_smtp
+  deepseek_key: $var:u/admin/deepseek_key
+  recipient_email: $var:u/admin/recipient_email
+enabled: true

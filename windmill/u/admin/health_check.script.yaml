@@ -1,0 +1,16 @@
+summary: Daily automation health check
+description: Checks all 6 scheduled workflows ran within expected windows. Reports pass/fail status per schedule and 24h LLM token usage + estimated cost. Runs at 7:00 AM SGT daily.
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  properties:
+    gmail_smtp:
+      description: Gmail SMTP credentials
+      format: resource-smtp
+      type: object
+    recipient_email:
+      type: string
+      description: Email address to send health check report to
+      default: "$var:u/admin/recipient_email"
+  required:
+    - gmail_smtp
+  type: object

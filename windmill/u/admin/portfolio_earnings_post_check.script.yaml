@@ -1,0 +1,24 @@
+summary: ''
+description: ''
+lock: '!inline u/admin/portfolio_earnings_post_check.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    finnhub_key:
+      type: string
+      description: ''
+      default: $var:u/admin/finnhub_key
+      originalType: string
+    portfolio_db:
+      type: object
+      description: ''
+      default: {}
+      format: resource-postgresql
+    wm_token:
+      type: string
+      description: ''
+      default: $var:u/admin/wm_token
+      originalType: string
+  required: []

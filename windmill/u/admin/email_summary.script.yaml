@@ -1,0 +1,32 @@
+summary: "Email Summary — last 24h inbox digest via Deepseek"
+description: >
+  Reads Gmail INBOX for the last N hours via IMAP, summarises with Deepseek,
+  and sends an HTML digest email. Run manually or schedule as needed.
+language: python3
+kind: script
+tag: ""
+schema:
+  $schema: "https://json-schema.org/draft/2020-12/schema"
+  type: object
+  required:
+    - smtp_resource
+    - deepseek_key
+  properties:
+    smtp_resource:
+      type: object
+      format: resource-smtp
+      description: "Gmail SMTP credentials (also used for IMAP read)"
+      default: "$res:u/admin/gmail_smtp"
+    deepseek_key:
+      type: string
+      format: password
+      description: "Deepseek API key"
+      default: "$var:u/admin/deepseek_key"
+    recipient_email:
+      type: string
+      description: "Email address to send the summary to"
+      default: "$var:u/admin/recipient_email"
+    hours_back:
+      type: integer
+      description: "How many hours back to scan"
+      default: 24

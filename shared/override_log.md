@@ -1,0 +1,75 @@
+# Override Log
+
+Manual interventions on scheduled workflows must be logged here.
+
+---
+
+## Template
+
+```
+Date: YYYY-MM-DD
+Workflow: [workflow name]
+Action: [what you did manually]
+Reason: [why the automation failed or was bypassed]
+Fix needed: [yes/no — what needs to change in the script]
+```
+
+---
+
+## Log
+
+<!-- Entries go below, newest first -->
+
+---
+
+Date: 2026-06-16
+Scope: Full codebase audit remediation — commits c1fcecf, 22d79ba, e895882
+Action: Addressed all 30 findings from 260616_full_codebase_audit.md in the same session.
+Summary of changes:
+  - Phase A: chmod 600 on env files; re-pushed post_check script.yaml to fix empty schema
+  - Phase B: hookify broadened; portfolio_scores added to schema; board_members removed; dynamic model name in earnings footer; post-check schedule fixed (1 AM → 7 AM SGT); FIRE branch silent failure fixed; consolidation_group seeded; handle_owner tests added; .dockerignore created
+  - Phase C: +44 tests (272→316); logging migration across 17 scripts; 9 schedule.yaml files added to git; schema constraints/indexes/updated_at applied; CLAUDE.md trimmed; ROADMAP.md + README.md updated; WM_BASE_URL standardized (partial); in-function re-imports removed
+  - Phase D: PostToolUse matcher restricted; gcloud iam/auth removed from allowlist; placeholders verified; .yaml description fixed; old audit marked superseded; stale script archived; docker-compose hardcoded password removed; non-root Dockerfile user added; PGPASSWORD entries removed from settings.local.json; UFW enabled
+Remaining: A1 (credential rotation — user manual), A2 (git history purge — awaiting user confirmation), C3/M6 (function splits — deferred)
+Fix needed: Yes for A1 and A2. See docs/audit/260616_audit_remediation_record.md for full details.
+
+---
+
+Date: 2026-06-16
+Schema: portfolio/schema.sql
+Action: Removed CREATE TABLE board_members from schema.sql
+Reason: Table accumulated 6 garbage rows ("Date and time:", "Location:", etc.) from a broken DEF 14A parser. No working INSERT exists in the repo. Table still exists in the live DB — rows can be kept or dropped manually with `DROP TABLE board_members;`.
+Fix needed: Yes — rebuild the DEF 14A parser with proper tests, then add CREATE TABLE back to schema.sql.
+
+---
+
+Date: 2026-06-04
+Workflow: P1 — portfolio_price_fetcher, P2 — portfolio_email (all 4 schedules)
+Action: Updated all 4 schedule args from dict format {"$res": "u/admin/portfolio_db"} to string format "$res:u/admin/portfolio_db" via Windmill API. Triggered manual test run of portfolio_email to confirm fix — email sent successfully.
+Reason: Both portfolio_email and portfolio_price_fetcher had never successfully run on schedule. Windmill resolves resource/variable references only when stored as strings ("$res:path", "$var:path") in schedule args. The dict form ({"$res": "path"}) is passed through unresolved, causing KeyError: 'host' when the script tries to access portfolio_db["host"].
+Fix: All 4 schedules corrected via API. Root cause: schedules were created with the wrong arg format. Correct format documented in CLAUDE.md.
+
+---
+
+Date: 2026-06-03
+Workflow: 1.1 — Morning News Digest
+Action: Recreated `u/admin/gmail_smtp` resource (curl POST) and `u/admin/deepseek_key` variable (wmill variable add)
+Reason: Both credentials disappeared during a `wmill sync push --yes` call, despite skipResources: true and skipVariables: true being set in wmill.yaml. Push also deployed a stale archived script version rather than the latest.
+Fix: Credentials recreated from keys.md. Hard rules 9 added to CLAUDE.md: never use wmill sync push for routine script changes — always use wmill script push <path>.
+Restoration commands documented in CLAUDE.md Script Workflow section.
+
+---
+
+Date: 2026-06-03
+Workflow: 1.1 — Morning News Digest
+Action: Recreated `u/admin/gmail_smtp` resource in Windmill manually
+Reason: Resource was accidentally deleted by Claude Code during a rewrite of the Morning News Digest workflow
+Fix needed: No — resource recreated. Hard rule added to CLAUDE.md to never delete Windmill resources without explicit confirmation.
+
+---
+
+Date: 2026-06-03
+Workflow: 1.1 — Morning News Digest
+Action: Recreated `u/admin/gmail_smtp` resource in Windmill manually
+Reason: Resource was accidentally deleted by Claude Code during a rewrite of the Morning News Digest workflow
+Fix needed: No — resource recreated. Hard rule added to CLAUDE.md to never delete Windmill resources without explicit confirmation.

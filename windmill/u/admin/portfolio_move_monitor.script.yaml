@@ -1,0 +1,25 @@
+summary: 'F2b — Portfolio Move Monitor'
+description: 'Hourly intraday alert. Silent unless portfolio moves ±1.5% or any position moves ±5% vs most recent close. Schedule: Mon–Fri 9AM–6PM SGT.'
+lock: '!inline u/admin/portfolio_move_monitor.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    portfolio_db:
+      type: object
+      description: Portfolio PostgreSQL connection
+      x-windmill-resource: postgresql
+      default: "$res:u/admin/portfolio_db"
+    gmail_smtp:
+      type: object
+      description: Gmail SMTP credentials
+      x-windmill-resource: smtp
+      default: "$res:u/admin/gmail_smtp"
+    recipient_email:
+      type: string
+      description: Email address to send move alerts to
+      default: "$var:u/admin/recipient_email"
+  required:
+    - portfolio_db
+    - gmail_smtp

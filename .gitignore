@@ -1,0 +1,74 @@
+# Secrets & credentials
+.env
+.env.*
+!.env.example
+agent.env
+shared/keys.md
+shared/windmill-sa-key.json
+
+# SSH
+.ssh/
+
+# Docker build cache
+.docker/
+
+# Backup files
+*.bak
+
+# Claude Code session data
+.claude.json
+.claude/
+
+# Gemini CLI session data
+.gemini/
+
+# Shell & system dotfiles
+.bash_history
+.bashrc
+.profile
+.wget-hsts
+.lesshst
+.gitconfig
+.config/
+
+# Tools & IDE
+.vscode-server/
+.dotnet/
+.npm/
+.cache/
+.local/
+
+# Windmill Docker volume data lives in named Docker volumes, not on disk
+
+# Logs — keep directory structure, ignore content
+logs/**/*.log
+
+# Workspace — scratch space, not version controlled
+workspace/*
+!workspace/.gitkeep
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+
+# Node
+node_modules/
+
+# Windmill — auto-generated files, never commit
+windmill/.agents/
+windmill/.claude/
+windmill/AGENTS.cli.md
+windmill/wmill-lock.yaml
+windmill/**/*.script.lock
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Snap
+snap/
+.aider*

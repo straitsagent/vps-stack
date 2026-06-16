@@ -1,0 +1,11 @@
+schedule: '0 0 18 * * 0'
+timezone: Asia/Singapore
+enabled: true
+script_path: u/admin/fundamentals_fetcher
+is_flow: false
+summary: 'Fundamentals Fetcher — Weekly Sunday 6 PM SGT'
+permissioned_as: u/admin
+no_flow_overlap: true
+args:
+  portfolio_db: "$res:u/admin/portfolio_db"
+  finnhub_key: "$var:u/admin/finnhub_key"

@@ -1,0 +1,12 @@
+summary: Portfolio price fetcher — daily EOD prices
+description: Fetches EOD close prices for all portfolio positions via yfinance and writes to price_history. Also fetches live USDHKD rate into fx_rates. Runs daily at 5 AM SGT.
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  properties:
+    portfolio_db:
+      description: PostgreSQL connection for portfolio database
+      format: resource-postgresql
+      type: object
+  required:
+    - portfolio_db
+  type: object

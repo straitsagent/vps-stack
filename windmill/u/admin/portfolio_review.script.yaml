@@ -1,0 +1,35 @@
+summary: 'F2 — Weekly Portfolio Review'
+description: 'Weekly portfolio review email. Week-over-week P&L, top movers by impact and %, Finnhub news for top movers, Deepseek commentary. Schedule: Saturday 8AM SGT.'
+lock: '!inline u/admin/portfolio_review.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    portfolio_db:
+      type: object
+      description: Portfolio PostgreSQL connection
+      x-windmill-resource: postgresql
+      default: "$res:u/admin/portfolio_db"
+    finnhub_key:
+      type: string
+      description: Finnhub API key
+      default: "$var:u/admin/finnhub_key"
+    deepseek_key:
+      type: string
+      description: Deepseek API key
+      default: "$var:u/admin/deepseek_key"
+    gmail_smtp:
+      type: object
+      description: Gmail SMTP credentials
+      x-windmill-resource: smtp
+      default: "$res:u/admin/gmail_smtp"
+    recipient_email:
+      type: string
+      description: Email address to send the weekly review to
+      default: "$var:u/admin/recipient_email"
+  required:
+    - portfolio_db
+    - finnhub_key
+    - deepseek_key
+    - gmail_smtp

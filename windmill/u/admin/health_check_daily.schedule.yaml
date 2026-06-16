@@ -1,0 +1,11 @@
+schedule: '0 0 7 * * *'
+timezone: Asia/Singapore
+enabled: true
+script_path: u/admin/health_check
+is_flow: false
+summary: 'Daily Health Check — 7:00 AM SGT'
+permissioned_as: u/admin
+no_flow_overlap: true
+args:
+  gmail_smtp: "$res:u/admin/gmail_smtp"
+  recipient_email: "$var:u/admin/recipient_email"

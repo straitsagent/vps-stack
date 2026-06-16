@@ -1,0 +1,13 @@
+schedule: '0 0 */6 * * *'
+timezone: Asia/Singapore
+enabled: true
+script_path: u/admin/youtube_monitor
+is_flow: false
+summary: 'YouTube Channel Monitor — 6-hourly (SGT)'
+permissioned_as: straitsagent@gmail.com
+no_flow_overlap: false
+args:
+  deepseek_key: "$var:u/admin/deepseek_key"
+  rapidapi_key: "$var:u/admin/rapidapi_key"
+  smtp_resource: "$res:u/admin/gmail_smtp"
+  youtube_feeds: "$var:u/admin/youtube_feeds"

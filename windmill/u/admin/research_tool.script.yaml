@@ -1,0 +1,80 @@
+summary: Research Tool (T1+T2) — stock, strategy, macro, project
+description: >
+  Unified research agent. research_type: stock | strategy | macro | project.
+  depth: brief (3 queries) | standard (5 queries) | deep (10 queries + agentic gap analysis).
+  Sources: Google News RSS, Perplexity, Serper, Tavily, Brave (standard+), Exa (standard+),
+  Finnhub, Seeking Alpha, yfinance, SEC EDGAR, FRED macro data (macro type, standard+).
+  Synthesises with Grok-4.3, stores markdown to /research/ + PostgreSQL research_reports.
+lock: '!inline u/admin/research_tool.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    question:
+      type: string
+      description: "Research question, e.g. 'CoreWeave competitive position'"
+    research_type:
+      type: string
+      enum: [stock, strategy, macro, project]
+      description: "stock=equity analysis, strategy=competitive, macro=macro/sovereign, project=project finance"
+    depth:
+      type: string
+      enum: [brief, standard, deep]
+      description: "brief ~$0.05 | standard ~$0.10 | deep ~$0.20"
+    ticker:
+      type: string
+      default: ""
+      description: "Optional ticker (e.g. CRWV, 9988.HK) — activates stock-specific sources and DB context"
+    portfolio_db:
+      type: object
+      description: "PostgreSQL resource (optional, used only if ticker provided)"
+    gmail_smtp:
+      type: object
+      description: "Gmail SMTP resource for email delivery"
+    perplexity_key:
+      type: string
+      description: "Perplexity Search API key"
+    xai_key:
+      type: string
+      description: "xAI/Grok API key"
+    exa_key:
+      type: string
+      description: "Exa neural search API key (standard/deep only)"
+    deepseek_key:
+      type: string
+      description: "Deepseek API key for query decomposition"
+    finnhub_key:
+      type: string
+      description: "Finnhub API key for company news (US tickers)"
+    serper_key:
+      type: string
+      default: ""
+      description: "Serper.dev API key for news search (all depths)"
+    tavily_key:
+      type: string
+      default: ""
+      description: "Tavily Search API key (standard + deep, time_range=month)"
+    brave_key:
+      type: string
+      default: ""
+      description: "Brave Search API key (standard + deep, freshness=pm)"
+    fred_key:
+      type: string
+      default: ""
+      description: "FRED API key for macro data series (standard + deep, research_type=macro only)"
+    wm_token:
+      type: string
+      default: ""
+      description: "Windmill API token — used to dispatch stock_data_fetcher on stale/absent DB data"
+    recipient_email:
+      type: string
+      default: "$var:u/admin/recipient_email"
+      description: "Email address to send the research report to"
+  required:
+    - question
+    - research_type
+    - depth
+    - perplexity_key
+    - xai_key
+    - deepseek_key

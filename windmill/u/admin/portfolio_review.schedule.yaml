@@ -1,0 +1,13 @@
+schedule: '0 0 8 * * 6'
+timezone: Asia/Singapore
+enabled: true
+script_path: u/admin/portfolio_review
+is_flow: false
+summary: 'F2 — Weekly Portfolio Review'
+permissioned_as: u/admin
+no_flow_overlap: true
+args:
+  portfolio_db: "$res:u/admin/portfolio_db"
+  finnhub_key: "$var:u/admin/finnhub_key"
+  deepseek_key: "$var:u/admin/deepseek_key"
+  gmail_smtp: "$res:u/admin/gmail_smtp"

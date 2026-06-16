@@ -1,0 +1,11 @@
+schedule: '0 0 9-16 * * 1-5'
+timezone: Asia/Singapore
+enabled: true
+script_path: u/admin/portfolio_move_monitor
+is_flow: false
+summary: 'Move Monitor — HK session (hourly, Mon–Fri 9AM–4PM SGT)'
+permissioned_as: u/admin
+no_flow_overlap: true
+args:
+  portfolio_db: "$res:u/admin/portfolio_db"
+  gmail_smtp: "$res:u/admin/gmail_smtp"

@@ -1,0 +1,21 @@
+summary: Portfolio email — daily P&L update
+description: Reads positions and latest two days of prices from Postgres, computes day P&L per position and portfolio totals, sends HTML email. Skips on weekends. Runs at 5:15 AM SGT daily.
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  properties:
+    portfolio_db:
+      description: PostgreSQL connection for portfolio database
+      format: resource-postgresql
+      type: object
+    gmail_smtp:
+      description: Gmail SMTP credentials
+      format: resource-smtp
+      type: object
+    recipient_email:
+      description: Email address to send the portfolio update to
+      type: string
+      default: "$var:u/admin/recipient_email"
+  required:
+    - portfolio_db
+    - gmail_smtp
+  type: object
