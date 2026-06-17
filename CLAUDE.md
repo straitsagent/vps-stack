@@ -214,7 +214,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-16 (Full codebase audit remediation complete — 30 findings addressed across 4 phases: schema drift, test gaps, logging migration, schedule drift, security hardening, UFW enabled. 316 tests passing. See `docs/audit/260616_audit_remediation_record.md`. Pending user action: credential rotation (A1) and git history purge (A2).)
+**Last updated:** 2026-06-17 (Full codebase audit remediation complete — all 30 findings closed. A1/A2 (credential rotation, history purge) closed: `windmill-automations` was always private, no public exposure occurred. Repo migrated to `vps-stack` (fresh history). 316 tests passing. See `docs/audit/260616_audit_remediation_record.md`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`

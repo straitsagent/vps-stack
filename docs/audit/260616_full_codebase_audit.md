@@ -18,7 +18,9 @@ The single most important finding is #1 (secrets in git history). Everything els
 ## CRITICAL — Address within 24 hours
 
 ### C1. Secrets still in git history on a public remote
-The `/root` repo is a clone of `github.com/straitsagent/windmill-automations.git` (public). The 2026-06-15 security cleanup removed secrets from the working tree but not from history. `git log -G` against `main` recovers three live credentials:
+> **2026-06-17 update:** This finding was based on the assumption that `windmill-automations` was a public repo. It was always private — no public exposure occurred. A1 and A2 are closed without action. The repo has since been migrated to `vps-stack` (fresh history, public). See `260616_audit_remediation_record.md`.
+
+The `/root` repo is a clone of `github.com/straitsagent/windmill-automations.git` (assessed as public at audit time). The 2026-06-15 security cleanup removed secrets from the working tree but not from history. `git log -G` against `main` recovers three live credentials:
 
 | Credential | First introduced | Last seen in | Removed in |
 |---|---|---|---|

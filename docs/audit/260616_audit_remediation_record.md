@@ -16,8 +16,8 @@
 |---|---|---|---|
 | A3 | `chmod 600` on `.env`, `agent.env`, `opt/n8n/stack.env` | ✅ Done | `c1fcecf` → `22d79ba` |
 | A4 (H3) | `portfolio_earnings_post_check.script.yaml` empty schema | ✅ Done | Re-pushed; all 4 params now declared |
-| A1 | Rotate 3 exposed credentials | ⏳ **User action required** | See below |
-| A2 | `git filter-repo` + force-push to purge secrets from history | ⏳ **Awaiting user confirmation** | See below |
+| A1 | Rotate 3 exposed credentials | ✅ N/A — see note | `windmill-automations` was always private; no public exposure |
+| A2 | `git filter-repo` + force-push to purge secrets from history | ✅ N/A — see note | Superseded by fresh repo (`vps-stack`); history moot |
 
 ### Phase B — High Priority
 
@@ -71,24 +71,15 @@
 
 ### Requires User Action
 
-**A1 — Rotate 3 exposed credentials** (assume compromised — appeared in public repo history):
-1. **Gmail SMTP app password** — `myaccount.google.com` → 2FA → App Passwords → revoke old, generate new → update `u/admin/gmail_smtp` Windmill resource + `shared/keys.md`
-2. **Windmill API token** — Windmill UI Settings → Tokens → delete `wmill-api` token, generate new → update `shared/keys.md` and any scripts that use `$var:u/admin/wm_token`
-3. **Portfolio DB password** — `ALTER USER portfolio_user WITH PASSWORD '<new>';` → update `agent.env`, `.env`, `u/admin/portfolio_db` Windmill resource → rebuild container → update `shared/keys.md`
-
-**A2 — Purge credentials from git history** (requires explicit confirmation — force-push is irreversible):
-```bash
-pip install git-filter-repo
-# Create /tmp/replacements.txt — one line per credential value:
-# <gmail-app-password>==>REDACTED_GMAIL_APP_PASSWORD
-# <db-password>==>REDACTED_DB_PASSWORD
-# <windmill-api-token>==>REDACTED_WINDMILL_TOKEN
-git filter-repo --replace-text /tmp/replacements.txt
-git push origin main --force
-```
-Note: Any open PRs or forks will be invalidated. All cloners must re-clone.
-
 **Agent Drafts Telegram group** — create group, add bot, copy chat_id → `DRAFTS_GROUP_ID` in `agent.env` → rebuild container.
+
+### Closed: A1 and A2 (2026-06-17)
+
+The audit assessed finding C1 ("secrets in git history") as critical on the assumption that `windmill-automations` was a **public** GitHub repo. This was incorrect — `windmill-automations` was always private. The credentials in that history were never accessible to anyone other than the repo owner.
+
+**A1 (credential rotation)** — not required on account of git history exposure. No breach occurred.
+
+**A2 (git filter-repo + force-push)** — superseded. The repo was migrated to `vps-stack` (fresh orphan commit, no history) on 2026-06-17. The old `windmill-automations` repo retains its private history but is no longer the active remote. No force-push or history rewrite is needed.
 
 ### Deferred (low urgency, no regression risk)
 
