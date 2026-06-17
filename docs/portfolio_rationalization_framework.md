@@ -1,10 +1,11 @@
 # Portfolio Rationalization & Optimization Framework
 
-**Version:** 1.1 (review-updated 2026-06-14)  
+**Version:** 1.2 (minimax-aligned 2026-06-17)  
 **Created:** 2026-06-13  
 **Status:** Implementation complete — live in Windmill  
 **Related roadmap section:** Part 3, Analytics & Research Stack  
-**Critical review:** 8 findings incorporated from "Review — Roadmap & Portfolio Rationalization Framework 2026-06-14"
+**Critical review:** 8 findings incorporated from "Review — Roadmap & Portfolio Rationalization Framework 2026-06-14"  
+**v1.2 changes:** Column renamed `# KEEP` → `# top-half`; Section C panels corrected to match live renderer; ADR consolidation sourced from DB documented; completeness vs metric coverage distinguished; word-count target softened; duplicate C3 header removed.
 
 ---
 
@@ -27,11 +28,13 @@ This is a **monthly deep-analysis framework** — not a brief portfolio email. T
 
 All other tickers scored individually. For each ADR pair, position values are summed. *(Finding 3 — ADR market data rule):* **Fundamentals** (ROE, margins, growth, leverage) are merged — same company, same numbers. **Market data** (valuation multiples, momentum, short interest, analyst coverage) is sourced from the listing that would actually be held — the ADR (BABA, BIDU) by default; the HK listing data is used if Section E designates the HK share as the keep. Not the ticker with more DB rows.
 
+**Implementation note (v1.2):** ADR pair mapping is no longer hardcoded in the script. `_load_adr_pairs()` queries `portfolio_positions.consolidation_group` at runtime — any future ADR pair addition requires only a seed/data update, not a code change.
+
 ---
 
 ## Report Structure
 
-Output: one comprehensive HTML/Markdown document per month. Target 15,000–20,000 words. Delivered by email and saved to `/root/research/portfolio/rationalization_YYYY-MM-DD.md`.
+Output: one comprehensive HTML/Markdown document per month. Typical length 10,000–15,000 words (soft target — quality over volume; do not pad). Delivered by email and saved to `/root/research/portfolio/rationalization_YYYY-MM-DD.md`.
 
 ### Section A — Executive Summary
 
@@ -53,11 +56,11 @@ Four weighting philosophies applied simultaneously. The goal is to identify whic
 | 3. Growth-focused | 20% | 35% | 25% | 10% | 10% |
 | 4. Value-focused | 20% | 20% | 35% | 15% | 10% |
 
-Table columns: Rank (Scenario 1–4), Composite score (each scenario), # scenarios KEEP, **Δ rank vs prior month** *(Finding 8)*, **Data completeness %** *(Finding 2)*, Red flags count. Sorted by Balanced composite by default.
+Table columns: Rank (Scenario 1–4), Composite score (each scenario), **# top-half** (count of scenarios where the position ranks in the top half of the portfolio — a rank-robustness signal, not a KEEP verdict), **Δ rank vs prior month** *(Finding 8)*, **Factor coverage %** *(see note below)*, Red flags count. Sorted by Balanced composite by default.
 
 ### Section C — Per-Position Deep Scorecard (~31 entries)
 
-For each position in the portfolio:
+For each position in the portfolio. **Live rendering note (v1.2):** C1, C2, and C4 are rendered per-position as separate blocks. C3 (Grok narrative) is rendered once as a single combined section after all per-position quantitative panels — it is not inlined per position.
 
 #### C1. Quantitative Metrics Panel *(Python-computed from DB — no LLM, fully auditable)*
 
@@ -92,20 +95,20 @@ For each position in the portfolio:
 - Institutional ownership %
 - Net insider buy/sell value last 90 days (from `insider_transactions`)
 
-#### C2. Factor Score Breakdown *(percentile ranks 0–100 within portfolio)*
+#### C2. Factor Score Breakdown *(scenario ranks per position)*
 
-Five factor scores (completeness-penalized composite), rank in each of 4 scenarios, Δ vs prior month rank. *(Finding 1):* **Absolute red flags** shown explicitly above the metrics panel when triggered — these are independent of percentile ranking and visible to Grok. *(Finding 2):* Completeness % shown in section header.
+Rank in each of 4 scenarios (balanced / quality / growth / value) + Δ vs prior month rank. *(Finding 1):* **Absolute red flags** shown explicitly above the panel when triggered. *(v1.2 note):* C2 currently shows scenario ranks only, not the 0–1 raw factor-score breakdown. Expanding to show raw factor scores is tracked as a future enhancement.
 
-#### C3. Qualitative Analysis *(Grok-4.3 generated — 4 sentences per position)*
+#### C3. Qualitative Analysis *(Grok Call 1 — rendered once for all positions)*
+
+Single combined section produced by Grok Call 1. For each position:
 
 1. **Quantitative assessment**: what the numbers show — strongest metric, weakest metric
 2. **Qualitative assessment**: thesis strength, most important catalyst vs. most important risk
 3. **Portfolio fit**: why keep vs. trim vs. exit relative to the other positions
 4. **Recommendation**: KEEP / TRIM / EXIT + concise rationale
 
-#### C3. Qualitative Analysis *(Grok Call 1 — 4 sentences per position)*
-
-Quantitative assessment, qualitative thesis, portfolio fit, recommendation. *(Finding 1):* Red flags explicitly referenced. *(Finding 2):* Data uncertainty noted if completeness < 60%.
+*(Finding 1):* Red flags explicitly referenced per the Call 1 prompt instruction. *(Finding 2):* Data uncertainty noted if completeness < 60%.
 
 #### C4. Investment Thesis *(from `portfolio_thesis` table)*
 
@@ -206,8 +209,9 @@ where:
                     (credibility-weighted: more analysts = higher weight)
   eps_beat        = avg EPS surprise %, clipped to [−30%, +30%]
   momentum        = (current_price − price_52wk_low) / (price_52wk_high − price_52wk_low)
-  insider_net     = net_buy_value (90d) / max_abs_insider_value in portfolio
-                    (0 if no recent activity; positive = net buying)
+  insider_norm    = percentile rank of net_buy_value (90d) within portfolio pool
+                    (Phase 2 A4 enhancement: normalise as net_buy_value/market_cap flow ratio
+                    for cross-size comparability — not yet implemented)
 ```
 
 #### Thesis Score (raw) *(Finding 4 — freshness decay REMOVED)*
@@ -243,7 +247,7 @@ composite_penalized = composite_raw × (n_available_factors / n_total_factors)
 ```
 This ensures a position scored on 3 of 5 factors cannot exceed 60% of a fully-covered peer. Prevents HK/China names with thinner Finnhub coverage from gaming the rankings by having their weak factors excluded.
 
-**Data completeness %:** `n_factors_with_data / 5 × 100`. Stored in `portfolio_scores.data_completeness_pct`.
+**Factor coverage %:** `n_factors_with_data / 5 × 100`. Stored in `portfolio_scores.data_completeness_pct`. This counts how many of the 5 factors (quality, growth, valuation, sentiment, thesis) have at least one sub-component with data — it is **not** the same as raw-metric coverage. A position with 3 of 4 quality sub-components missing still counts as "quality available." A separate metric-coverage column (raw sub-components present / total sub-components) is tracked as a Phase 2 enhancement (see `260617_framework_review_incorporation_plan.md` A2).
 
 ### Composite Score per Scenario *(Finding 2 — updated)*
 ```
@@ -263,7 +267,7 @@ WHERE score_date = (SELECT MAX(score_date) FROM portfolio_scores WHERE score_dat
 
 ## Grok-4.3 Synthesis — Two Sequential Calls *(Finding 5)*
 
-*Per Hard Rule 10 — exact prompt text approved before coding. Single call cannot produce 15,000–20,000 words within max_tokens=8000 (~6,000 words). Split into two calls.*
+*Per Hard Rule 10 — exact prompt text approved before coding. Single call cannot reliably produce the full report within max_tokens=8000 (~6,000 words). Split into two calls. Note: Call 1 batching (positions 1–15 / 16–31) is tracked as Phase 2 A7 to prevent silent truncation.*
 
 ### Call 1 — Per-Position Analysis (31 blocks)
 
@@ -323,7 +327,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
 == YOUR OUTPUT ==
 
 == EXECUTIVE SUMMARY ==
-**Consistent KEEPs** (≥3 of 4 scenarios AND your KEEP verdict): [bulleted, one-line reason each]
+**Consistent KEEPs** (top-half rank in ≥3 of 4 scenarios AND your KEEP verdict): [bulleted, one-line reason each]
 **Scenario-Sensitive Positions** (rank shifts >10 places between scenarios): [what drives the sensitivity]
 **Trim Candidates**: [list, one-line reason each]
 **Exit Candidates**: [list, one-line reason each]
