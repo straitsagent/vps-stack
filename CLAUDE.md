@@ -214,7 +214,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-17 (Full codebase audit remediation complete — all 30 findings closed. A1/A2 (credential rotation, history purge) closed: `windmill-automations` was always private, no public exposure occurred. Repo migrated to `vps-stack` (fresh history). 316 tests passing. See `docs/audit/260616_audit_remediation_record.md`.)
+**Last updated:** 2026-06-17 (Full codebase audit remediation complete — all 30 findings closed. A1/A2 (credential rotation, history purge) closed: `windmill-automations` was always private, no public exposure occurred. Repo migrated to `vps-stack` (fresh history). 344 tests passing. See `docs/audit/260616_audit_remediation_record.md`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`
@@ -255,7 +255,8 @@ See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/res
 | 3.0 — API Audit | ✅ Complete | Multi-source field mapping, $0/mo. Research: `docs/audit/260605_fundamentals_api_audit.md` |
 | 3.1 — Fundamentals fetcher | ✅ Live | Sunday 6PM SGT. Finnhub (US ratios) + yfinance (all tickers). Table: `fundamental_data`. |
 | 3.2 — Financial statements | 🔲 Planned | Quarterly pull, yfinance, all 33 tickers |
-| 3.3 — Portfolio Rationalization | ✅ Live | Monthly (9PM SGT, 1st of month). 5 factors × 4 scenarios. Absolute red flags, completeness penalty, delta tracking, 2× Grok-4.3 calls + fallback. Script: `u/admin/portfolio_rationalization`. Schedule: `u/admin/portfolio_rationalization_monthly`. portfolio_scores table in DB. Design doc: `docs/portfolio_rationalization_framework.md` v1.1. |
+| 3.3 — Portfolio Rationalization | ✅ Live | Monthly (9PM SGT, 1st of month). 5 factors × 4 scenarios. Absolute red flags, completeness penalty, delta tracking, 2× Grok-4.3 calls + fallback (batched Call 1 for truncation prevention). Script: `u/admin/portfolio_rationalization`. Schedule: `u/admin/portfolio_rationalization_monthly`. portfolio_scores table in DB. Design doc: `docs/portfolio_rationalization_framework.md` v1.2. |
+| 3.4 — Portfolio Candidate Eval | ✅ Live | On-demand (Telegram: `evaluate TICKER`). 3-gate ADD/WATCH/PASS verdict: Gate 1 red flags, Gate 2 portfolio fit (price corr + fundamental sim + sector/geo/currency + gap fill), Gate 3 universe benchmark. Grok-4.3 + deepseek fallback, show-your-work JSON. Script: `u/admin/portfolio_candidate_eval`. Table: `portfolio_candidate_evals`. Design doc: `docs/portfolio_candidate_eval_framework.md` v1.1. |
 | T1+T2 — Unified Research Tool | ✅ Live | Script: `u/admin/research_tool`. research_type: stock/strategy/macro/project. depth: brief/standard/deep. Sources: Google News + Perplexity + Serper (all depths) → + Tavily (finance, time_range=month) + Brave (freshness=pm) + SA + EDGAR 8-K + Exa (non-stock) + FRED (macro type) (standard/deep) → + Exa (all types) + EDGAR 10-K/10-Q + agentic gap analysis round (deep). Gap analysis: Deepseek identifies 3 coverage gaps → routes to news/sec/analyst/market_data source. Grok-4.3 synthesis, max_tokens=8000 at deep. Stores markdown to `/root/research/` + PostgreSQL `research_reports`. Stock fundamentals: reads from DB first (`_read_structured_stock_data`) — dispatches `stock_data_fetcher` on stale/absent data, live-fetches all 8 if no portfolio_db. Always live-fetches: MD&A synopsis (Deepseek-chat, EDGAR 10-Q) + board of directors (DEF 14A, parser bug). Filename: `YYYY-MM-DD_{depth}_{slug}.md`. |
 | Stock Data Fetcher | ✅ Live | Script: `u/admin/stock_data_fetcher`. Single-ticker generic fetcher: company profile, 3yr financials (income/BS/CF/health), valuation, ownership, insider transactions, earnings calendar, key management, peer comparisons. Persists to 14 DB tables. No synthesis, no email. Caller supplies ticker; batching is caller's responsibility (portfolio, watchlist, index). |
 | F3 — Signal Collection | 🚫 Parked | Deprioritised in favour of T1/T2 |
@@ -264,7 +265,7 @@ See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/res
 ### Telegram Agent — Build Status
 See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full component inventory.
 
-**Summary:** Agent fully live — FastAPI service, Telegram webhook, 13 commands, W2/W3/W4 tools, 316 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
+**Summary:** Agent fully live — FastAPI service, Telegram webhook, 13 commands, W2/W3/W4 tools + candidate_evaluation, 344 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
 
 ### Next Up
 1. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`
