@@ -22,7 +22,7 @@ Built a personal automation agent accessible via messaging, ending up on Telegra
 7. Wrote full W1 pseudocode spec in WORKFLOW_ARCHITECTURE.md; updated ROADMAP with W2–W6 sophistication roadmap
 8. Added design rationale doc: FastAPI chosen over polling loop; LangGraph considered and rejected (overkill for single-owner bot)
 9. Documented W2–W6 expansion roadmap: W2 tool expansion, W3 compound answers, W4 ReAct loop, W5 personalization, W6 proactive agent
-10. Pivoted transport to Baileys — Node.js sidecar with QR-code WhatsApp Web session, spare number +6589957943 linked, session persisted in `baileys_auth` Docker volume
+10. Pivoted transport to Baileys — Node.js sidecar with QR-code WhatsApp Web session, spare number <YOUR_SPARE_NUMBER> linked, session persisted in `baileys_auth` Docker volume
 11. Pivoted transport to Telegram Bot API — removed Baileys sidecar entirely, added `agent/telegram.py` adapter with `send_message`, `parse_inbound`, `verify_signature`; registered `/webhook/telegram` Caddy route
 12. Added slash commands: `/help`, `/portfolio`, `/research`, `/youtube`, `/digest`
 13. Fixed `research_tool.py` function signature crash (see Bug 3)
@@ -40,7 +40,7 @@ Built a personal automation agent accessible via messaging, ending up on Telegra
 **Fix:** Pivoted to Baileys — a Node.js library that connects via WhatsApp Web (QR scan) using a spare personal number, bypassing Meta's business verification entirely.
 
 **Bug 2 — Baileys WhatsApp number banned within 24 hours**
-**Symptom:** The spare number (+6589957943) connected successfully via QR scan and the bridge handled several test messages. Approximately 24 hours later the number was banned by WhatsApp and could no longer send or receive messages.
+**Symptom:** The spare number (<YOUR_SPARE_NUMBER>) connected successfully via QR scan and the bridge handled several test messages. Approximately 24 hours later the number was banned by WhatsApp and could no longer send or receive messages.
 **Root cause:** WhatsApp actively detects third-party API usage by monitoring for non-official client behavior (Baileys mimics WhatsApp Web but is not an officially sanctioned client). Ban is automated and typically happens within hours to days of first use. There is no appeal path for a personal number.
 **Fix:** Pivoted to Telegram Bot API permanently. Telegram explicitly supports and documents bots via the Bot API; bot tokens are first-class and cannot be banned for normal usage.
 

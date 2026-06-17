@@ -29,7 +29,7 @@ Established the GitOps workflow for Windmill script management. Built Workflow 1
 14. Fixed empty summaries caused by infrastructure finance persona in system prompt (see Bug 3)
 15. Added programmatic key-link extraction from newsletter HTML
 16. Added token cost tracking and estimated API cost at top of email
-17. Added k.lee@natixis.com to distribution list
+17. Added <YOUR_WORK_EMAIL> to distribution list
 18. Built Email Summary workflow — reads Gmail INBOX last 24h via IMAP, summarises with deepseek-chat
 19. Created `docs/WORKFLOW_ARCHITECTURE.md` with full pseudocode specs for all workflows
 20. Documented `gmail_smtp` deletion incident in `shared/override_log.md`
@@ -54,7 +54,7 @@ Established the GitOps workflow for Windmill script management. Built Workflow 1
 11. "Revert morning_news_digest to pre-revamp version"
 12. "Revamp 1.1 Morning Digest: JSON summaries, key links, token tracking"
 13. "Fix 1.1 summaries: generic prompt, programmatic links, cost at top"
-14. "Add k.lee@natixis.com to Morning Digest distribution list"
+14. "Add <YOUR_WORK_EMAIL> to Morning Digest distribution list"
 15. "Update docs to reflect 1.1 revamp"
 16. "Prevent recurrence of session bugs — Hard rules and documentation added"
 
