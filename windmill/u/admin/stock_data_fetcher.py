@@ -338,7 +338,7 @@ def _fetch_yfinance_valuation(ticker):
         if hi and lo:
             lines.append(f"| 52-wk Range | ${float(lo):.2f} – ${float(hi):.2f} |")
 
-        tgt = info.get("targetMeanPrice")
+        tgt = info.get("targetMeanPrice")  # consensus mean across all analyst opinions (A5 verified)
         n_a = info.get("numberOfAnalystOpinions")
         rec = info.get("recommendationMean")
         if tgt:

@@ -654,6 +654,38 @@ def _call_grok_with_fallback(messages: list[dict], xai_key: str, deepseek_key: s
     }
 
 
+# ── JSON output parser (C2 — show-your-work) ─────────────────────────────────
+
+def _parse_call1_json(text: str) -> dict[str, dict]:
+    """Parse Grok Call 1 output. Returns {ticker: {verdict, rationale_sentences}} or empty on failure.
+
+    Expected JSON structure per position:
+    {"ticker": "...", "verdict": "...", "rationale_sentences": [{"text": "...", "evidence": [...]}]}
+
+    Graceful fallback: returns {} if JSON is absent or malformed, so callers
+    can fall back to the plain-text narrative path.
+    """
+    import re
+    positions_data = {}
+    # Grok may wrap JSON in ```json ... ``` fences or output it inline
+    json_block = re.search(r"```json\s*([\s\S]*?)```", text)
+    raw = json_block.group(1) if json_block else text
+    try:
+        parsed = json.loads(raw)
+        items = parsed if isinstance(parsed, list) else parsed.get("positions", [])
+        for item in items:
+            ticker = item.get("ticker", "").upper().strip()
+            if ticker:
+                positions_data[ticker] = {
+                    "verdict": item.get("verdict", ""),
+                    "rationale_sentences": item.get("rationale_sentences", []),
+                }
+        log.info(f"[Call1 JSON] Parsed {len(positions_data)} positions")
+    except (json.JSONDecodeError, AttributeError, TypeError) as e:
+        log.warning(f"[Call1 JSON] Parse failed ({e}) — falling back to plain-text narrative")
+    return positions_data
+
+
 # ── Report builder ─────────────────────────────────────────────────────────────
 
 def _fmt_pct(v):
@@ -887,9 +919,12 @@ def main(
         per_position_blocks.append(block)
 
     n_pos = len(positions)
-    call1_prompt = f"""You are a senior portfolio manager conducting a monthly rationalization review of a concentrated equity portfolio.
-Evaluate {n_pos} positions (including 2 consolidated ADR pairs: Alibaba=BABA+9988.HK, Baidu=BIDU+9888.HK).
-Target: approximately 15 final positions. The reader is a finance professional — be analytical and specific, not educational.
+    CALL1_BATCH_SIZE = 15  # Split Call 1 into 2 batches to avoid truncation at max_tokens=8000 (A7)
+    call1_batches = [per_position_blocks[:CALL1_BATCH_SIZE], per_position_blocks[CALL1_BATCH_SIZE:]]
+
+    def _build_call1_prompt(batch_blocks, batch_label):
+        return f"""You are a senior portfolio manager conducting a monthly rationalization review of a concentrated equity portfolio.
+Evaluate positions {batch_label} of {n_pos} total. Target: approximately 15 final positions across the full portfolio. The reader is a finance professional — be analytical and specific, not educational.
 
 IMPORTANT: Positions marked [RED FLAG] carry absolute concerns independent of their relative rank within this portfolio.
 These are hard negatives — do not let a high percentile score override a flagged absolute metric.
@@ -903,12 +938,28 @@ Data completeness % and Δ rank vs prior month are shown per position.
 
 {ranking_table}
 
-== PER-POSITION DATA ==
+== PER-POSITION DATA (this batch) ==
 
-{chr(10).join(per_position_blocks)}
+{chr(10).join(batch_blocks)}
 
 == YOUR OUTPUT ==
-For EACH position (no skipping, no merging):
+Respond with a JSON array, then a plain-text narrative section. The JSON enables auditability.
+
+JSON format:
+```json
+[
+  {{
+    "ticker": "TICKER",
+    "verdict": "KEEP | TRIM | EXIT",
+    "rationale_sentences": [
+      {{"text": "sentence text", "evidence": ["metric_name=value", ...]}}
+    ]
+  }},
+  ...
+]
+```
+
+After the JSON block, also write a human-readable section for each position in this batch (no skipping, no merging):
 
 **[TICKER] — [Company Name]**
 Quantitative: [2 sentences — strongest metric, weakest metric; reference any red flags explicitly]
@@ -916,22 +967,37 @@ Qualitative: [2 sentences — thesis strength, key catalyst vs. key risk]
 Recommendation: KEEP / TRIM / EXIT
 Rationale: [2-3 sentences — opportunity cost relative to other positions; note data uncertainty if completeness < 60%]"""
 
-    log.info(f"[Grok Call 1] Sending per-position analysis ({n_pos} blocks)...")
-    call1_result = _call_grok_with_fallback(
-        messages=[{"role": "user", "content": call1_prompt}],
-        xai_key=xai_key,
-        deepseek_key=deepseek_key,
-        max_tokens=8000,
-    )
-    per_position_analysis = call1_result["text"]
-    call1_model = call1_result["model"]
-    log.info(f"[Grok Call 1] Done — model={call1_model}, "
-          f"tokens={call1_result['input_tokens']}in/{call1_result['output_tokens']}out")
+    # ── 8a. Grok Call 1a — first batch (positions 1–{CALL1_BATCH_SIZE}) ──────────
+    call1_model = "grok-4.3"
+    per_position_analysis_parts = []
+    call1_structured = {}
+    for batch_idx, batch_blocks in enumerate(call1_batches):
+        if not batch_blocks:
+            continue
+        start = batch_idx * CALL1_BATCH_SIZE + 1
+        end = start + len(batch_blocks) - 1
+        batch_label = f"{start}–{end}"
+        prompt = _build_call1_prompt(batch_blocks, batch_label)
+        log.info(f"[Grok Call 1 batch {batch_idx+1}] Sending {len(batch_blocks)} blocks ({batch_label})...")
+        result = _call_grok_with_fallback(
+            messages=[{"role": "user", "content": prompt}],
+            xai_key=xai_key,
+            deepseek_key=deepseek_key,
+            max_tokens=8000,
+        )
+        call1_model = result["model"]
+        log.info(f"[Grok Call 1 batch {batch_idx+1}] Done — model={call1_model}, "
+              f"tokens={result['input_tokens']}in/{result['output_tokens']}out")
+        per_position_analysis_parts.append(result["text"])
+        batch_structured = _parse_call1_json(result["text"])
+        call1_structured.update(batch_structured)
+
+    per_position_analysis = "\n\n".join(per_position_analysis_parts)
 
     # ── 9. Grok Call 2 — Executive summary ────────────────────────────────────
     if prior_ranks:
         top_movers = sorted(
-            [(t, delta_map.get(t, 0) or 0) for t in tickers if delta_map.get(t) is not None],
+            [(t, (delta_map.get(t) or {}).get("balanced", 0) or 0) for t in tickers if delta_map.get(t) is not None],
             key=lambda x: abs(x[1]), reverse=True
         )[:5]
         delta_summary = "Top rank movers vs prior month:\n" + "\n".join(
@@ -1028,6 +1094,18 @@ Below are the position verdicts. Generate the executive summary, portfolio const
             card.append(f"⚠️ Thesis not reviewed in {th.get('stale_days')} days — consider updating")
         card.append(f"Catalysts: {', '.join(th.get('catalysts', [])[:3]) or '—'}")
         card.append(f"Risks: {', '.join(th.get('risks', [])[:3]) or '—'}")
+
+        # C3. Show-your-work evidence (C2) — rendered per-position from JSON if available
+        structured = call1_structured.get(t, {})
+        if structured.get("rationale_sentences"):
+            card.append("")
+            verdict_tag = structured.get("verdict", "")
+            card.append(f"**C3. Analysis (Grok — {call1_model}){' — Verdict: ' + verdict_tag if verdict_tag else ''}**")
+            for rs in structured["rationale_sentences"]:
+                evidence_str = " | ".join(rs.get("evidence", []))
+                ev_note = f" *[{evidence_str}]*" if evidence_str else ""
+                card.append(f"- {rs.get('text','')}{ev_note}")
+
         scorecards.append("\n".join(card))
 
     report_md = f"""# Portfolio Rationalization Analysis — {today_str}

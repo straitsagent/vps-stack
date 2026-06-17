@@ -2079,6 +2079,37 @@ def test_rationalization_delta_for_all_four_scenarios():
     )
 
 
+def test_rationalization_call1_requests_json_output():
+    """Grok Call 1 prompt must request structured JSON with evidence tags (minimax C2)."""
+    src = _read_pr_source()
+    assert "rationale_sentences" in src, (
+        "Call 1 prompt does not request 'rationale_sentences' — add show-your-work JSON output spec (minimax C2)"
+    )
+    assert "evidence" in src, (
+        "Call 1 prompt does not include 'evidence' field — add per-claim source metric tags (minimax C2)"
+    )
+
+
+def test_rationalization_has_json_parser_with_fallback():
+    """Script must have a JSON parser for Call 1 output with graceful fallback (minimax C2)."""
+    src = _read_pr_source()
+    assert "_parse_call1_json" in src or "json.loads" in src, (
+        "No JSON parser found for Call 1 output — add parser for show-your-work JSON (minimax C2)"
+    )
+    assert "json_parse" in src.lower() or "fallback" in src.lower() or "except" in src, (
+        "No fallback handling found for JSON parse failures (minimax C2)"
+    )
+
+
+def test_rationalization_call1_split_into_batches():
+    """Grok Call 1 must be split into 2 batches to avoid truncation at max_tokens=8000 (minimax A7)."""
+    src = _read_pr_source()
+    assert "call1a" in src or "batch" in src.lower() or "call_1a" in src or "call1_batch" in src, (
+        "Call 1 is not batched — split into 2 batches (positions 1-15 and 16-31) "
+        "to avoid silent truncation at max_tokens=8000 (minimax finding A7)"
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # C1: portfolio_email.py
 # ─────────────────────────────────────────────────────────────────────────────
