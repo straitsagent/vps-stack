@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-16 (portfolio rationalization framework live — monthly cron 9PM SGT 1st of month; portfolio_scores table populated; 272 tests passing)
+**Last updated:** 2026-06-17 (candidate eval auto-fetch + research integration live — 353 tests passing; rationalization changed to weekly Monday 9PM SGT + optional include_research)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -51,7 +51,8 @@ Everything below is live and running unattended.
 | 2.3 Weekly Portfolio Review | Saturday 8:00 AM SGT | Week P&L, Finnhub news, Deepseek commentary |
 | 2.4 Move Monitor | Hourly, Mon–Fri (HK + US sessions) | Alert on portfolio ±1.5% or position ±5% |
 | 3.1 Fundamentals Fetcher | Sunday 6:00 PM SGT | Finnhub + yfinance → `fundamental_data` (P/E, targets, margins, ROE, ROIC) |
-| 3.3 Portfolio Rationalization | 1st of month, 9PM SGT (+ on-demand) | ✅ **Live.** 5-factor scoring × 4 scenarios, absolute red flags, completeness penalty, delta tracking, 2× Grok-4.3 calls + deepseek fallback. Script: `u/admin/portfolio_rationalization`. Table: `portfolio_scores`. Telegram: `portfolio_rationalize`. See [`docs/portfolio_rationalization_framework.md`](portfolio_rationalization_framework.md) |
+| 3.3 Portfolio Rationalization | **Weekly Monday 9PM SGT** (+ on-demand) | ✅ **Live.** 5-factor scoring × 4 scenarios, absolute red flags, completeness penalty, delta tracking, 2× Grok-4.3 calls + deepseek fallback. Optional `include_research=True` adds full LLM research reports into Grok Call 2 (deep mode). Script: `u/admin/portfolio_rationalization`. Table: `portfolio_scores`. Telegram: `portfolio_rationalize` / `deep rationalize`. Schedule: `u/admin/portfolio_rationalization_monthly`. See [`docs/portfolio_rationalization_framework.md`](portfolio_rationalization_framework.md) |
+| 3.4 Portfolio Candidate Eval | On-demand (Telegram: `evaluate TICKER`) | ✅ **Live.** 3-gate ADD/WATCH/PASS verdict. **Auto-fetch**: dispatches `stock_data_fetcher` if quant data absent/stale (>3d), then dispatches `research_tool` if no recent stock report (>30d). Waits for DB confirmation before evaluating. Full research report included in Grok prompt if available. Script: `u/admin/portfolio_candidate_eval`. Table: `portfolio_candidate_evals`. |
 
 ### Research & Tools
 | Component | Notes |

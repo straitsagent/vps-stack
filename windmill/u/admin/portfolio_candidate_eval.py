@@ -110,8 +110,8 @@ def _check_data_staleness(ticker: str, portfolio_db: dict) -> str:
 
 
 def _dispatch_stock_fetcher(ticker: str, portfolio_db: dict, finnhub_key: str,
-                            wm_token: str, timeout_s: int = 90) -> bool:
-    """Dispatch stock_data_fetcher as a Windmill sub-job; poll until complete. Never raises."""
+                            wm_token: str, timeout_s: int = 120) -> bool:
+    """Dispatch stock_data_fetcher and wait for DB to reflect fresh data. Never raises."""
     url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/stock_data_fetcher"
     headers = {"Authorization": f"Bearer {wm_token}", "Content-Type": "application/json"}
     payload = {"ticker": ticker, "portfolio_db": portfolio_db, "finnhub_key": finnhub_key}
@@ -120,20 +120,13 @@ def _dispatch_stock_fetcher(ticker: str, portfolio_db: dict, finnhub_key: str,
         resp.raise_for_status()
         job_id = resp.text.strip().strip('"')
         log.info(f"[AutoFetch] stock_data_fetcher dispatched job_id={job_id} for {ticker}")
-        poll_url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/completed/get/{job_id}"
-        for _ in range(timeout_s // 5):
+        # Verify success by polling DB directly — avoids Windmill API routing issues inside workers
+        for attempt in range(timeout_s // 5):
             time.sleep(5)
-            try:
-                check = requests.get(poll_url, headers=headers, timeout=10)
-                if check.status_code == 200:
-                    job = check.json()
-                    if job.get("type") == "CompletedJob":
-                        success = bool(job.get("success", False))
-                        log.info(f"[AutoFetch] stock_data_fetcher job {job_id} completed, success={success}")
-                        return success
-            except Exception as _exc:
-                log.warning("Suppressed: %s", _exc)
-        log.warning(f"[AutoFetch] timeout waiting for stock_data_fetcher job {job_id}")
+            if _check_data_staleness(ticker, portfolio_db) == "fresh":
+                log.info(f"[AutoFetch] stock_data_fetcher confirmed fresh data after {(attempt+1)*5}s")
+                return True
+        log.warning(f"[AutoFetch] timeout — {ticker} quant data still not fresh after {timeout_s}s")
         return False
     except Exception as e:
         log.error(f"[AutoFetch] stock_data_fetcher dispatch error: {e}")
@@ -171,8 +164,8 @@ def _dispatch_research_tool(ticker: str, portfolio_db: dict, gmail_smtp: dict,
                              xai_key: str, deepseek_key: str, finnhub_key: str,
                              perplexity_key: str, serper_key: str, tavily_key: str,
                              exa_key: str, brave_key: str, wm_token: str,
-                             recipient_email: str, timeout_s: int = 150) -> bool:
-    """Dispatch research_tool (stock, standard) as a Windmill sub-job. Never raises."""
+                             recipient_email: str, timeout_s: int = 300) -> bool:
+    """Dispatch research_tool (stock, standard) and wait for DB to reflect fresh report. Never raises."""
     url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/research_tool"
     headers = {"Authorization": f"Bearer {wm_token}", "Content-Type": "application/json"}
     payload = {
@@ -189,20 +182,13 @@ def _dispatch_research_tool(ticker: str, portfolio_db: dict, gmail_smtp: dict,
         resp.raise_for_status()
         job_id = resp.text.strip().strip('"')
         log.info(f"[AutoFetch] research_tool dispatched job_id={job_id} for {ticker}")
-        poll_url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/completed/get/{job_id}"
-        for _ in range(timeout_s // 10):
+        # Verify success by polling DB directly — avoids Windmill API routing issues inside workers
+        for attempt in range(timeout_s // 10):
             time.sleep(10)
-            try:
-                check = requests.get(poll_url, headers=headers, timeout=10)
-                if check.status_code == 200:
-                    job = check.json()
-                    if job.get("type") == "CompletedJob":
-                        success = bool(job.get("success", False))
-                        log.info(f"[AutoFetch] research_tool job {job_id} completed, success={success}")
-                        return success
-            except Exception as _exc:
-                log.warning("Suppressed: %s", _exc)
-        log.warning(f"[AutoFetch] timeout waiting for research_tool job {job_id}")
+            if _check_research_staleness(ticker, portfolio_db) == "fresh":
+                log.info(f"[AutoFetch] research_tool confirmed fresh report after {(attempt+1)*10}s")
+                return True
+        log.warning(f"[AutoFetch] timeout — {ticker} research still not fresh after {timeout_s}s")
         return False
     except Exception as e:
         log.error(f"[AutoFetch] research_tool dispatch error: {e}")
@@ -907,6 +893,17 @@ def _assemble_prompt(
     def fmt(v): return f"{v:.1f}" if v is not None else "N/A"
     def fmtpct(v): return f"{v:.1%}" if v is not None else "N/A"
 
+    if research_report:
+        research_block = (
+            "== EXISTING RESEARCH REPORT (standard stock analysis, " + research_report[1] + ") ==\n"
+            + research_report[0]
+            + "\n\n[Note: Use the above qualitative context — management quality, competitive moat, "
+            "catalysts, risks — alongside the quantitative gate data when forming your synthesis. "
+            "Cross-reference where evidence is consistent or contradictory.]\n\n"
+        )
+    else:
+        research_block = ""
+
     return f"""SYSTEM: You are a quantitative portfolio analyst producing a structured verdict card for a stock being evaluated for portfolio addition. Be analytical and specific. Finance-professional tone — no educational framing.
 
 USER:
@@ -944,12 +941,7 @@ fwd_pe={fmt(metrics.get("forward_pe"))} | ev_ebitda={fmt(metrics.get("ev_to_ebit
 == THESIS ==
 {thesis_block}
 
-{f"""== EXISTING RESEARCH REPORT (standard stock analysis, {research_report[1]}) ==
-{research_report[0]}
-
-[Note: Use the above qualitative context — management quality, competitive moat, catalysts, risks — alongside the quantitative gate data when forming your synthesis. Cross-reference where evidence is consistent or contradictory.]
-
-""" if research_report else ""}== OUTPUT FORMAT (exact — structured JSON then verdict card) ==
+{research_block}== OUTPUT FORMAT (exact — structured JSON then verdict card) ==
 
 Respond with a JSON object, then the human-readable verdict card.
 
