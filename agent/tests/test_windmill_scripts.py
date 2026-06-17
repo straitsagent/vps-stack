@@ -2010,6 +2010,75 @@ def test_rationalization_has_delta_query():
     )
 
 
+def test_rationalization_ranking_table_top_half_label():
+    """Ranking table must use '# top-half' label, not '# KEEP' (minimax A1)."""
+    src = _read_pr_source()
+    assert "# top-half" in src or "top_half" in src or "n_top_half" in src, (
+        "Ranking table still uses '# KEEP' — rename to '# top-half' to accurately describe "
+        "rank-robustness count (minimax finding A1)"
+    )
+    assert "# KEEP" not in src, (
+        "'# KEEP' header still present — rename to '# top-half' (minimax finding A1)"
+    )
+
+
+def test_rationalization_red_flag_override_is_named_function():
+    """Red-flag override must be an explicit named function, not just LLM prompt text (minimax A11)."""
+    src = _read_pr_source()
+    assert "_apply_red_flag_override" in src or "red_flag_override" in src, (
+        "No named red-flag override function found — extract _apply_red_flag_override() "
+        "so the override is enforced in code, not only in the LLM prompt (minimax finding A11)"
+    )
+
+
+def test_rationalization_ranking_table_has_metric_coverage():
+    """Ranking table must show metric coverage column alongside factor coverage (minimax A2)."""
+    src = _read_pr_source()
+    assert "metric_coverage" in src or "Metric coverage" in src or "raw_coverage" in src, (
+        "No metric-coverage column found — add raw sub-component coverage to the ranking table "
+        "alongside factor coverage (minimax finding A2)"
+    )
+
+
+def test_rationalization_insider_uses_market_cap_normalisation():
+    """Insider sub-component must use market-cap flow ratio, not raw net USD (minimax A4)."""
+    src = _read_pr_source()
+    assert (
+        "market_cap" in src and "insider" in src.lower()
+        and ("/ market_cap" in src or "insider_flow" in src or "insider_market_cap" in src)
+    ), (
+        "Insider normalization does not divide by market_cap — "
+        "must use net_insider_90d/market_cap flow ratio for cross-size comparability (minimax finding A4)"
+    )
+
+
+def test_rationalization_negative_cagr_included_in_pool():
+    """_cagr must return negative values (not None) so negative-CAGR positions rank at pool bottom (minimax A6)."""
+    src = _read_pr_source()
+    # The old pattern "if ratio <= 0: return None" must be gone
+    # Check that _cagr does not bail out with None when ratio <= 0
+    import re
+    early_return = re.search(r"ratio\s*<=\s*0[^)]*\n\s*return None", src)
+    assert early_return is None, (
+        "_cagr still returns None when ratio <= 0 — negative CAGR should return a negative value "
+        "so the position ranks at pool minimum rather than being excluded (minimax finding A6)"
+    )
+
+
+def test_rationalization_delta_for_all_four_scenarios():
+    """Delta tracking must cover all 4 scenarios, not only balanced (minimax A10)."""
+    src = _read_pr_source()
+    assert "delta_rank_quality" in src, (
+        "delta_rank_quality not found — add delta tracking for quality/growth/value scenarios (minimax A10)"
+    )
+    assert "delta_rank_growth" in src, (
+        "delta_rank_growth not found — add delta tracking for quality/growth/value scenarios (minimax A10)"
+    )
+    assert "delta_rank_value" in src, (
+        "delta_rank_value not found — add delta tracking for quality/growth/value scenarios (minimax A10)"
+    )
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 # C1: portfolio_email.py
 # ─────────────────────────────────────────────────────────────────────────────

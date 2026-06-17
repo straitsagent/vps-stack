@@ -213,6 +213,9 @@ CREATE TABLE IF NOT EXISTS portfolio_scores (
     rank_growth              INTEGER,
     rank_value               INTEGER,
     delta_rank_balanced      INTEGER,
+    delta_rank_quality       INTEGER,
+    delta_rank_growth        INTEGER,
+    delta_rank_value         INTEGER,
     UNIQUE (score_date, ticker)
 );
 

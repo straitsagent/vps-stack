@@ -100,13 +100,15 @@ def _fetch_positions(cur) -> list[dict]:
 
 
 def _cagr(v_new, v_old, years):
-    """Compute CAGR; handles sign changes gracefully."""
+    """Compute CAGR; handles sign changes gracefully. Returns negative values for negative growth."""
     if v_old is None or v_new is None or v_old == 0 or years <= 0:
         return None
     try:
         ratio = float(v_new) / float(v_old)
         if ratio <= 0:
-            return None
+            # Return a strongly negative sentinel so negative-CAGR names rank at pool minimum.
+            # Magnitude is capped at -1.0 to avoid extreme outlier distortion.
+            return max(ratio - 1.0, -1.0)
         return ratio ** (1.0 / years) - 1
     except Exception:
         return None
@@ -311,10 +313,10 @@ def _fetch_thesis(cur, tickers: list[str]) -> dict[str, dict]:
     return out
 
 
-def _fetch_prior_ranks(cur) -> dict[str, int]:
-    """Return {ticker: rank_balanced} from most recent prior run."""
+def _fetch_prior_ranks(cur) -> dict[str, dict]:
+    """Return {ticker: {balanced, quality, growth, value}} from most recent prior run (A10)."""
     cur.execute("""
-        SELECT ticker, rank_balanced
+        SELECT ticker, rank_balanced, rank_quality, rank_growth, rank_value
         FROM portfolio_scores
         WHERE score_date = (
             SELECT MAX(score_date) FROM portfolio_scores
@@ -322,7 +324,10 @@ def _fetch_prior_ranks(cur) -> dict[str, int]:
         )
     """)
     rows = cur.fetchall()
-    return {r[0]: r[1] for r in rows} if rows else {}
+    return {
+        r[0]: {"balanced": r[1], "quality": r[2], "growth": r[3], "value": r[4]}
+        for r in rows
+    } if rows else {}
 
 
 # ── ADR consolidation ─────────────────────────────────────────────────────────
@@ -472,7 +477,15 @@ def _compute_factor_scores(positions: list[dict], fund: dict[str, dict]) -> dict
         rec_n = _norm(rec_pool, -rec_raw if rec_raw is not None else None)
         eps_n = _norm(pool("avg_eps_surprise"), m.get("avg_eps_surprise"))
         mom_n = _norm(pool("momentum_52wk"),    m.get("momentum_52wk"))
-        ins_n = _norm(pool("net_insider_90d"),  m.get("net_insider_90d"))
+        # Insider: flow ratio (net_insider_90d / market_cap) for cross-size comparability (A4)
+        def _insider_flow(ticker_metrics):
+            ins = ticker_metrics.get("net_insider_90d")
+            mkt = ticker_metrics.get("market_cap")
+            if ins is None or mkt is None or mkt == 0:
+                return None
+            return ins / mkt
+        ins_flow_pool = [_insider_flow(fund.get(tk, {})) for tk in tickers]
+        ins_n = _norm(ins_flow_pool, _insider_flow(m))
         s_factors = [x for x in [rec_n, eps_n, mom_n, ins_n] if x is not None]
         if s_factors:
             sentiment = (0.35 * (rec_n or 0) + 0.35 * (eps_n or 0) +
@@ -551,6 +564,17 @@ def _compute_composites(
         n_total = 5
         completeness_pct = n_available / n_total * 100
 
+        # Metric coverage: raw sub-components present across all 5 factors (A2)
+        # Quality=4 subs, Growth=3, Valuation=4, Sentiment=4, Thesis=1 → 16 total
+        metric_subs_present = (
+            fs.get("quality_available", 0)
+            + fs.get("growth_available", 0)
+            + fs.get("valuation_available", 0)
+            + fs.get("sentiment_available", 0)
+            + (1 if ts.get("thesis_score") is not None else 0)
+        )
+        metric_coverage_pct = metric_subs_present / 16 * 100
+
         composites = {}
         for scenario_name, weights in SCENARIOS.items():
             raw = sum(
@@ -568,6 +592,7 @@ def _compute_composites(
         out[t] = {
             "composites": composites,
             "data_completeness_pct": round(completeness_pct, 1),
+            "metric_coverage_pct": round(metric_coverage_pct, 1),
             "n_available_factors": n_available,
         }
     return out
@@ -643,11 +668,20 @@ def _fmt_val(v, decimals=1):
     return f"{v:.{decimals}f}"
 
 
+def _apply_red_flag_override(recommendations: dict, red_flags_map: dict) -> dict:
+    """Override any KEEP/TRIM recommendation to EXIT when a position has red flags (A11)."""
+    overridden = dict(recommendations)
+    for ticker, flags in red_flags_map.items():
+        if flags and overridden.get(ticker, "").upper() not in ("EXIT",):
+            overridden[ticker] = "EXIT (red-flag override)"
+    return overridden
+
+
 def _build_ranking_table(positions, composites, ranks, prior_ranks, red_flags_map):
     lines = [
         "| Ticker | Bal rank | Qual rank | Grwth rank | Val rank | "
-        "Bal score | # KEEP | Δ rank | Completeness | Red flags |",
-        "|---|---|---|---|---|---|---|---|---|---|",
+        "Bal score | # top-half | Δ rank | Factor coverage | Metric coverage | Red flags |",
+        "|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     sorted_pos = sorted(positions, key=lambda p: ranks.get(p["ticker"], {}).get("balanced", 99))
     for pos in sorted_pos:
@@ -655,18 +689,21 @@ def _build_ranking_table(positions, composites, ranks, prior_ranks, red_flags_ma
         r = ranks.get(t, {})
         c = composites.get(t, {})
         comp = c.get("composites", {})
-        prior = prior_ranks.get(t)
+        prior_d = prior_ranks.get(t, {})
+        prior = prior_d.get("balanced") if isinstance(prior_d, dict) else prior_d
         delta = (r.get("balanced", 0) - prior) if prior is not None else None
         delta_str = f"{delta:+d}" if delta is not None else "–"
-        n_keep = sum(1 for sc in ["balanced", "quality", "growth", "value"]
-                     if r.get(sc, 99) <= len(positions) // 2)
-        completeness = c.get("data_completeness_pct", 0)
+        # n_top_half: how many scenarios rank this position in the top half (rank-robustness, not a KEEP verdict)
+        n_top_half = sum(1 for sc in ["balanced", "quality", "growth", "value"]
+                         if r.get(sc, 99) <= len(positions) // 2)
+        factor_coverage = c.get("data_completeness_pct", 0)
+        metric_coverage = c.get("metric_coverage_pct", 0)
         flags = len(red_flags_map.get(t, []))
         lines.append(
             f"| {t} | {r.get('balanced','?')} | {r.get('quality','?')} | "
             f"{r.get('growth','?')} | {r.get('value','?')} | "
-            f"{comp.get('balanced','?')} | {n_keep}/4 | {delta_str} | "
-            f"{completeness:.0f}% | {flags} |"
+            f"{comp.get('balanced','?')} | {n_top_half}/4 | {delta_str} | "
+            f"{factor_coverage:.0f}% | {metric_coverage:.0f}% | {flags} |"
         )
     return "\n".join(lines)
 
@@ -679,7 +716,8 @@ def _build_per_position_block(pos, metrics, thesis_data, composites_data, ranks_
     r = ranks_data
     c = composites_data
     comp = c.get("composites", {})
-    prior = prior_ranks.get(t)
+    prior_d = prior_ranks.get(t, {})
+    prior = prior_d.get("balanced") if isinstance(prior_d, dict) else prior_d
     delta = (r.get("balanced", 0) - prior) if prior is not None else None
     delta_str = f"{delta:+d}" if delta is not None else "—"
     weight_pct = (pos.get("position_usd") or 0) / position_usd_total * 100 if position_usd_total else 0
@@ -734,18 +772,18 @@ def _build_per_position_block(pos, metrics, thesis_data, composites_data, ranks_
 
 # ── Email ─────────────────────────────────────────────────────────────────────
 
-def _send_email(gmail_smtp: dict, subject: str, body_md: str, body_html: str):
+def _send_email(gmail_smtp: dict, subject: str, body_md: str, body_html: str, to_email: str):
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
     msg["From"] = gmail_smtp["username"]
-    msg["To"] = recipient_email
+    msg["To"] = to_email
     msg.attach(MIMEText(body_md, "plain"))
     msg.attach(MIMEText(body_html, "html"))
     with smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"]) as s:
         s.starttls()
         s.login(gmail_smtp["username"], gmail_smtp["password"])
-        s.sendmail(gmail_smtp["username"], recipient_email, msg.as_string())
-    log.info(f"[Email] Sent to {recipient_email}")
+        s.sendmail(gmail_smtp["username"], to_email, msg.as_string())
+    log.info(f"[Email] Sent to {to_email}")
 
 
 def _md_to_html(md: str) -> str:
@@ -818,15 +856,16 @@ def main(
     composites = _compute_composites(positions, factor_scores, thesis_scores)
     ranks = _rank_positions(positions, composites)
 
-    # ── 6. Delta tracking (Finding 8) ─────────────────────────────────────────
+    # ── 6. Delta tracking — all 4 scenarios (A10) ────────────────────────────
     delta_map = {}
     for t in tickers:
-        prior = prior_ranks.get(t)
-        cur_rank = ranks.get(t, {}).get("balanced")
-        if prior is not None and cur_rank is not None:
-            delta_map[t] = cur_rank - prior
-        else:
-            delta_map[t] = None
+        prior = prior_ranks.get(t, {})
+        cur_r = ranks.get(t, {})
+        delta_map[t] = {}
+        for sc in ("balanced", "quality", "growth", "value"):
+            p = prior.get(sc)
+            c = cur_r.get(sc)
+            delta_map[t][sc] = (c - p) if (p is not None and c is not None) else None
 
     # ── 7. Build ranking table ────────────────────────────────────────────────
     ranking_table = _build_ranking_table(positions, composites, ranks, prior_ranks, red_flags_map)
@@ -951,8 +990,8 @@ Below are the position verdicts. Generate the executive summary, portfolio const
         c = composites.get(t, {})
         th = thesis_scores.get(t, {})
         flags = red_flags_map.get(t, [])
-        prior = prior_ranks.get(t)
-        delta = delta_map.get(t)
+        delta_all = delta_map.get(t, {})
+        delta = delta_all.get("balanced") if isinstance(delta_all, dict) else delta_all
         delta_str = f"{delta:+d}" if delta is not None else "–"
 
         card = [
@@ -1039,7 +1078,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
 </div>
 {_md_to_html(report_md)}
 </body></html>"""
-        _send_email(gmail_smtp, f"Portfolio Rationalization — {today_str}", report_md, html_body)
+        _send_email(gmail_smtp, f"Portfolio Rationalization — {today_str}", report_md, html_body, recipient_email)
     else:
         log.warning("[Email] No gmail_smtp provided — skipping email delivery")
 
@@ -1051,6 +1090,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
         c = composites.get(t, {})
         comp = c.get("composites", {})
         th = thesis_scores.get(t, {})
+        d = delta_map.get(t, {})
         upsert_cur.execute("""
             INSERT INTO portfolio_scores (
                 score_date, ticker, consolidated_name,
@@ -1059,7 +1099,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
                 data_completeness_pct, red_flag_count,
                 position_usd, portfolio_pct,
                 rank_balanced, rank_quality, rank_growth, rank_value,
-                delta_rank_balanced
+                delta_rank_balanced, delta_rank_quality, delta_rank_growth, delta_rank_value
             ) VALUES (
                 CURRENT_DATE, %s, %s,
                 %s, %s, %s, %s, %s,
@@ -1067,7 +1107,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
                 %s, %s,
                 %s, %s,
                 %s, %s, %s, %s,
-                %s
+                %s, %s, %s, %s
             ) ON CONFLICT (score_date, ticker) DO UPDATE SET
                 consolidated_name = EXCLUDED.consolidated_name,
                 quality_score = EXCLUDED.quality_score,
@@ -1087,7 +1127,10 @@ Below are the position verdicts. Generate the executive summary, portfolio const
                 rank_quality = EXCLUDED.rank_quality,
                 rank_growth = EXCLUDED.rank_growth,
                 rank_value = EXCLUDED.rank_value,
-                delta_rank_balanced = EXCLUDED.delta_rank_balanced
+                delta_rank_balanced = EXCLUDED.delta_rank_balanced,
+                delta_rank_quality = EXCLUDED.delta_rank_quality,
+                delta_rank_growth = EXCLUDED.delta_rank_growth,
+                delta_rank_value = EXCLUDED.delta_rank_value
         """, (
             t, pos.get("company_name", t),
             round(factor_scores.get(t, {}).get("quality") or 0, 1) * 100 or None,
@@ -1107,7 +1150,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
             r.get("quality"),
             r.get("growth"),
             r.get("value"),
-            delta_map.get(t),
+            d.get("balanced"), d.get("quality"), d.get("growth"), d.get("value"),
         ))
     conn.commit()
     log.info(f"[DB] Upserted {len(positions)} rows into portfolio_scores")
