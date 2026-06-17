@@ -42,6 +42,34 @@ schema:
       description: Email address to send the verdict card to
       type: string
       default: "$var:u/admin/recipient_email"
+    wm_token:
+      description: Windmill API token — used to dispatch stock_data_fetcher and research_tool on absent/stale data
+      type: string
+      default: "$var:u/admin/wm_token"
+    finnhub_key:
+      description: Finnhub API key — passed to stock_data_fetcher for peer comparisons
+      type: string
+      default: "$var:u/admin/finnhub_key"
+    perplexity_key:
+      description: Perplexity Search API key — passed to research_tool
+      type: string
+      default: "$var:u/admin/perplexity_key"
+    serper_key:
+      description: Serper.dev API key — passed to research_tool
+      type: string
+      default: "$var:u/admin/serper_key"
+    tavily_key:
+      description: Tavily Search API key — passed to research_tool
+      type: string
+      default: "$var:u/admin/tavily_key"
+    exa_key:
+      description: Exa neural search API key — passed to research_tool
+      type: string
+      default: "$var:u/admin/exa_key"
+    brave_key:
+      description: Brave Search API key — passed to research_tool
+      type: string
+      default: "$var:u/admin/brave_key"
   required:
     - ticker
     - portfolio_db

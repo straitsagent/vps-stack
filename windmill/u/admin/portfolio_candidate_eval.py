@@ -17,6 +17,7 @@ Output: emailed verdict card + portfolio_candidate_evals DB row.
 import json
 import logging
 import smtplib
+import time
 from datetime import date, datetime, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -26,8 +27,12 @@ import numpy as np
 import psycopg2
 import psycopg2.extras
 import pytz
+import requests
 import yfinance as yf
 from openai import OpenAI
+
+WM_BASE      = "http://windmill_server:8000"
+WM_WORKSPACE = "admins"
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 log = logging.getLogger(__name__)
@@ -77,6 +82,154 @@ def _norm(values: list, v) -> Optional[float]:
     if len(non_null) < min_pool:
         return None
     return sum(1 for x in non_null if x < v) / len(non_null)
+
+
+# ── Auto-fetch helpers ───────────────────────────────────────────────────────
+
+def _check_data_staleness(ticker: str, portfolio_db: dict) -> str:
+    """Return 'absent'/'stale'/'fresh' based on valuation_snapshots age (>3d = stale)."""
+    if not portfolio_db or not ticker:
+        return "absent"
+    try:
+        conn = _conn(portfolio_db)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT fetched_date FROM valuation_snapshots WHERE ticker = %s "
+                "ORDER BY fetched_date DESC LIMIT 1",
+                (ticker,),
+            )
+            row = cur.fetchone()
+        conn.close()
+        if row is None:
+            return "absent"
+        age = (date.today() - row[0]).days
+        return "stale" if age > 3 else "fresh"
+    except Exception as e:
+        log.warning(f"[AutoFetch] staleness check error: {e}")
+        return "absent"
+
+
+def _dispatch_stock_fetcher(ticker: str, portfolio_db: dict, finnhub_key: str,
+                            wm_token: str, timeout_s: int = 90) -> bool:
+    """Dispatch stock_data_fetcher as a Windmill sub-job; poll until complete. Never raises."""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/stock_data_fetcher"
+    headers = {"Authorization": f"Bearer {wm_token}", "Content-Type": "application/json"}
+    payload = {"ticker": ticker, "portfolio_db": portfolio_db, "finnhub_key": finnhub_key}
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=15)
+        resp.raise_for_status()
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[AutoFetch] stock_data_fetcher dispatched job_id={job_id} for {ticker}")
+        poll_url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/completed/get/{job_id}"
+        for _ in range(timeout_s // 5):
+            time.sleep(5)
+            try:
+                check = requests.get(poll_url, headers=headers, timeout=10)
+                if check.status_code == 200:
+                    job = check.json()
+                    if job.get("type") == "CompletedJob":
+                        success = bool(job.get("success", False))
+                        log.info(f"[AutoFetch] stock_data_fetcher job {job_id} completed, success={success}")
+                        return success
+            except Exception as _exc:
+                log.warning("Suppressed: %s", _exc)
+        log.warning(f"[AutoFetch] timeout waiting for stock_data_fetcher job {job_id}")
+        return False
+    except Exception as e:
+        log.error(f"[AutoFetch] stock_data_fetcher dispatch error: {e}")
+        return False
+
+
+def _check_research_staleness(ticker: str, portfolio_db: dict) -> str:
+    """Return 'absent'/'stale'/'fresh' for latest stock research report (>30d = stale)."""
+    if not portfolio_db or not ticker:
+        return "absent"
+    try:
+        conn = _conn(portfolio_db)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT created_at FROM research_reports "
+                "WHERE ticker = %s AND research_type = 'stock' "
+                "ORDER BY created_at DESC LIMIT 1",
+                (ticker,),
+            )
+            row = cur.fetchone()
+        conn.close()
+        if row is None:
+            return "absent"
+        created = row[0]
+        if hasattr(created, "date"):
+            created = created.date()
+        age = (date.today() - created).days
+        return "stale" if age > 30 else "fresh"
+    except Exception as e:
+        log.warning(f"[AutoFetch] research staleness check error: {e}")
+        return "absent"
+
+
+def _dispatch_research_tool(ticker: str, portfolio_db: dict, gmail_smtp: dict,
+                             xai_key: str, deepseek_key: str, finnhub_key: str,
+                             perplexity_key: str, serper_key: str, tavily_key: str,
+                             exa_key: str, brave_key: str, wm_token: str,
+                             recipient_email: str, timeout_s: int = 150) -> bool:
+    """Dispatch research_tool (stock, standard) as a Windmill sub-job. Never raises."""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/research_tool"
+    headers = {"Authorization": f"Bearer {wm_token}", "Content-Type": "application/json"}
+    payload = {
+        "ticker": ticker, "research_type": "stock", "depth": "standard",
+        "portfolio_db": portfolio_db, "gmail_smtp": gmail_smtp,
+        "xai_key": xai_key, "deepseek_key": deepseek_key,
+        "perplexity_key": perplexity_key, "serper_key": serper_key,
+        "tavily_key": tavily_key, "exa_key": exa_key,
+        "finnhub_key": finnhub_key, "brave_key": brave_key,
+        "wm_token": wm_token, "recipient_email": recipient_email,
+    }
+    try:
+        resp = requests.post(url, headers=headers, json=payload, timeout=15)
+        resp.raise_for_status()
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[AutoFetch] research_tool dispatched job_id={job_id} for {ticker}")
+        poll_url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/completed/get/{job_id}"
+        for _ in range(timeout_s // 10):
+            time.sleep(10)
+            try:
+                check = requests.get(poll_url, headers=headers, timeout=10)
+                if check.status_code == 200:
+                    job = check.json()
+                    if job.get("type") == "CompletedJob":
+                        success = bool(job.get("success", False))
+                        log.info(f"[AutoFetch] research_tool job {job_id} completed, success={success}")
+                        return success
+            except Exception as _exc:
+                log.warning("Suppressed: %s", _exc)
+        log.warning(f"[AutoFetch] timeout waiting for research_tool job {job_id}")
+        return False
+    except Exception as e:
+        log.error(f"[AutoFetch] research_tool dispatch error: {e}")
+        return False
+
+
+def _fetch_latest_research(ticker: str, portfolio_db: dict) -> Optional[tuple]:
+    """Return (full_content, date_str) for the latest stock research report, or None."""
+    if not portfolio_db or not ticker:
+        return None
+    try:
+        conn = _conn(portfolio_db)
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT content, created_at::date FROM research_reports "
+                "WHERE ticker = %s AND research_type = 'stock' "
+                "ORDER BY created_at DESC LIMIT 1",
+                (ticker,),
+            )
+            row = cur.fetchone()
+        conn.close()
+        if row is None:
+            return None
+        return (row[0], str(row[1]))
+    except Exception as e:
+        log.warning(f"[Research] fetch error: {e}")
+        return None
 
 
 # ── Red-flag evaluation ───────────────────────────────────────────────────────
@@ -723,6 +876,7 @@ def _assemble_prompt(
     currency_result: dict, gap_result: dict, sizing: dict,
     universe_info: dict, portfolio_scores: dict, thesis_text: str,
     replacement_ticker: Optional[str],
+    research_report: Optional[tuple] = None,
 ) -> str:
     universe_size = universe_info["universe_size"]
     thin_flag = " — THIN UNIVERSE, treat with lower confidence" if universe_info["thin_universe"] else ""
@@ -790,7 +944,12 @@ fwd_pe={fmt(metrics.get("forward_pe"))} | ev_ebitda={fmt(metrics.get("ev_to_ebit
 == THESIS ==
 {thesis_block}
 
-== OUTPUT FORMAT (exact — structured JSON then verdict card) ==
+{f"""== EXISTING RESEARCH REPORT (standard stock analysis, {research_report[1]}) ==
+{research_report[0]}
+
+[Note: Use the above qualitative context — management quality, competitive moat, catalysts, risks — alongside the quantitative gate data when forming your synthesis. Cross-reference where evidence is consistent or contradictory.]
+
+""" if research_report else ""}== OUTPUT FORMAT (exact — structured JSON then verdict card) ==
 
 Respond with a JSON object, then the human-readable verdict card.
 
@@ -875,6 +1034,7 @@ def _build_report_body(
     portfolio_scores_relative, portfolio_rows_for_display,
     verdict, binding_constraint, grok_text, grok_json,
     thesis_text, thesis_source, replacement_ticker,
+    research_report: Optional[tuple] = None,
 ) -> str:
 
     def f(v, decimals=2): return f"{float(v):.{decimals}f}" if v is not None else "N/A"
@@ -1156,6 +1316,18 @@ def _build_report_body(
     ]:
         a(f"  | {label:<10} | {abs_s:<16} | {pct(port_v) + 'th':>18} | {pct(uni_v) + 'th' if uni_v is not None else 'N/A':>17} |")
 
+    # ── Existing Research ─────────────────────────────────────────────────────
+    if research_report:
+        research_content, research_date = research_report
+        word_preview = " ".join(research_content.split()[:400])
+        a("")
+        a("## Existing Research")
+        a(f"*(Standard stock analysis, {research_date} — full report delivered separately)*")
+        a("")
+        a(word_preview)
+        if len(research_content.split()) > 400:
+            a("*[...continued in full research email]*")
+
     # ── Grok narrative ────────────────────────────────────────────────────────
     a("")
     a("## Grok Analysis")
@@ -1207,6 +1379,13 @@ def main(
     thesis_text: str = "",
     replacement_ticker: str = "",
     recipient_email: str = "",
+    wm_token: str = "",
+    finnhub_key: str = "",
+    perplexity_key: str = "",
+    serper_key: str = "",
+    tavily_key: str = "",
+    exa_key: str = "",
+    brave_key: str = "",
 ):
     ticker = ticker.strip().upper()
     replacement_ticker = (replacement_ticker or "").strip().upper() or None
@@ -1251,6 +1430,32 @@ def main(
                 "eval_expires_date": str(expires),
                 "note": f"Cached eval ({age_days}d old). Valid until {expires}.",
             }
+
+    # ── Auto-fetch quant data if absent/stale ─────────────────────────────────
+    staleness = _check_data_staleness(ticker, portfolio_db)
+    if staleness in ("absent", "stale"):
+        if wm_token:
+            log.info(f"[AutoFetch] {ticker} quant data {staleness} — dispatching stock_data_fetcher")
+            ok = _dispatch_stock_fetcher(ticker, portfolio_db, finnhub_key, wm_token)
+            if not ok:
+                log.warning(f"[AutoFetch] stock_data_fetcher failed or timed out for {ticker}")
+        else:
+            log.warning(f"[AutoFetch] {ticker} quant data {staleness} but no wm_token — proceeding with missing data")
+
+    # ── Auto-fetch research report if absent/stale ────────────────────────────
+    r_staleness = _check_research_staleness(ticker, portfolio_db)
+    if r_staleness in ("absent", "stale"):
+        if wm_token:
+            log.info(f"[AutoFetch] {ticker} research {r_staleness} — dispatching research_tool (standard, ~90s)")
+            ok = _dispatch_research_tool(
+                ticker, portfolio_db, gmail_smtp, xai_key, deepseek_key,
+                finnhub_key, perplexity_key, serper_key, tavily_key, exa_key,
+                brave_key, wm_token, to_email if (to_email := (recipient_email.strip() or gmail_smtp.get("username", ""))) else "",
+            )
+            if not ok:
+                log.warning(f"[AutoFetch] research_tool failed or timed out for {ticker} — proceeding without research")
+        else:
+            log.warning(f"[AutoFetch] {ticker} research {r_staleness} but no wm_token — proceeding without research")
 
     # ── Fetch company name ────────────────────────────────────────────────────
     cur.execute("SELECT company_name FROM portfolio_positions WHERE ticker = %s LIMIT 1", (ticker,))
@@ -1348,10 +1553,16 @@ def main(
 
     # ── Grok synthesis ────────────────────────────────────────────────────────
     thesis_source = "user-supplied" if thesis_text.strip() else "llm-derived"
+    research_report = _fetch_latest_research(ticker, portfolio_db)
+    if research_report:
+        log.info(f"[Research] Found research report dated {research_report[1]} — including in Grok prompt")
+    else:
+        log.info("[Research] No research report found — Grok will rely on quantitative data only")
     prompt = _assemble_prompt(
         ticker, company_name, metrics, red_flags, gate1_status,
         corr_result, fund_sim, overlap, currency_result, gap_result, sizing,
         universe_info, portfolio_scores_relative, thesis_text, replacement_ticker,
+        research_report=research_report,
     )
     grok_result = _call_grok_with_fallback(
         messages=[{"role": "user", "content": prompt}],
@@ -1459,6 +1670,7 @@ def main(
         grok_text=grok_text, grok_json=grok_json,
         thesis_text=thesis_text, thesis_source=thesis_source,
         replacement_ticker=replacement_ticker,
+        research_report=research_report,
     )
     _send_email(gmail_smtp, subject, body, to_email)
     log.info(f"[CandidateEval] Email sent — {subject}")

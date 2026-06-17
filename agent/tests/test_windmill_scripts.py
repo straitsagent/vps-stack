@@ -2687,3 +2687,65 @@ def test_candidate_eval_grok_output_is_json():
     src = _read_ce_source()
     assert "rationale_sentences" in src
     assert "evidence" in src
+
+
+# ── Auto-fetch + research integration tests ──────────────────────────────────
+
+def test_candidate_eval_has_check_data_staleness():
+    """Script must check if quant data is absent/stale before evaluating."""
+    src = _read_ce_source()
+    assert "_check_data_staleness" in src
+
+
+def test_candidate_eval_has_dispatch_stock_fetcher():
+    """Script must be able to dispatch stock_data_fetcher as a sub-job."""
+    src = _read_ce_source()
+    assert "_dispatch_stock_fetcher" in src
+
+
+def test_candidate_eval_auto_dispatches_on_stale():
+    """main() must call staleness check and dispatch fetcher when stale."""
+    src = _read_ce_source()
+    assert "_check_data_staleness" in src
+    assert "_dispatch_stock_fetcher" in src
+    assert "AutoFetch" in src
+
+
+def test_candidate_eval_has_check_research_staleness():
+    """Script must check if a research report exists before evaluating."""
+    src = _read_ce_source()
+    assert "_check_research_staleness" in src
+
+
+def test_candidate_eval_has_dispatch_research_tool():
+    """Script must be able to dispatch research_tool as a sub-job."""
+    src = _read_ce_source()
+    assert "_dispatch_research_tool" in src
+
+
+def test_candidate_eval_reads_research_reports():
+    """Script must read from research_reports table and include in Grok prompt."""
+    src = _read_ce_source()
+    assert "research_reports" in src
+    assert "_fetch_latest_research" in src
+
+
+# ── Rationalization: optional research synthesis ──────────────────────────────
+
+def test_rationalization_has_include_research_param():
+    """main() must accept include_research bool param (default False)."""
+    src = _read_pr_source()
+    assert "include_research" in src
+
+
+def test_rationalization_reads_research_reports():
+    """Script must query research_reports and have _fetch_research_reports function."""
+    src = _read_pr_source()
+    assert "research_reports" in src
+    assert "_fetch_research_reports" in src
+
+
+def test_rationalization_research_gated_by_flag():
+    """Research fetch must only execute when include_research is True."""
+    src = _read_pr_source()
+    assert "if include_research" in src

@@ -1,9 +1,9 @@
-schedule: '0 0 21 1 * *'
+schedule: '0 0 21 * * 1'
 timezone: Asia/Singapore
 enabled: true
 script_path: u/admin/portfolio_rationalization
 is_flow: false
-summary: 'Portfolio Rationalization — Monthly 9 PM SGT (1st of month)'
+summary: 'Portfolio Rationalization — Weekly Monday 9 PM SGT (quant-only)'
 permissioned_as: u/admin
 no_flow_overlap: true
 args:
@@ -12,3 +12,4 @@ args:
   xai_key: "$var:u/admin/xai_key"
   deepseek_key: "$var:u/admin/deepseek_key"
   recipient_email: "$var:u/admin/recipient_email"
+  include_research: false

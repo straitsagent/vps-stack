@@ -56,6 +56,30 @@ def _conn(portfolio_db: dict):
     )
 
 
+def _fetch_research_reports(tickers: list, portfolio_db: dict) -> dict:
+    """Return {ticker: (full_content, date_str)} for the latest stock research per ticker.
+    Only called when include_research=True. Empty dict on error or missing DB.
+    """
+    if not portfolio_db or not tickers:
+        return {}
+    try:
+        conn = _conn(portfolio_db)
+        with conn.cursor() as cur:
+            cur.execute("""
+                SELECT DISTINCT ON (ticker) ticker, content, created_at::date AS report_date
+                FROM research_reports
+                WHERE ticker = ANY(%s) AND research_type = 'stock'
+                ORDER BY ticker, created_at DESC
+            """, (tickers,))
+            rows = cur.fetchall()
+        conn.close()
+        return {row[0]: (row[1], str(row[2])) for row in rows}
+    except Exception as e:
+        log.warning(f"[Research] _fetch_research_reports error: {e}")
+        return {}
+
+
+
 def _fetch_positions(cur) -> list[dict]:
     """Return all portfolio positions with latest price in USD, sector, and country."""
     cur.execute("""
@@ -838,6 +862,7 @@ def main(
     xai_key: str,
     deepseek_key: str,
     recipient_email: str = "",
+    include_research: bool = False,
 ):
     today_str = date.today().strftime("%Y-%m-%d")
     log.info(f"[Rationalization] Starting run for {today_str}")
@@ -1006,6 +1031,23 @@ Rationale: [2-3 sentences — opportunity cost relative to other positions; note
     else:
         delta_summary = "No prior month — baseline established for next month."
 
+    # ── Optional research synthesis ────────────────────────────────────────────
+    research_section = ""
+    if include_research:
+        research_map = _fetch_research_reports(tickers, portfolio_db)
+        if research_map:
+            log.info(f"[Research] Including research reports for {len(research_map)} positions in Call 2")
+            parts = [
+                "== QUALITATIVE RESEARCH ON PORTFOLIO POSITIONS ==",
+                "Use these reports to enrich the global narrative — reference management quality, "
+                "competitive moats, catalysts, and risks where relevant.\n",
+            ]
+            for t, (content, rdate) in sorted(research_map.items()):
+                parts.append(f"### {t} (report date: {rdate})\n{content}\n")
+            research_section = "\n".join(parts) + "\n"
+        else:
+            log.info("[Research] include_research=True but no stock research reports found in DB")
+
     call2_prompt = f"""You have just completed per-position analysis of {n_pos} portfolio positions for monthly rationalization.
 Below are the position verdicts. Generate the executive summary, portfolio construction assessment, and month-over-month commentary.
 
@@ -1015,7 +1057,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
 == PRIOR MONTH DELTA CONTEXT ==
 {delta_summary}
 
-== YOUR OUTPUT ==
+{research_section}== YOUR OUTPUT ==
 
 == EXECUTIVE SUMMARY ==
 **Consistent KEEPs** (≥3 of 4 scenarios AND your KEEP verdict): [bulleted, one-line reason each]

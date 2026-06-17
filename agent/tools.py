@@ -461,9 +461,17 @@ async def dispatch_candidate_eval(args: dict, phone: str) -> dict:
         "universe_tickers":    universe_tickers,
         "thesis_text":         thesis_text,
         "replacement_ticker":  replacement_ticker,
+        "wm_token":            "$var:u/admin/wm_token",
+        "finnhub_key":         VAR_FINNHUB_KEY,
+        "perplexity_key":      VAR_PERPLEXITY_KEY,
+        "serper_key":          VAR_SERPER_KEY,
+        "tavily_key":          VAR_TAVILY_KEY,
+        "exa_key":             VAR_EXA_KEY,
+        "brave_key":           VAR_BRAVE_KEY,
+        "recipient_email":     "$var:u/admin/recipient_email",
     })
     return {
-        "text": f"🔍 *Candidate eval* for *{ticker}* dispatched — ~60s. I'll message you when done.",
+        "text": f"🔍 *Candidate eval* for *{ticker}* dispatched — allow ~3 min (auto-fetches quant data + research if not on file). I'll message you when done.",
         "job_id": job_id,
     }
 
@@ -494,8 +502,9 @@ def _read_latest_rationalization() -> Optional[dict]:
 
 async def dispatch_rationalization(args: dict, phone: str) -> dict:
     """FAST path: return compact ranked table from recent file. ASYNC path: dispatch Windmill job."""
+    include_research = bool(args.get("include_research", False))
     cached = await asyncio.to_thread(_read_latest_rationalization)
-    if cached:
+    if cached and not include_research:
         preview = cached["content"][:2000]
         return {
             "text": (
@@ -506,18 +515,20 @@ async def dispatch_rationalization(args: dict, phone: str) -> dict:
             "job_id": None,
         }
     job_id = await run_job(SCRIPT_RATIONALIZATION, {
-        "portfolio_db": RES_PORTFOLIO_DB,
-        "gmail_smtp": RES_GMAIL_SMTP,
-        "xai_key": VAR_XAI_KEY,
-        "deepseek_key": VAR_DEEPSEEK_KEY,
+        "portfolio_db":      RES_PORTFOLIO_DB,
+        "gmail_smtp":        RES_GMAIL_SMTP,
+        "xai_key":           VAR_XAI_KEY,
+        "deepseek_key":      VAR_DEEPSEEK_KEY,
+        "include_research":  include_research,
     })
-    return {
-        "text": (
-            "📊 *Portfolio Rationalization* analysis dispatched — ~10 min. "
-            "Full report will be emailed to you when complete."
-        ),
-        "job_id": job_id,
-    }
+    msg = (
+        "📊 *Portfolio Rationalization (deep — with research synthesis)* dispatched — ~15 min. "
+        "Full report will be emailed to you when complete."
+        if include_research else
+        "📊 *Portfolio Rationalization* analysis dispatched — ~10 min. "
+        "Full report will be emailed to you when complete."
+    )
+    return {"text": msg, "job_id": job_id}
 
 
 def format_research_result(result: dict) -> str:
