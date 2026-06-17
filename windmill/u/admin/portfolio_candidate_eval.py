@@ -109,11 +109,11 @@ def _evaluate_red_flags(metrics: dict) -> list[str]:
 
 def _check_portfolio_baseline_freshness(cur) -> Optional[int]:
     """Return age in days of the most recent portfolio_scores run, or None if table is empty."""
-    cur.execute("SELECT MAX(score_date) FROM portfolio_scores")
+    cur.execute("SELECT MAX(score_date) AS latest FROM portfolio_scores")
     row = cur.fetchone()
-    if not row or row[0] is None:
+    if not row or row["latest"] is None:
         return None
-    latest = row[0]
+    latest = row["latest"]
     if isinstance(latest, str):
         latest = datetime.strptime(latest, "%Y-%m-%d").date()
     return (date.today() - latest).days
