@@ -480,3 +480,48 @@ ALTER TABLE agent_audit_log
 
 ALTER TABLE earnings_analyses
     ADD COLUMN IF NOT EXISTS updated_at TIMESTAMPTZ DEFAULT NOW();
+
+-- ── Portfolio Candidate Evaluations ──────────────────────────────────────────
+-- Written by portfolio_candidate_eval.py on each on-demand candidate eval run.
+
+CREATE TABLE IF NOT EXISTS portfolio_candidate_evals (
+    id                      SERIAL PRIMARY KEY,
+    eval_date               DATE NOT NULL DEFAULT CURRENT_DATE,
+    eval_expires_date       DATE,                   -- eval_date + 30 (B11)
+    ticker                  TEXT NOT NULL,
+    company_name            TEXT,
+    replacement_ticker      TEXT,                   -- optional exit paired with this add (B7)
+    red_flag_count          INT,
+    red_flags               JSONB,
+    gate1_status            TEXT,                   -- 'ok' | 'breach'
+    max_correlation         NUMERIC(5,3),
+    closest_existing        TEXT,
+    gate2_warn              TEXT,                   -- 'insufficient_history' or NULL (B1)
+    max_fundamental_sim     NUMERIC(5,3),           -- cosine similarity (B2)
+    closest_fundamental     TEXT,
+    sector_match_count      INT,
+    country_match_count     INT,
+    currency_post_pct       NUMERIC(5,2),           -- post-addition currency exposure % (B8)
+    currency_breach         BOOLEAN DEFAULT FALSE,
+    factor_gap_fills        JSONB,
+    universe_tickers        JSONB,
+    universe_size           INT,
+    thin_universe           BOOLEAN,
+    below_min_universe      BOOLEAN DEFAULT FALSE,  -- <3 peers, ranking suppressed (B4)
+    universe_heterogeneity  BOOLEAN DEFAULT FALSE,  -- user-supplied universe is heterogeneous (B9)
+    quality_triplet         JSONB,                  -- {absolute, portfolio_pct, universe_pct}
+    growth_triplet          JSONB,
+    valuation_triplet       JSONB,
+    sentiment_triplet       JSONB,
+    portfolio_composite     NUMERIC(5,1),
+    universe_composite      NUMERIC(5,1),
+    verdict                 TEXT,                   -- 'ADD' | 'WATCH' | 'PASS'
+    binding_constraint      TEXT,
+    grok_json_output        JSONB,                  -- show-your-work JSON from Grok (C2)
+    thesis_source           TEXT,                   -- 'user-supplied' | 'llm-derived' (B5)
+    portfolio_baseline_age  INT,                    -- days since last rationalization run (B10)
+    synthesiser_model       TEXT,
+    input_tokens            INT,
+    output_tokens           INT,
+    UNIQUE (eval_date, ticker)
+);

@@ -30,6 +30,7 @@ SCRIPT_PRICE_FETCHER      = "u/admin/portfolio_price_fetcher"
 SCRIPT_FUNDAMENTALS       = "u/admin/fundamentals_fetcher"
 SCRIPT_EARNINGS_ANALYSIS    = "u/admin/portfolio_earnings_analysis"
 SCRIPT_RATIONALIZATION      = "u/admin/portfolio_rationalization"
+SCRIPT_CANDIDATE_EVAL       = "u/admin/portfolio_candidate_eval"
 
 # Resource/variable string refs
 RES_PORTFOLIO_DB   = "$res:u/admin/portfolio_db"
@@ -67,8 +68,9 @@ TOOL_CLASSES = {
     "portfolio_analysis":   MULTI_STEP,
     "thesis_check":         MULTI_STEP,
     "macro_brief":          MULTI_STEP,
-    "earnings_analysis":    ASYNC_NOTIFY,
+    "earnings_analysis":     ASYNC_NOTIFY,
     "portfolio_rationalize": ASYNC_NOTIFY,
+    "candidate_evaluation":  ASYNC_NOTIFY,
 }
 
 GATED_WRITE_PROMPTS = {
@@ -443,6 +445,29 @@ async def dispatch_earnings_analysis(args: dict, phone: str) -> dict:
     }
 
 
+async def dispatch_candidate_eval(args: dict, phone: str) -> dict:
+    ticker = (args.get("ticker") or "").strip().upper()
+    if not ticker:
+        return {"text": "Please specify a ticker, e.g. 'evaluate NVDA' or 'should I add MSFT'"}
+    universe_tickers = args.get("universe_tickers") or []
+    thesis_text      = args.get("thesis_text") or ""
+    replacement_ticker = args.get("replacement_ticker") or ""
+    job_id = await run_job(SCRIPT_CANDIDATE_EVAL, {
+        "ticker":              ticker,
+        "portfolio_db":        RES_PORTFOLIO_DB,
+        "gmail_smtp":          RES_GMAIL_SMTP,
+        "xai_key":             VAR_XAI_KEY,
+        "deepseek_key":        VAR_DEEPSEEK_KEY,
+        "universe_tickers":    universe_tickers,
+        "thesis_text":         thesis_text,
+        "replacement_ticker":  replacement_ticker,
+    })
+    return {
+        "text": f"🔍 *Candidate eval* for *{ticker}* dispatched — ~60s. I'll message you when done.",
+        "job_id": job_id,
+    }
+
+
 RATIONALIZATION_MAX_AGE_DAYS = 30
 RATIONALIZATION_DIR = "/research/portfolio"
 
@@ -747,4 +772,5 @@ ASYNC_NOTIFY_EXECUTORS = {
     "research":              dispatch_research,
     "earnings_analysis":     dispatch_earnings_analysis,
     "portfolio_rationalize": dispatch_rationalization,
+    "candidate_evaluation":  dispatch_candidate_eval,
 }

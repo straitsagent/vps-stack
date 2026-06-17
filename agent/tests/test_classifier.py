@@ -165,3 +165,13 @@ def test_system_prompt_contains_earnings_analysis_intent():
 def test_portfolio_rationalize_intent():
     assert "portfolio_rationalize" in SYSTEM_PROMPT, \
         "portfolio_rationalize intent missing from SYSTEM_PROMPT — classifier can't route rationalization requests"
+
+
+def test_candidate_evaluation_intent():
+    assert "candidate_evaluation" in SYSTEM_PROMPT, \
+        "candidate_evaluation intent missing from SYSTEM_PROMPT — classifier can't route eval requests"
+
+
+def test_candidate_evaluation_shortcuts():
+    assert "evaluate" in SYSTEM_PROMPT.lower(), \
+        "'evaluate' shortcut missing from SYSTEM_PROMPT — 'evaluate TICKER' won't route to candidate_evaluation"

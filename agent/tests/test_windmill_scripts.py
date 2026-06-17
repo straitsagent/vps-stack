@@ -2561,3 +2561,129 @@ def test_portfolio_review_ranks_movers_by_percent():
     assert "pct" in src.lower() or "percent" in src.lower(), (
         "portfolio_review top movers must rank by percentage change"
     )
+
+
+# ── Portfolio Candidate Evaluation tests ──────────────────────────────────────
+
+PORTFOLIO_CANDIDATE_EVAL = os.path.join(
+    os.path.dirname(__file__), "../../windmill/u/admin/portfolio_candidate_eval.py"
+)
+
+
+def _read_ce_source() -> str:
+    with open(PORTFOLIO_CANDIDATE_EVAL) as f:
+        return f.read()
+
+
+def test_candidate_eval_script_exists():
+    """portfolio_candidate_eval.py must exist in windmill/u/admin/."""
+    assert os.path.exists(PORTFOLIO_CANDIDATE_EVAL), (
+        "windmill/u/admin/portfolio_candidate_eval.py not found — script not created"
+    )
+
+
+def test_candidate_eval_main_has_correct_params():
+    """main() must accept ticker, portfolio_db, gmail_smtp, xai_key, deepseek_key
+    as required params; universe_tickers, thesis_text, replacement_ticker optional."""
+    src = _read_ce_source()
+    for p in ("ticker", "portfolio_db", "gmail_smtp", "xai_key", "deepseek_key"):
+        assert p in src, f"candidate_eval missing required param: {p}"
+    for p in ("universe_tickers", "thesis_text", "replacement_ticker"):
+        assert p in src, f"candidate_eval missing optional param: {p}"
+
+
+def test_candidate_eval_returns_verdict_dict():
+    """Script must produce a verdict and binding_constraint."""
+    src = _read_ce_source()
+    assert "verdict" in src
+    assert "binding_constraint" in src
+
+
+def test_evaluate_red_flags_reused():
+    """_evaluate_red_flags must be present — same thresholds as rationalization."""
+    src = _read_ce_source()
+    assert "_evaluate_red_flags" in src
+
+
+def test_compute_correlation_function_exists():
+    """_compute_correlation must be present for Gate 2 price correlation."""
+    src = _read_ce_source()
+    assert "_compute_correlation" in src
+
+
+def test_compute_correlation_validates_date_range():
+    """B1: correlation check must guard on date range and emit gate2_warn."""
+    src = _read_ce_source()
+    assert "gate2_warn" in src
+    assert "insufficient_history" in src
+
+
+def test_compute_fundamental_similarity_exists():
+    """B2: fundamental cosine similarity must be computed."""
+    src = _read_ce_source()
+    assert "_compute_fundamental_similarity" in src or "max_fundamental_sim" in src
+
+
+def test_compute_sector_geo_overlap_function_exists():
+    """Gate 2 must count sector and country overlaps."""
+    src = _read_ce_source()
+    assert "_compute_sector_geo_overlap" in src or (
+        "sector_match_count" in src and "country_match_count" in src
+    )
+
+
+def test_compute_factor_gap_has_explicit_math():
+    """B3: gap-fill logic must use pool_median and pool_p60 explicitly."""
+    src = _read_ce_source()
+    assert "pool_median" in src
+    assert "pool_p60" in src
+
+
+def test_compute_factor_gap_function_exists():
+    """B3: _compute_factor_gap function must be present."""
+    src = _read_ce_source()
+    assert "_compute_factor_gap" in src
+
+
+def test_fetch_universe_function_exists():
+    """Gate 3 universe fetcher must be present."""
+    src = _read_ce_source()
+    assert "_fetch_universe" in src
+
+
+def test_candidate_eval_min_pool_five():
+    """B4: min_pool must be 5 (not 3)."""
+    src = _read_ce_source()
+    assert "min_pool" in src
+    assert "min_pool = 5" in src or "min_pool=5" in src
+
+
+def test_candidate_eval_currency_exposure_check():
+    """B8: currency exposure post-addition must be computed."""
+    src = _read_ce_source()
+    assert "currency_post_pct" in src or "currency_breach" in src
+
+
+def test_candidate_eval_writes_to_evals_table():
+    """Eval results must be persisted to portfolio_candidate_evals."""
+    src = _read_ce_source()
+    assert "portfolio_candidate_evals" in src
+
+
+def test_candidate_eval_has_grok_fallback():
+    """Script must fall back to deepseek if Grok is unavailable."""
+    src = _read_ce_source()
+    assert "deepseek" in src
+
+
+def test_candidate_eval_thin_universe_flag():
+    """thin_universe flag must be surfaced when peer pool is small."""
+    src = _read_ce_source()
+    assert "thin_universe" in src
+
+
+def test_candidate_eval_grok_output_is_json():
+    """C2: Grok output must be structured JSON with rationale_sentences and evidence."""
+    src = _read_ce_source()
+    assert "rationale_sentences" in src
+    assert "evidence" in src

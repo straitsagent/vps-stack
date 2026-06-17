@@ -1,0 +1,50 @@
+summary: 'Portfolio Candidate Evaluation — On-demand ADD/WATCH/PASS Verdict'
+description: '3-gate evaluation for a candidate stock: Gate 1 absolute red flags, Gate 2 portfolio fit (correlation + fundamental similarity + sector/geo/currency overlap + gap fill), Gate 3 universe benchmark. Outputs a verdict card email and persists results to portfolio_candidate_evals.'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    ticker:
+      description: Candidate stock ticker symbol (e.g. AAPL, 9988.HK)
+      type: string
+    portfolio_db:
+      description: PostgreSQL portfolio database
+      type: object
+      default: "$res:u/admin/portfolio_db"
+    gmail_smtp:
+      description: Gmail SMTP credentials
+      type: object
+      default: "$res:u/admin/gmail_smtp"
+    xai_key:
+      description: xAI / Grok API key
+      type: string
+      default: "$var:u/admin/xai_key"
+    deepseek_key:
+      description: Deepseek API key (fallback synthesiser)
+      type: string
+      default: "$var:u/admin/deepseek_key"
+    universe_tickers:
+      description: Optional list of peer tickers to use as Gate 3 benchmark universe
+      type: array
+      items:
+        type: string
+      default: []
+    thesis_text:
+      description: Optional user-supplied investment thesis text
+      type: string
+      default: ""
+    replacement_ticker:
+      description: Optional ticker to exit simultaneously; Gate 2 recomputed net of this exit
+      type: string
+      default: ""
+    recipient_email:
+      description: Email address to send the verdict card to
+      type: string
+      default: "$var:u/admin/recipient_email"
+  required:
+    - ticker
+    - portfolio_db
+    - gmail_smtp
+    - xai_key
+    - deepseek_key
