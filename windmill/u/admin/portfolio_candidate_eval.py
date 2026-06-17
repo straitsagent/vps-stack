@@ -865,6 +865,319 @@ def _determine_verdict(gate1_status: str, universe_composite: Optional[float],
     return "PASS"
 
 
+# ── Report body ───────────────────────────────────────────────────────────────
+
+def _build_report_body(
+    ticker, company_name, today, eval_expires_date, synthesiser_model,
+    baseline_warning, metrics, red_flags, gate1_status,
+    corr_result, fund_sim, overlap, currency_result, gap_result, sizing,
+    universe_info, universe_factor_scores,
+    portfolio_scores_relative, portfolio_rows_for_display,
+    verdict, binding_constraint, grok_text, grok_json,
+    thesis_text, thesis_source, replacement_ticker,
+) -> str:
+
+    def f(v, decimals=2): return f"{float(v):.{decimals}f}" if v is not None else "N/A"
+    def fp(v): return f"{float(v):.1%}" if v is not None else "N/A"
+    def fi(v): return str(int(v)) if v is not None else "N/A"
+    def pct(v): return f"{float(v):.0f}" if v is not None else "N/A"
+
+    lines = []
+    a = lines.append
+
+    # ── Header ────────────────────────────────────────────────────────────────
+    a(f"# Candidate Evaluation: {ticker} ({company_name})")
+    a(f"Eval date: {today.isoformat()}  |  Valid until: {eval_expires_date.isoformat()}  |  Model: {synthesiser_model}")
+    if baseline_warning:
+        a("")
+        a(baseline_warning.strip())
+
+    # ── Verdict banner ────────────────────────────────────────────────────────
+    a("")
+    a("=" * 70)
+    verdict_icon = {"ADD": "✅ ADD", "WATCH": "⚠️  WATCH", "PASS": "❌ PASS"}.get(verdict, verdict)
+    a(f"VERDICT: {verdict_icon}")
+    if binding_constraint:
+        a(f"Binding constraint: {binding_constraint}")
+    a("=" * 70)
+
+    # ── Methodology ───────────────────────────────────────────────────────────
+    a("")
+    a("## Evaluation Methodology")
+    a("")
+    a("Three independent gates are run in sequence. A gate breach does NOT auto-stop")
+    a("evaluation — all three gates always complete. The final verdict uses deterministic")
+    a("thresholds; Grok narrates the qualitative rationale.")
+    a("")
+    a("  Gate 1 — Absolute thresholds (any breach → automatic PASS regardless of Gates 2/3)")
+    a("  Gate 2 — Portfolio fit: how much marginal value does this position add to the")
+    a("           existing portfolio given current concentration, factor exposure, and FX?")
+    a("  Gate 3 — Universe benchmark: how does this stock rank vs its peer set?")
+    a("")
+    a("Verdict logic:")
+    a("  ADD   → Gate 1 ok  AND  universe_composite ≥ 60  AND  no blocking constraint")
+    a("  WATCH → Gate 1 ok  AND  universe_composite ≥ 40  AND  at least one mutable constraint")
+    a("  PASS  → Gate 1 breach  OR  universe_composite < 40")
+    a("")
+    a("Blocking constraints: sector_match_count ≥ 4, country_match_count ≥ 5, currency_breach")
+
+    # ── Input data ────────────────────────────────────────────────────────────
+    a("")
+    a("## Input Data: " + ticker)
+    a("")
+    a("| Category        | Metric                | Value     |")
+    a("|-----------------|----------------------|-----------|")
+    a(f"| Identity        | Sector                | {metrics.get('sector', 'N/A')} |")
+    a(f"| Identity        | Country               | {metrics.get('country', 'N/A')} |")
+    a(f"| Identity        | Currency              | {metrics.get('currency', 'N/A')} |")
+    a(f"| Valuation       | Forward PE            | {f(metrics.get('forward_pe'), 1)}x |")
+    a(f"| Valuation       | EV/EBITDA             | {f(metrics.get('ev_to_ebitda'), 1)}x |")
+    a(f"| Valuation       | PEG Ratio             | {f(metrics.get('peg_ratio'), 2)} |")
+    a(f"| Valuation       | Price/Book            | {f(metrics.get('price_to_book'), 2)}x |")
+    a(f"| Valuation       | Analyst Upside        | {fp(metrics.get('analyst_upside_pct'))} |")
+    a(f"| Growth          | Revenue CAGR 3yr      | {fp(metrics.get('revenue_cagr_3yr'))} |")
+    a(f"| Growth          | Net Income CAGR 3yr   | {fp(metrics.get('net_income_cagr_3yr'))} |")
+    a(f"| Growth          | Revenue CAGR 1yr      | {fp(metrics.get('revenue_cagr_1yr'))} |")
+    a(f"| Quality         | ROE                   | {fp(metrics.get('return_on_equity'))} |")
+    a(f"| Quality         | Net Margin            | {fp(metrics.get('net_profit_margin'))} |")
+    a(f"| Quality         | FCF Quality (OCF/NI)  | {f(metrics.get('fcf_quality'), 2)}x |")
+    a(f"| Leverage        | Net Debt / EBITDA     | {f(metrics.get('net_debt_to_ebitda'), 2)}x |")
+    a(f"| Liquidity       | Current Ratio         | {f(metrics.get('current_ratio'), 2)} |")
+    a(f"| Sentiment       | Analyst Rec Mean      | {f(metrics.get('analyst_rec_mean'), 2)} (1=Strong Buy) |")
+    a(f"| Sentiment       | Avg EPS Surprise      | {fp(metrics.get('avg_eps_surprise'))} |")
+    a(f"| Sentiment       | 52-wk Momentum        | {f(metrics.get('momentum_52wk'), 2)} (0=52w low, 1=52w high) |")
+    if thesis_text.strip():
+        a(f"| Thesis          | Source                | User-supplied |")
+    else:
+        a(f"| Thesis          | Source                | ⚠️ LLM-derived (not user-validated) |")
+
+    # ── Gate 1 ────────────────────────────────────────────────────────────────
+    g1_icon = "✅ OK" if gate1_status == "ok" else "❌ BREACH"
+    a("")
+    a(f"## Gate 1: Absolute Thresholds — {g1_icon}")
+    a("")
+    a("Each check is evaluated independently. Any breach → automatic PASS verdict.")
+    a("")
+    a("| Check                   | Threshold      | Actual        | Result |")
+    a("|------------------------|---------------|--------------|--------|")
+
+    # Net Debt/EBITDA
+    nd = metrics.get("net_debt_to_ebitda")
+    nd_ok = nd is None or nd <= NET_DEBT_EBITDA_MAX
+    a(f"| Net Debt / EBITDA       | ≤ {NET_DEBT_EBITDA_MAX}x          | {f(nd, 1)}x       | {'✓ ok' if nd_ok else '✗ breach'} |")
+
+    # Current Ratio
+    cr = metrics.get("current_ratio")
+    cr_ok = cr is None or cr >= CURRENT_RATIO_MIN
+    a(f"| Current Ratio           | ≥ {CURRENT_RATIO_MIN}          | {f(cr, 2)}          | {'✓ ok' if cr_ok else '✗ breach'} |")
+
+    # Forward PE
+    fpe = metrics.get("forward_pe")
+    fpe_ok = fpe is not None and fpe <= FWD_PE_MAX
+    a(f"| Forward PE              | ≤ {FWD_PE_MAX:.0f}x, must be present | {f(fpe, 1)}x | {'✓ ok' if fpe_ok else '✗ breach'} |")
+
+    # Revenue CAGR 3yr
+    rc3 = metrics.get("revenue_cagr_3yr")
+    rc3_ok = rc3 is None or rc3 >= REV_CAGR_MIN
+    a(f"| Revenue CAGR 3yr        | ≥ {REV_CAGR_MIN:.0%}             | {fp(rc3)}        | {'✓ ok' if rc3_ok else '✗ breach'} |")
+
+    # NI CAGR 3yr
+    nc3 = metrics.get("net_income_cagr_3yr")
+    nc3_ok = nc3 is None or nc3 >= NI_CAGR_MIN
+    a(f"| Net Income CAGR 3yr     | ≥ {NI_CAGR_MIN:.0%}           | {fp(nc3)}        | {'✓ ok' if nc3_ok else '✗ breach'} |")
+
+    if red_flags:
+        a("")
+        a("Flags triggered:")
+        for flag in red_flags:
+            a(f"  • {flag}")
+
+    # ── Gate 2 ────────────────────────────────────────────────────────────────
+    a("")
+    a("## Gate 2: Portfolio Fit")
+    a("")
+    n_positions = len(portfolio_rows_for_display) if portfolio_rows_for_display else "?"
+    a(f"Evaluates the marginal value of adding {ticker} to the existing {n_positions}-position portfolio.")
+
+    # 2a. Price correlation
+    a("")
+    a("### 2a. Price Correlation (90-day returns)")
+    max_corr = corr_result.get("max_corr")
+    closest = corr_result.get("closest_existing", "N/A")
+    gate2_warn = corr_result.get("gate2_warn")
+    if gate2_warn:
+        a(f"⚠️  Warning: {gate2_warn}")
+    if max_corr is not None:
+        corr_interp = (
+            "highly correlated — limited diversification benefit" if abs(max_corr) > 0.7
+            else "moderately correlated" if abs(max_corr) > 0.4
+            else "low correlation — diversifying"
+        )
+        a(f"  Highest correlation with existing position: {closest}  (r = {f(max_corr, 3)})")
+        a(f"  Interpretation: {corr_interp}")
+    else:
+        a("  Insufficient price history to compute correlation.")
+
+    # 2b. Fundamental similarity
+    a("")
+    a("### 2b. Fundamental Similarity (sector/country/factor-vector cosine similarity)")
+    max_sim = fund_sim.get("max_fundamental_sim")
+    closest_fund = fund_sim.get("closest_fundamental", "N/A")
+    if max_sim is not None:
+        sim_interp = (
+            "highly similar business profile — concentrating" if max_sim > 0.85
+            else "moderately similar" if max_sim > 0.6
+            else "dissimilar — diversifying"
+        )
+        a(f"  Most similar existing position: {closest_fund}  (cosine = {f(max_sim, 3)})")
+        a(f"  Interpretation: {sim_interp}")
+    else:
+        a("  Fundamental similarity could not be computed.")
+
+    # 2c. Sector / country
+    a("")
+    a("### 2c. Sector & Country Concentration")
+    sec_count  = overlap.get("sector_match_count", 0)
+    cty_count  = overlap.get("country_match_count", 0)
+    sec_flag   = " ⚠️  (≥4 = blocking constraint)" if sec_count >= 4 else ""
+    cty_flag   = " ⚠️  (≥5 = blocking constraint)" if cty_count >= 5 else ""
+    if replacement_ticker:
+        a(f"  (Counts recomputed net of {replacement_ticker} exit)")
+    a(f"  Sector  ({metrics.get('sector', 'N/A')}): {sec_count} existing positions{sec_flag}")
+    a(f"  Country ({metrics.get('country', 'N/A')}): {cty_count} existing positions{cty_flag}")
+
+    # 2d. Currency exposure
+    a("")
+    a("### 2d. Currency Exposure")
+    ccy = metrics.get("currency", "USD")
+    ccy_post = currency_result.get("currency_post_pct", 0.0)
+    ccy_breach = currency_result.get("currency_breach", False)
+    ccy_flag = f"  ⚠️  Exceeds {CURRENCY_SOFT_LIMIT:.0%} soft limit — blocking constraint" if ccy_breach else ""
+    a(f"  Candidate currency: {ccy}")
+    a(f"  Portfolio exposure to {ccy} post-addition: {f(ccy_post, 1)}%  (soft limit: {CURRENCY_SOFT_LIMIT:.0%}){ccy_flag}")
+    if ccy == "USD":
+        a("  (No FX constraint — USD positions are uncapped)")
+
+    # 2e. Factor gap fill
+    a("")
+    a("### 2e. Factor Gap Fill")
+    a("  Condition: portfolio pool_median_F < 50 AND candidate_F > pool_p60_F")
+    gap_f = gap_result.get("gap_factors", [])
+    fill_f = gap_result.get("fill_factors", [])
+    if gap_f:
+        a(f"  Portfolio factors below pool median (gaps): {', '.join(gap_f)}")
+    else:
+        a("  No factor gaps identified in existing portfolio.")
+    if fill_f:
+        a(f"  {ticker} fills gap in: {', '.join(fill_f)}")
+    else:
+        a(f"  {ticker} does not fill any identified portfolio gap.")
+
+    # 2f. Sizing headroom
+    a("")
+    a("### 2f. Sizing Headroom (existing position weights)")
+    a(f"  Smallest: {f(sizing.get('smallest_pct'), 2)}%  |  Median: {f(sizing.get('median_pct'), 2)}%  |  Largest: {f(sizing.get('largest_pct'), 2)}%")
+
+    # ── Gate 3 ────────────────────────────────────────────────────────────────
+    a("")
+    u_size = universe_info.get("universe_size", 0)
+    thin = universe_info.get("thin_universe", False)
+    u_tickers_str = ", ".join(universe_info.get("universe_tickers", [])[:10]) or "none found"
+    thin_note = "  ⚠️  Thin universe — treat percentile ranks with lower confidence" if thin else ""
+    a(f"## Gate 3: Universe Benchmark ({u_size} peers)")
+    a("")
+    a(f"  Peers: {u_tickers_str}{thin_note}")
+    a(f"  Min pool for reliable ranking: {min_pool}  |  Thin: {thin}  |  Below min: {universe_info.get('below_min_universe', False)}")
+    a("")
+    q_uni = universe_info.get("universe_q")
+    g_uni = universe_info.get("universe_g")
+    v_uni = universe_info.get("universe_v")
+    s_uni = universe_info.get("universe_s")
+    universe_composite = round(float(np.mean([x for x in [q_uni, g_uni, v_uni, s_uni] if x is not None])), 1) if any(x is not None for x in [q_uni, g_uni, v_uni, s_uni]) else None
+    a("  | Factor     | vs Universe (pct) | ADD threshold |")
+    a("  |-----------|-------------------|--------------|")
+    a(f"  | Quality    | {pct(q_uni) + 'th' if q_uni is not None else 'N/A':>17} | —             |")
+    a(f"  | Growth     | {pct(g_uni) + 'th' if g_uni is not None else 'N/A':>17} | —             |")
+    a(f"  | Valuation  | {pct(v_uni) + 'th' if v_uni is not None else 'N/A':>17} | —             |")
+    a(f"  | Sentiment  | {pct(s_uni) + 'th' if s_uni is not None else 'N/A':>17} | —             |")
+    a(f"  | Composite  | {pct(universe_composite) + 'th' if universe_composite is not None else 'N/A':>17} | ≥60 for ADD, ≥40 for WATCH |")
+
+    # ── Portfolio comparison ───────────────────────────────────────────────────
+    a("")
+    a("## Portfolio Comparison: " + ticker + " vs Existing Positions")
+    a("")
+    q_port = portfolio_scores_relative.get("quality")
+    g_port = portfolio_scores_relative.get("growth")
+    v_port = portfolio_scores_relative.get("valuation")
+    s_port = portfolio_scores_relative.get("sentiment")
+    portfolio_composite = round(float(np.mean([x for x in [q_port, g_port, v_port, s_port] if x is not None])), 1) if any(x is not None for x in [q_port, g_port, v_port, s_port]) else None
+
+    a(f"Factor scores are 0–100 percentile ranks within the existing {n_positions}-position pool.")
+    a(f"The candidate's score shows where {ticker} would rank if added.")
+    a("")
+    a("  | Rank | Ticker           | Quality | Growth | Valuation | Sentiment | Composite (Bal) | Rec        |")
+    a("  |------|-----------------|---------|--------|-----------|-----------|----------------|------------|")
+
+    # Insert candidate in the right rank position
+    cand_comp = portfolio_composite or 0
+    cand_inserted = False
+    for i, row in enumerate(portfolio_rows_for_display or []):
+        row_comp = float(row.get("composite_score_balanced") or 0)
+        # Insert candidate before first row with lower composite
+        if not cand_inserted and cand_comp > row_comp:
+            rank_label = f"→ {ticker}"
+            a(f"  | {'—':>4} | {rank_label:<15}  | {pct(q_port):>7} | {pct(g_port):>6} | {pct(v_port):>9} | {pct(s_port):>9} | {pct(portfolio_composite):>14} | (candidate)  |")
+            cand_inserted = True
+        rank = row.get("rank_balanced") or (i + 1)
+        t_name = row.get("ticker") or row.get("consolidated_name") or "?"
+        a(f"  | {rank:>4} | {t_name:<15}  | {pct(row.get('quality_score')):>7} | {pct(row.get('growth_score')):>6} | {pct(row.get('valuation_score')):>9} | {pct(row.get('sentiment_score')):>9} | {pct(row.get('composite_score_balanced')):>14} | {(row.get('recommendation') or '—'):<10} |")
+    if not cand_inserted:
+        rank_label = f"→ {ticker}"
+        a(f"  | {'—':>4} | {rank_label:<15}  | {pct(q_port):>7} | {pct(g_port):>6} | {pct(v_port):>9} | {pct(s_port):>9} | {pct(portfolio_composite):>14} | (candidate)  |")
+
+    a("")
+    a(f"  {ticker} portfolio-relative composite: {pct(portfolio_composite)}th pct")
+    a(f"  (Scores reflect percentile rank within the existing pool — higher = stronger vs portfolio.)")
+
+    # ── Per-factor triplets ────────────────────────────────────────────────────
+    a("")
+    a("## Per-Factor Triplets: " + ticker)
+    a("")
+    a("  Each factor shows three dimensions: Gate 1 absolute status, rank vs portfolio, rank vs universe peers.")
+    a("")
+    a("  | Factor     | Gate 1 Absolute | vs Portfolio (pct) | vs Universe (pct) |")
+    a("  |-----------|----------------|-------------------|------------------|")
+    abs_s = "breach" if red_flags else "ok"
+    for label, port_v, uni_v in [
+        ("Quality",   q_port, q_uni),
+        ("Growth",    g_port, g_uni),
+        ("Valuation", v_port, v_uni),
+        ("Sentiment", s_port, s_uni),
+    ]:
+        a(f"  | {label:<10} | {abs_s:<16} | {pct(port_v) + 'th':>18} | {pct(uni_v) + 'th' if uni_v is not None else 'N/A':>17} |")
+
+    # ── Grok narrative ────────────────────────────────────────────────────────
+    a("")
+    a("## Grok Analysis")
+    a("")
+    # Strip the JSON block from grok_text — show only the narrative card
+    narrative = grok_text
+    import re as _re
+    narrative = _re.sub(r"```json[\s\S]*?```", "", narrative).strip()
+    a(narrative)
+
+    # ── Footer ────────────────────────────────────────────────────────────────
+    a("")
+    a("---")
+    a(f"Verdict: {verdict}  |  Gate 1: {gate1_status}  |  Universe composite: {pct(universe_composite)}th pct  |  Portfolio composite: {pct(portfolio_composite)}th pct")
+    if thesis_source == "llm-derived":
+        a("⚠️  No user-supplied thesis — qualitative context is LLM-derived and not user-validated.")
+    if replacement_ticker:
+        a(f"Note: Gate 2 computed net of {replacement_ticker} exit.")
+
+    return "\n".join(lines)
+
+
 # ── Email ─────────────────────────────────────────────────────────────────────
 
 def _send_email(gmail_smtp: dict, subject: str, body_md: str, to_email: str):
@@ -893,7 +1206,7 @@ def main(
     universe_tickers: list = [],
     thesis_text: str = "",
     replacement_ticker: str = "",
-    recipient_email: str = "straitsagent@gmail.com",
+    recipient_email: str = "",
 ):
     ticker = ticker.strip().upper()
     replacement_ticker = (replacement_ticker or "").strip().upper() or None
@@ -978,11 +1291,15 @@ def main(
 
     # ── Portfolio-relative factor scores ─────────────────────────────────────
     cur.execute("""
-        SELECT quality_score, growth_score, valuation_score, sentiment_score
+        SELECT ticker, consolidated_name, quality_score, growth_score, valuation_score,
+               sentiment_score, composite_score_balanced, rank_balanced,
+               position_usd, portfolio_pct, recommendation
         FROM portfolio_scores
         WHERE score_date = (SELECT MAX(score_date) FROM portfolio_scores)
+        ORDER BY rank_balanced NULLS LAST
     """)
     portfolio_rows = cur.fetchall()
+    portfolio_rows_for_display = [dict(r) for r in portfolio_rows]
     portfolio_metrics = [
         {
             "quality_score":    r["quality_score"],
@@ -1126,20 +1443,24 @@ def main(
     ))
 
     # ── Email ─────────────────────────────────────────────────────────────────
+    to_email = recipient_email.strip() if recipient_email.strip() else gmail_smtp.get("username", "")
     subject = f"[{verdict}] Candidate Eval: {ticker} — {today.isoformat()}"
-    body = f"""{baseline_warning}# Candidate Evaluation: {ticker} ({company_name})
-Eval date: {today.isoformat()} | Valid until: {eval_expires_date.isoformat()}
-Model: {synthesiser_model}
-
-{grok_text}
-
----
-*Deterministic verdict: {verdict} | universe_composite={universe_composite} | gate1={gate1_status}*
-*Gap factors: {gap_result.get("gap_factors")} | Fill factors: {gap_result.get("fill_factors")}*
-*Currency post-addition: {currency_result.get("currency_post_pct")}%{" (⚠️ breach)" if currency_result.get("currency_breach") else ""}*
-*Thesis source: {thesis_source}*
-"""
-    _send_email(gmail_smtp, subject, body, recipient_email)
+    body = _build_report_body(
+        ticker=ticker, company_name=company_name, today=today,
+        eval_expires_date=eval_expires_date, synthesiser_model=synthesiser_model,
+        baseline_warning=baseline_warning, metrics=metrics, red_flags=red_flags,
+        gate1_status=gate1_status, corr_result=corr_result, fund_sim=fund_sim,
+        overlap=overlap, currency_result=currency_result, gap_result=gap_result,
+        sizing=sizing, universe_info=universe_info,
+        universe_factor_scores=universe_factor_scores,
+        portfolio_scores_relative=portfolio_scores_relative,
+        portfolio_rows_for_display=portfolio_rows_for_display,
+        verdict=verdict, binding_constraint=binding_constraint,
+        grok_text=grok_text, grok_json=grok_json,
+        thesis_text=thesis_text, thesis_source=thesis_source,
+        replacement_ticker=replacement_ticker,
+    )
+    _send_email(gmail_smtp, subject, body, to_email)
     log.info(f"[CandidateEval] Email sent — {subject}")
 
     cur.close()
