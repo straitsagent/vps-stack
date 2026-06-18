@@ -1,6 +1,6 @@
 # Workflow Architecture
 
-**Last updated:** 2026-06-16 (security cleanup: handle_kevin→handle_owner, personal identifiers replaced; portfolio rationalization live)  
+**Last updated:** 2026-06-18 (added 3.3 Portfolio Rationalization + 3.4 Portfolio Candidate Eval specs; both scripts live)  
 **Owner:** the owner  
 **Purpose:** Human-readable / pseudocode spec for every workflow in the stack. Claude Code reads this before building or modifying any workflow. Each built workflow is documented in full. Planned workflows have a brief stub — fill in the full spec before coding.
 
@@ -1041,6 +1041,119 @@ CREATE TABLE IF NOT EXISTS fundamental_data (
 - Alpha Vantage design rule: AV 25 calls/day limit makes batch ticker loops unworkable. Any future AV integration must use a daily-drip pattern (e.g. 3-5 tickers/day) rather than processing all tickers in one run.
 - yfinance NaN handling: `_safe_float()` helper rejects NaN (float('nan') != float('nan')) and returns None. Prevents silent NaN upserts corrupting the DB.
 - Error policy: per-ticker failures log a warning and continue. Only fail the whole job if >50% of tickers return no data at all (systemic outage).
+
+---
+
+### 3.3 — Portfolio Rationalization ✅ LIVE
+
+**Script:** `u/admin/portfolio_rationalization`  
+**Schedule:** `u/admin/portfolio_rationalization_monthly` — weekly Monday 9PM SGT  
+**Trigger:** Also on-demand via Telegram (`portfolio_rationalize` / `deep rationalize`)  
+**Full spec:** `docs/portfolio_rationalization_framework.md` v1.2  
+**Inputs:** `$res:u/admin/portfolio_db`, `$var:u/admin/xai_key`, `$var:u/admin/deepseek_key`, `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`  
+**Optional param:** `include_research: bool = False` — when True, loads full `research_reports` content into Grok Call 2 prompt
+
+**Logic:**
+```
+1. Load all positions from portfolio_positions; load fundamentals, valuations,
+   financial health, insider, portfolio_thesis from DB
+
+2. Compute _compute_factor_scores() for each position:
+   Quality (30%): net_margin, roe, roic, fcf_quality
+   Growth (25%): revenue_growth_yoy, earnings_cagr, analyst_consensus (target vs current)
+   Valuation (20%): pe_ratio, pb_ratio, ev_ebitda, fcf_yield
+   Sentiment (15%): insider_flow_ratio (net_insider_90d / market_cap), short_interest
+   Thesis (10%): thesis_alignment (0/0.5/1 from DB)
+   Completeness penalty: score_factor_coverage (0–5) + metric_coverage_pct
+
+3. Score each position across 4 weighting scenarios:
+   balanced, quality_biased, growth_biased, value_biased
+   Normalise via _norm() (percentile rank within pool, skips None)
+
+4. Rank positions 1–N per scenario; compute # top-half across scenarios (rank-robustness)
+   Compute delta vs prior run (_fetch_prior_ranks) — all 4 scenarios
+
+5. Apply absolute red flags: debt_equity > 5, interest_coverage < 1.5,
+   negative_equity, revenue_decline > 30%, net_margin < -20%, fcf_quality < -0.3
+   _apply_red_flag_override() forces EXIT (red-flag override) for any flagged position
+
+6. Grok-4.3 Call 1 (batched — 15 positions per call):
+   Per-position narrative with show-your-work JSON:
+   {"verdict": "KEEP|TRIM|EXIT", "rationale_sentences": [{"text": "...", "evidence": ["metric"]}]}
+   Deepseek fallback on xAI outage
+
+7. Grok-4.3 Call 2 (global synthesis):
+   Portfolio-wide commentary, sector/geo concentrations, macro context
+   If include_research=True: full research_reports content for all tickers prepended
+   Delta summary across all 4 scenarios
+
+8. Build email report: ranking tables per scenario + top-half robustness + delta arrows +
+   per-position scorecards with evidence tags + red-flag section + global commentary
+
+9. Upsert portfolio_scores table (all 4 scenario ranks + delta_rank_* columns)
+   Email to recipient_email
+```
+
+**Key tables:** `portfolio_scores` (ranks, deltas, factor scores per run)
+
+---
+
+### 3.4 — Portfolio Candidate Eval ✅ LIVE
+
+**Script:** `u/admin/portfolio_candidate_eval`  
+**Trigger:** On-demand — Telegram: `evaluate TICKER`, `should I add TICKER`, `candidate TICKER`  
+**Full spec:** `docs/portfolio_candidate_eval_framework.md` v1.1  
+**Inputs:** `$res:u/admin/portfolio_db`, `$var:u/admin/xai_key`, `$var:u/admin/deepseek_key`, `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`, `$var:u/admin/wm_token`, `$var:u/admin/finnhub_key`, + search/perplexity/brave/exa/serper/tavily keys  
+**Optional params:** `universe_tickers`, `thesis_text`, `replacement_ticker`
+
+**Logic:**
+```
+0. Cache check: portfolio_candidate_evals for ticker with eval_date > 30d ago
+   → return cached result if found (TTL=30d; B11)
+
+1. Auto-fetch: _check_data_staleness(ticker) — queries valuation_snapshots
+   If absent/stale (>3d): dispatch stock_data_fetcher, poll DB directly until fresh
+   _check_research_staleness(ticker) — queries research_reports
+   If absent/stale (>30d): dispatch research_tool (stock, standard), poll DB until fresh
+
+2. Load fundamentals: _fetch_fundamentals_for_ticker() — reads from all research DB tables
+   Load latest research: _fetch_latest_research() — reads research_reports content
+
+GATE 1 — Absolute red-flag check (same thresholds as rationalization):
+   debt_equity > 5, interest_coverage < 1.5, negative_equity,
+   revenue_decline > 30%, net_margin < -20%, fcf_quality < -0.3
+   → Any flag → PASS immediately
+
+GATE 2 — Portfolio fit (6 sub-checks):
+   B1: price correlation vs all portfolio positions (yfinance fallback for short history)
+   B2: fundamental cosine similarity (sector, country, factor vector)
+   Sector / geography overlap counts
+   B8: currency-exposure check (HKD/USD soft 30% limit)
+   B3: factor gap-fill (pool_median_F < 50 AND candidate_F > pool_p60_F; ≥2 = gap-fill)
+   B7: if replacement_ticker: recompute Gate 2 net of exit position
+   Sizing context (current position count, sector concentrations)
+
+GATE 3 — Universe benchmark:
+   Load peer_comparisons table (populated by stock_data_fetcher)
+   B4: min_pool=5; flag below_min_universe (3–4 peers), thin_universe (<3 peers)
+   B9: _validate_universe() heterogeneity guard (market-cap CoV, sector/country diversity)
+   B10: check portfolio_scores.score_date — warn if >35d stale
+   Per-factor triplets: {absolute, portfolio_pct, universe_pct}
+   universe_composite_pct = weighted percentile vs peer universe
+
+VERDICT (deterministic):
+   ADD:   gate1 ok AND universe_composite_pct ≥ 60 AND no blocking constraint
+   WATCH: gate1 ok AND universe_composite_pct ≥ 40 AND ≤1 mutable constraint
+   PASS:  otherwise
+
+Grok-4.3 synthesis: show-your-work JSON (verdict + rationale_sentences with evidence arrays)
+   Full research report prepended to Grok prompt if available
+   Deepseek-chat fallback
+
+Persist to portfolio_candidate_evals; build rich HTML email report with all gate data
+```
+
+**Key tables:** `portfolio_candidate_evals` (ticker, verdict, gate results, eval_date — 30d TTL)
 
 ---
 

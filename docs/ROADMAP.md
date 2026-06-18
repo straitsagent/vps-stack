@@ -82,7 +82,7 @@ Everything below is live and running unattended.
 | Research tool | ✅ Tiered cache (stock only): <30d serve cached directly (no job); 30–90d dispatch standard; no cache dispatch deep. General commands (/research, /deepresearch) skip cache. Date shown in result header. |
 | Message splitting | ✅ Replies >4,000 chars split into ≤4,000-char chunks at newline boundaries |
 | Telegram command menu | ✅ 13 commands registered at startup via `set_my_commands()`: stockresearch (deep stock, tiered cache), research (general standard), deepresearch (general deep), earnings, portfolio, prices, news, youtube, macro, thesis, health, search, digest |
-| Unit tests | ✅ 272 passing — `agent/tests/` (classifier, telegram, tools, routing, planner, db, schema, windmill scripts). TDD mandatory for ALL code — tests before implementation, live test after deployment. PostToolUse hook prints TDD reminder on every Python edit. |
+| Unit tests | ✅ 353 passing — `agent/tests/` (classifier, telegram, tools, routing, planner, db, schema, windmill scripts). TDD mandatory for ALL code — tests before implementation, live test after deployment. PostToolUse hook prints TDD reminder on every Python edit. |
 | Env template | `/root/agent.env.example` (actual `agent.env` gitignored) |
 
 ---
@@ -287,7 +287,7 @@ Deal monitoring and market coverage relevant to infrastructure finance. Build af
 | `docs/audit/260605_api_endpoint_full_audit.md` | Full endpoint audit: news, earnings, financials, macro, commodities, insider |
 | `docs/audit/260612_search_api_audit.md` | Search API audit — all available APIs, pricing, live tests, recommendations |
 | `docs/portfolio_rationalization_framework.md` | Full design spec: 5-factor scoring model, 4 weighting scenarios, per-position scorecard structure, Grok prompt, schema, schedule |
-| `docs/portfolio_candidate_eval_framework.md` | Design approved (not yet built): 3-gate candidate evaluation (Absolute + Portfolio-Fit + Universe), ADD/WATCH/PASS verdict, per-factor triplets |
+| `docs/portfolio_candidate_eval_framework.md` | Full design spec v1.1: 3-gate candidate evaluation (Gate 1 red flags + Gate 2 portfolio fit + Gate 3 universe benchmark), ADD/WATCH/PASS verdict, per-factor triplets. Script live: `u/admin/portfolio_candidate_eval`. |
 
 ### Key Paths
 | Path | Purpose |
@@ -343,7 +343,7 @@ All variables and resources are in the `u/admin` workspace. Credentials come fro
 | Telegram bot | ✅ Live | Token in `agent.env`, webhook registered with secret token |
 | Slash command support | ✅ Live | `/portfolio`, `/research NVDA` etc. — leading `/` stripped before classification |
 | DB schema (8 agent tables) | ✅ Applied | `agent_*` tables + `portfolio_thesis` + `agent_kv` in `portfolio` DB |
-| Unit tests (pytest) | ✅ 316 passing | `agent/tests/` — classifier, telegram, tools, db.py (16 ops), schema (14 tables), Windmill scripts, W3/W4 coverage |
+| Unit tests (pytest) | ✅ 353 passing | `agent/tests/` — classifier, telegram, tools, db.py (16 ops), schema (14 tables), Windmill scripts, W3/W4 coverage |
 | Telegram command menu | ✅ Live | 13 commands: stockresearch, research, deepresearch, earnings, portfolio, prices, news, youtube, macro, thesis, health, search, digest |
 | W2 tools: portfolio_snapshot, prices, news_search, macro_indicators, news/youtube/portfolio digest | ✅ Live | FAST class |
 | W2 tools: portfolio_thesis (read/write) | ✅ Live | thesis_read (FAST), thesis_write (GATED_WRITE) |
@@ -359,8 +359,8 @@ All variables and resources are in the `u/admin` workspace. Credentials come fro
 
 ## Portfolio Rationalization
 
-**Script:** `u/admin/portfolio_rationalization.py` | **Schedule:** 9 PM SGT 1st of month
+**Script:** `u/admin/portfolio_rationalization.py` | **Schedule:** Weekly Monday 9PM SGT (+ on-demand via Telegram: `portfolio_rationalize` / `deep rationalize`)
 
-5-factor scoring model (Quality 30%, Growth 25%, Valuation 20%, Sentiment 15%, Thesis 10%) across 4 weighting scenarios (Balanced, Quality-biased, Growth-biased, Value-biased). Absolute red flags trigger automatic Reduce. Completeness penalty for missing data. Delta tracking vs prior month. 2× Grok-4.3 synthesis calls with Deepseek fallback. Writes to `portfolio_scores` table.
+5-factor scoring model (Quality 30%, Growth 25%, Valuation 20%, Sentiment 15%, Thesis 10%) across 4 weighting scenarios (Balanced, Quality-biased, Growth-biased, Value-biased). Absolute red flags trigger automatic Reduce. Completeness penalty for missing data. Delta tracking vs prior run (all 4 scenarios). Batched Grok-4.3 Call 1 (2× 15-position batches) + Grok-4.3 Call 2 synthesis with Deepseek fallback. Optional `include_research=True` adds full LLM research reports into Call 2. Writes to `portfolio_scores` table.
 
-See `docs/portfolio_rationalization_framework.md` v1.1 for full design spec.
+See `docs/portfolio_rationalization_framework.md` v1.2 for full design spec.
