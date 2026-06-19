@@ -74,7 +74,7 @@ async def test_classify_returns_parsed_intent():
     with patch("classifier.httpx.AsyncClient") as MockClient:
         MockClient.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_resp)
         from classifier import classify
-        result = await classify("news", [])
+        result = await classify("what's in the morning news today", [])
     assert result["intent"] == "news_digest"
     assert result["confidence"] == 0.95
     assert result["router_tokens"] == 42
@@ -91,7 +91,7 @@ async def test_classify_youtube_returns_youtube_digest():
     with patch("classifier.httpx.AsyncClient") as MockClient:
         MockClient.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_resp)
         from classifier import classify
-        result = await classify("youtube", [])
+        result = await classify("show me the youtube digest", [])
     assert result["intent"] == "youtube_digest"
     assert result["router_tokens"] == 38
 
@@ -222,3 +222,40 @@ def test_candidate_shortcut_in_system_prompt():
     hints_section = lower[hints_start:]
     assert "candidate" in hints_section, \
         "'candidate' shortcut missing from hints section — /candidate TICKER won't route correctly"
+
+
+# ── Deterministic pre-classification shortcuts ────────────────────────────────
+
+def test_shortcuts_dict_exists():
+    """_SHORTCUTS must exist in classifier — it bypasses the LLM for single-word commands."""
+    import classifier
+    assert hasattr(classifier, "_SHORTCUTS"), "_SHORTCUTS dict missing from classifier"
+
+
+def test_shortcuts_covers_key_commands():
+    """All critical single-word commands must be in _SHORTCUTS so they never go to the LLM."""
+    import classifier
+    required = {"macro", "health", "portfolio", "refresh", "news", "youtube", "rates", "analyze", "earnings"}
+    missing = required - set(classifier._SHORTCUTS.keys())
+    assert not missing, f"These commands missing from _SHORTCUTS: {missing}"
+
+
+def test_shortcuts_macro_routes_to_macro_brief():
+    """'macro' must deterministically resolve to macro_brief without an LLM call."""
+    import classifier
+    intent, args = classifier._SHORTCUTS["macro"]
+    assert intent == "macro_brief", f"Expected macro_brief, got {intent}"
+
+
+@pytest.mark.asyncio
+async def test_classify_macro_bypasses_llm():
+    """classify('macro', []) must return macro_brief without touching httpx."""
+    import classifier
+    from unittest.mock import patch, AsyncMock
+    with patch("classifier.httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.post = AsyncMock()
+        result = await classifier.classify("macro", [])
+    # httpx must NOT have been called
+    MockClient.return_value.__aenter__.return_value.post.assert_not_called()
+    assert result["intent"] == "macro_brief"
+    assert result["router_tokens"] == 0

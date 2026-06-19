@@ -4,6 +4,25 @@ from typing import Optional
 import httpx
 from config import DEEPSEEK_KEY, DEEPSEEK_MODEL
 
+# Deterministic pre-classification: single-word commands that must never go to the LLM.
+# Keys are lowercased stripped text. Values are (intent, args).
+_SHORTCUTS: dict[str, tuple[str, dict]] = {
+    "macro":        ("macro_brief",         {}),
+    "rates":        ("macro_brief",         {}),
+    "health":       ("health_check",        {}),
+    "news":         ("news_digest",         {}),
+    "morning":      ("news_digest",         {}),
+    "youtube":      ("youtube_digest",      {}),
+    "yt":           ("youtube_digest",      {}),
+    "prices":       ("live_prices",         {}),
+    "refresh":      ("price_refresh",       {}),
+    "portfolio":    ("portfolio_digest",    {}),
+    "analyze":      ("portfolio_analysis",  {}),
+    "rationalize":  ("portfolio_rationalize", {"include_research": False}),
+    "rationalise":  ("portfolio_rationalize", {"include_research": False}),
+    "earnings":     ("earnings",            {"ticker": None}),
+}
+
 SYSTEM_PROMPT = """You are an intent classifier for a personal assistant Telegram bot.
 Classify the user message into exactly one of these intents and extract arguments.
 
@@ -45,6 +64,12 @@ No explanation."""
 
 
 async def classify(text: str, history: list[dict]) -> dict:
+    # Fast-path: deterministic single-word shortcuts bypass the LLM entirely.
+    key = text.strip().lower()
+    if key in _SHORTCUTS:
+        intent, args = _SHORTCUTS[key]
+        return {"intent": intent, "args": args, "confidence": 1.0, "router_tokens": 0}
+
     messages = [{"role": "system", "content": SYSTEM_PROMPT}]
     for turn in history[-4:]:
         messages.append({"role": turn["role"], "content": turn["content"]})
