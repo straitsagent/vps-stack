@@ -20,7 +20,7 @@ Available tools:
 - ticker_detail: {"ticker": "SYMBOL"} — detailed price and fundamentals for one stock
 - earnings: {"ticker": "SYMBOL or null"} — upcoming earnings calendar or latest stored earnings analysis
 - news_search: {"query": "search terms"} — search for specific news
-- macro_indicators: {} — SGD/USD, HKD/USD, VIX, Brent, 10Y UST
+- macro_indicators: {} — 24 indicators across 6 groups: equity indices (S&P 500, Nasdaq, Hang Seng, STI, Shanghai), rates (UST 5Y/10Y/30Y), volatility (VIX), commodities (Brent, WTI, Gold, Copper), FX (USD/SGD, USD/HKD, USD/CNY, DXY, EUR/USD, USD/JPY), and FRED economic data (Fed Funds, CPI YoY, Core PCE YoY, Unemployment)
 - thesis_read: {"ticker": "SYMBOL"} — stored investment thesis
 
 Choose 2-4 tools that best answer the question. Output ONLY valid JSON array. No explanation."""

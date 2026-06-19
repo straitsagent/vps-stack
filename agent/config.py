@@ -15,6 +15,7 @@ DEEPSEEK_KEY = os.environ["DEEPSEEK_KEY"]
 XAI_KEY = os.environ["XAI_KEY"]
 FINNHUB_KEY = os.environ.get("FINNHUB_KEY", "")
 EXA_KEY = os.environ.get("EXA_KEY", "")
+FRED_KEY = os.environ.get("FRED_KEY", "")
 
 DEEPSEEK_MODEL = "deepseek-chat"
 GROK_MODEL = "grok-4"

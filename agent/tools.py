@@ -645,46 +645,164 @@ async def news_search(args: dict) -> dict:
     return {"text": "\n".join(lines)}
 
 
-# (label, invert) — invert=True means display 1/value (USD/SGD instead of SGD/USD)
-_MACRO_SYMBOLS = {
-    "SGDUSD=X": ("USD/SGD",  True),
-    "HKDUSD=X": ("USD/HKD",  True),
-    "^VIX":     ("VIX",      False),
-    "BZ=F":     ("Brent",    False),
-    "^TNX":     ("UST 10Y",  False),
-}
+from collections import OrderedDict as _OD
+
+# Each entry: (yahoo_symbol, display_label, invert_value, value_format)
+# invert=True: display 1/value (USD/SGD reciprocal of Yahoo SGDUSD=X)
+_YAHOO_GROUPS: _OD = _OD([
+    ("Indices", [
+        ("^GSPC",     "S&P 500",    False, ",.0f"),
+        ("^NDX",      "Nasdaq 100", False, ",.0f"),
+        ("^HSI",      "Hang Seng",  False, ",.0f"),
+        ("^STI",      "STI",        False, ",.0f"),
+        ("000001.SS", "Shanghai",   False, ",.0f"),
+    ]),
+    ("Rates", [
+        ("^FVX",      "UST 5Y",     False, ".2f"),
+        ("^TNX",      "UST 10Y",    False, ".2f"),
+        ("^TYX",      "UST 30Y",    False, ".2f"),
+    ]),
+    ("Vol", [
+        ("^VIX",      "VIX",        False, ".1f"),
+    ]),
+    ("Commodities", [
+        ("BZ=F",      "Brent",      False, ".1f"),
+        ("CL=F",      "WTI",        False, ".1f"),
+        ("GC=F",      "Gold",       False, ",.0f"),
+        ("HG=F",      "Copper",     False, ".2f"),
+    ]),
+    ("FX", [
+        ("SGDUSD=X",  "USD/SGD",    True,  ".4f"),
+        ("HKDUSD=X",  "USD/HKD",    True,  ".4f"),
+        ("CNY=X",     "USD/CNY",    False, ".4f"),
+        ("DX-Y.NYB",  "DXY",        False, ".1f"),
+        ("EURUSD=X",  "EUR/USD",    False, ".4f"),
+        ("JPY=X",     "USD/JPY",    False, ".1f"),
+    ]),
+])
+
+# (fred_series_id, display_label, transform, value_format)
+# transform: None = use latest raw value; "yoy" = compute year-over-year % change
+_FRED_SERIES = [
+    ("DGS2",     "UST 2Y",        None,  ".2f"),
+    ("FEDFUNDS", "Fed Funds",     None,  ".2f"),
+    ("CPIAUCSL", "CPI YoY",       "yoy", ".1f"),
+    ("PCEPILFE", "Core PCE YoY",  "yoy", ".1f"),
+    ("UNRATE",   "Unemployment",  None,  ".1f"),
+]
 
 
 async def macro_indicators(_args: dict) -> dict:
+    from config import FRED_KEY
     sgt = timezone(timedelta(hours=8))
     date_str = datetime.now(sgt).strftime("%-d %b %Y")
-    lines = [f"*Macro — {date_str}*\n"]
-    errors = 0
+
+    all_yahoo = [(sym, label, inv, fmt)
+                 for entries in _YAHOO_GROUPS.values()
+                 for sym, label, inv, fmt in entries]
+
+    async def _yahoo(client, sym, label, invert, fmt):
+        try:
+            r = await client.get(
+                f"https://query1.finance.yahoo.com/v8/finance/chart/{sym}",
+                params={"interval": "1d", "range": "5d"},
+                headers={"User-Agent": "Mozilla/5.0"},
+            )
+            result = r.json()["chart"]["result"][0]
+            closes = [c for c in result["indicators"]["quote"][0]["close"] if c is not None]
+            if not closes:
+                raise ValueError("no data")
+            latest = closes[-1]
+            chg = ((closes[-1] / closes[0]) - 1) * 100 if len(closes) >= 2 else 0.0
+            if invert:
+                latest = 1.0 / latest
+                chg = -chg
+            return (label, latest, chg, fmt, None)
+        except Exception:
+            return (label, None, None, fmt, None)
+
+    async def _fred(client, series_id, label, transform, fmt):
+        if not FRED_KEY:
+            return (label, None, None, fmt, None)
+        try:
+            limit = 13 if transform == "yoy" else 2
+            r = await client.get(
+                "https://api.stlouisfed.org/fred/series/observations",
+                params={
+                    "series_id": series_id,
+                    "api_key": FRED_KEY,
+                    "file_type": "json",
+                    "sort_order": "desc",
+                    "limit": limit,
+                },
+                timeout=15,
+            )
+            obs = [o for o in r.json().get("observations", []) if o.get("value", ".") != "."]
+            if not obs:
+                raise ValueError("no data")
+            val = float(obs[0]["value"])
+            date_tag = obs[0]["date"][:7]
+            if transform == "yoy" and len(obs) >= 13:
+                val = (float(obs[0]["value"]) / float(obs[12]["value"]) - 1) * 100
+            return (label, val, None, fmt, date_tag)
+        except Exception:
+            return (label, None, None, fmt, None)
+
     async with httpx.AsyncClient(timeout=10) as client:
-        for symbol, (label, invert) in _MACRO_SYMBOLS.items():
-            try:
-                r = await client.get(
-                    f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
-                    params={"interval": "1d", "range": "5d"},
-                    headers={"User-Agent": "Mozilla/5.0"},
-                )
-                result = r.json()["chart"]["result"][0]
-                closes = result["indicators"]["quote"][0]["close"]
-                closes = [c for c in closes if c is not None]
-                if len(closes) < 1:
-                    raise ValueError("no data")
-                latest = closes[-1]
-                chg = ((closes[-1] / closes[0]) - 1) * 100 if len(closes) >= 2 else 0
-                if invert:
-                    latest = 1.0 / latest
-                    chg = -chg
-                arrow = "▲" if chg >= 0 else "▼"
-                lines.append(f"{label:10}  {latest:>10.4f}  {arrow}{abs(chg):.2f}% (5d)")
-            except Exception:
-                errors += 1
-                lines.append(f"{label:10}  —")
-    if errors == len(_MACRO_SYMBOLS):
+        tasks = (
+            [_yahoo(client, sym, lbl, inv, fmt) for sym, lbl, inv, fmt in all_yahoo] +
+            [_fred(client, sid, lbl, tr, fmt)   for sid, lbl, tr, fmt  in _FRED_SERIES]
+        )
+        results = await asyncio.gather(*tasks)
+
+    yahoo_results = results[:len(all_yahoo)]
+    fred_results  = results[len(all_yahoo):]
+
+    # Build output
+    lines = [f"*Macro — {date_str}*"]
+    yahoo_ok = sum(1 for _, v, _, _, _ in yahoo_results if v is not None)
+    if yahoo_ok == 0:
         return {"text": "Macro data unavailable — Yahoo Finance unreachable."}
+
+    # Yahoo groups
+    idx = 0
+    for group_name, entries in _YAHOO_GROUPS.items():
+        group_lines = []
+        for sym, label, _, _ in entries:
+            lbl, val, chg, fmt, _ = yahoo_results[idx]; idx += 1
+            if val is None:
+                group_lines.append(f"  {lbl:<14}  —")
+            else:
+                arrow = "▲" if (chg or 0) >= 0 else "▼"
+                val_str = format(val, fmt)
+                chg_str = f"  {arrow}{abs(chg):.1f}%" if chg is not None else ""
+                group_lines.append(f"  {lbl:<14}  {val_str:>10}{chg_str}")
+        lines.append(f"\n*{group_name}*")
+        lines.extend(group_lines)
+
+    # FRED group — Economics
+    fred_lines = []
+    for i, (sid, lbl, tr, fmt) in enumerate(_FRED_SERIES):
+        _, val, _, fmt2, date_tag = fred_results[i]
+        if val is None:
+            fred_lines.append(f"  {lbl:<16}  —")
+        else:
+            val_str = format(val, fmt2)
+            tag = f"  ({date_tag})" if date_tag else ""
+            fred_lines.append(f"  {lbl:<16}  {val_str:>7}%{tag}")
+
+    if any("—" not in ln or True for ln in fred_lines):
+        lines.append("\n*Economics (FRED)*")
+        lines.extend(fred_lines)
+
+    # Derived: 2Y-10Y yield curve spread
+    tnx_val  = next((v for lbl, v, _, _, _ in yahoo_results if lbl == "UST 10Y" and v), None)
+    dgs2_val = next((v for lbl, v, _, _, _ in fred_results  if lbl == "UST 2Y"  and v), None)
+    if tnx_val and dgs2_val:
+        spread = dgs2_val - tnx_val
+        sign = "+" if spread >= 0 else ""
+        lines.append(f"\n  2Y–10Y spread   {sign}{spread:.2f}%")
+
     return {"text": "\n".join(lines)}
 
 

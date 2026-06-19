@@ -10,6 +10,7 @@ os.environ.setdefault("WM_TOKEN", "test")
 os.environ.setdefault("AGENT_DB_URL", "postgresql://test")
 os.environ.setdefault("DEEPSEEK_KEY", "test")
 os.environ.setdefault("XAI_KEY", "test")
+os.environ.setdefault("FRED_KEY", "")
 
 import tempfile
 import unittest.mock
@@ -615,23 +616,54 @@ async def test_dispatch_research_includes_fred_key():
     )
 
 
-# ── macro_indicators — currency direction + format ───────────────────────────
+# ── macro_indicators — expanded groups, currency direction, FRED ─────────────
 
-def test_macro_symbols_use_usd_base_labels():
-    """Currency labels must be USD/SGD and USD/HKD (not SGD/USD, HKD/USD)."""
-    labels = [v[0] if isinstance(v, tuple) else v for v in tools._MACRO_SYMBOLS.values()]
-    assert "USD/SGD" in labels, "USD/SGD label missing from _MACRO_SYMBOLS"
-    assert "USD/HKD" in labels, "USD/HKD label missing from _MACRO_SYMBOLS"
-    assert "SGD/USD" not in labels, "SGD/USD still in _MACRO_SYMBOLS — should be USD/SGD"
-    assert "HKD/USD" not in labels, "HKD/USD still in _MACRO_SYMBOLS — should be USD/HKD"
+def _all_yahoo_entries():
+    """Flatten all (sym, label, invert, fmt) entries across _YAHOO_GROUPS."""
+    return [(sym, label, invert, fmt)
+            for entries in tools._YAHOO_GROUPS.values()
+            for sym, label, invert, fmt in entries]
 
 
-def test_macro_symbols_fx_marked_for_inversion():
-    """SGDUSD=X and HKDUSD=X must be marked invert=True so reciprocal is displayed."""
-    for sym in ("SGDUSD=X", "HKDUSD=X"):
-        entry = tools._MACRO_SYMBOLS[sym]
-        assert isinstance(entry, tuple) and entry[1] is True, \
-            f"{sym} must be (label, True) to flag reciprocal display"
+def test_macro_yahoo_groups_usd_base_labels():
+    """FX group must use USD/SGD and USD/HKD labels (not SGD/USD, HKD/USD)."""
+    all_labels = [label for _, label, _, _ in _all_yahoo_entries()]
+    assert "USD/SGD" in all_labels, "USD/SGD label missing from _YAHOO_GROUPS"
+    assert "USD/HKD" in all_labels, "USD/HKD label missing from _YAHOO_GROUPS"
+    assert "SGD/USD" not in all_labels, "SGD/USD still in _YAHOO_GROUPS — should be USD/SGD"
+    assert "HKD/USD" not in all_labels, "HKD/USD still in _YAHOO_GROUPS — should be USD/HKD"
+
+
+def test_macro_yahoo_groups_fx_marked_for_inversion():
+    """USD/SGD and USD/HKD entries must be marked invert=True."""
+    for sym, label, invert, _ in _all_yahoo_entries():
+        if label in ("USD/SGD", "USD/HKD"):
+            assert invert is True, f"{label} ({sym}) must be marked invert=True"
+
+
+def test_macro_yahoo_groups_at_least_19_symbols():
+    """Must define at least 19 Yahoo Finance symbols across all groups."""
+    total = sum(len(entries) for entries in tools._YAHOO_GROUPS.values())
+    assert total >= 19, f"Only {total} Yahoo symbols defined — need at least 19"
+
+
+def test_macro_yahoo_groups_expected_group_names():
+    """Groups Indices, Rates, Vol, Commodities, FX must all be present."""
+    groups = list(tools._YAHOO_GROUPS.keys())
+    for expected in ("Indices", "Rates", "Vol", "Commodities", "FX"):
+        assert expected in groups, f"Group '{expected}' missing from _YAHOO_GROUPS"
+
+
+def test_fred_series_has_at_least_5_entries():
+    """_FRED_SERIES must define at least 5 economic indicators."""
+    assert len(tools._FRED_SERIES) >= 5, \
+        f"Only {len(tools._FRED_SERIES)} FRED series defined — need at least 5"
+
+
+def test_fred_key_in_config():
+    """FRED_KEY must be exposed from config (may be empty if not set in env)."""
+    import config
+    assert hasattr(config, "FRED_KEY"), "FRED_KEY missing from config.py"
 
 
 @pytest.mark.asyncio
@@ -685,7 +717,27 @@ async def test_macro_indicators_inverts_fx_values():
     assert "USD/SGD" in text
     # Value shown must be reciprocal: 1/0.745 ≈ 1.342, definitely > 1.0
     import re
-    m = re.search(r"USD/SGD\s+([\d.]+)", text)
+    m = re.search(r"USD/SGD\s+([\d.,]+)", text)
     assert m, "Could not find USD/SGD value in output"
-    assert float(m.group(1)) > 1.0, \
+    assert float(m.group(1).replace(",", "")) > 1.0, \
         f"USD/SGD value should be ~1.34 (reciprocal of 0.745), got {m.group(1)}"
+
+
+@pytest.mark.asyncio
+async def test_macro_indicators_output_has_group_headers():
+    """Output must contain section headers for all 6 groups."""
+    mock_result = {
+        "chart": {"result": [{
+            "indicators": {"quote": [{"close": [100.0, 101.0]}]}
+        }]}
+    }
+    mock_resp = unittest.mock.MagicMock()
+    mock_resp.json.return_value = mock_result
+
+    with patch("tools.httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_resp)
+        result = await tools.macro_indicators({})
+
+    text = result["text"]
+    for header in ("Indices", "Rates", "Vol", "Commodities", "FX"):
+        assert header in text, f"Group header '{header}' missing from macro_indicators output"
