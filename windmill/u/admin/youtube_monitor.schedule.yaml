@@ -11,3 +11,5 @@ args:
   rapidapi_key: "$var:u/admin/rapidapi_key"
   smtp_resource: "$res:u/admin/gmail_smtp"
   youtube_feeds: "$var:u/admin/youtube_feeds"
+  telegram_bot_token: "$var:u/admin/telegram_bot_token"
+  telegram_owner_id: "$var:u/admin/telegram_owner_id"

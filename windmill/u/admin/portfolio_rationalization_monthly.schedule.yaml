@@ -13,3 +13,5 @@ args:
   deepseek_key: "$var:u/admin/deepseek_key"
   recipient_email: "$var:u/admin/recipient_email"
   include_research: false
+  telegram_bot_token: "$var:u/admin/telegram_bot_token"
+  telegram_owner_id: "$var:u/admin/telegram_owner_id"

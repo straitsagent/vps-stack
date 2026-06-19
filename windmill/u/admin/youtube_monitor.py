@@ -26,6 +26,17 @@ class smtp(TypedDict):
 
 SGT = timezone(timedelta(hours=8))
 RAPIDAPI_HOST = "youtube-transcribe-fastest-youtube-transcriber.p.rapidapi.com"
+
+
+def _send_telegram(bot_token: str, chat_id: str, text: str):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception as e:
+        log.warning(f"[Telegram] Failed to send: {e}")
 TRANSCRIPT_MAX_CHARS = 8000
 MAX_STATE_IDS = 1000
 MAX_ATTEMPTS = 3
@@ -228,6 +239,8 @@ def main(
     rapidapi_key: str,
     youtube_feeds: str,
     recipient_email: str = "",
+    telegram_bot_token: str = "",
+    telegram_owner_id: str = "",
 ):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     feeds = json.loads(youtube_feeds)
@@ -297,6 +310,15 @@ def main(
         server.login(username, password)
         server.sendmail(username, [recipient_email], msg.as_string())
     log.info(f"Sent: {subject}")
+
+    if telegram_bot_token and telegram_owner_id:
+        top_titles = [v["title"] for v in results[:3]]
+        lines = [f"• {t[:60]}" for t in top_titles]
+        extra = len(results) - len(top_titles)
+        if extra > 0:
+            lines.append(f"_and {extra} more_")
+        tg_text = f"*YouTube — {n_summarised} new video{'s' if n_summarised != 1 else ''}*\n\n" + "\n".join(lines)
+        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 
     est_cost = (total_prompt_tokens / 1_000_000) * 0.14 + (total_completion_tokens / 1_000_000) * 0.28
     log.info(f"Deepseek: {total_prompt_tokens:,} prompt + {total_completion_tokens:,} completion tokens · est. ${est_cost:.4f}")

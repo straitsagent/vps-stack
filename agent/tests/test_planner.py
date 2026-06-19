@@ -86,3 +86,28 @@ async def test_synthesise_includes_tool_outputs_in_prompt():
     assert "Portfolio: $1M total" in user_content
     assert "Markets up" in user_content
     assert result == "unified answer"
+
+
+# ── Planner bug fix: earnings_calendar → earnings ─────────────────────────────
+
+import planner
+
+
+def test_planner_allowed_tools_has_earnings_not_earnings_calendar():
+    """earnings_calendar was removed; the unified 'earnings' tool replaced it."""
+    assert "earnings" in planner._ALLOWED_TOOLS, \
+        "'earnings' not in _ALLOWED_TOOLS — MULTI_STEP flows can't call the earnings tool"
+    assert "earnings_calendar" not in planner._ALLOWED_TOOLS, \
+        "'earnings_calendar' still in _ALLOWED_TOOLS — this tool no longer exists"
+
+
+def test_planner_system_prompt_no_earnings_calendar():
+    """PLANNER_SYSTEM_PROMPT must not reference earnings_calendar (removed intent)."""
+    assert "earnings_calendar" not in planner.PLANNER_SYSTEM_PROMPT, \
+        "PLANNER_SYSTEM_PROMPT still describes 'earnings_calendar' — causes planner to emit dead tool calls"
+
+
+def test_planner_system_prompt_has_earnings():
+    """PLANNER_SYSTEM_PROMPT must describe the current 'earnings' tool."""
+    assert "earnings" in planner.PLANNER_SYSTEM_PROMPT, \
+        "PLANNER_SYSTEM_PROMPT missing 'earnings' tool description — planner can't select it"

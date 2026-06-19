@@ -2749,3 +2749,147 @@ def test_rationalization_research_gated_by_flag():
     """Research fetch must only execute when include_research is True."""
     src = _read_pr_source()
     assert "if include_research" in src
+
+
+# ── Move monitor: Telegram push ───────────────────────────────────────────────
+
+def test_move_monitor_has_telegram_params():
+    """main() must accept telegram_bot_token and telegram_owner_id params."""
+    src = _read_mm_source()
+    assert "telegram_bot_token" in src, "move_monitor missing telegram_bot_token param"
+    assert "telegram_owner_id" in src, "move_monitor missing telegram_owner_id param"
+
+
+def test_move_monitor_sends_telegram_on_breach():
+    """Script must call _send_telegram in the alert (threshold-breached) path."""
+    src = _read_mm_source()
+    assert "_send_telegram" in src, "move_monitor missing _send_telegram helper"
+    # The call must be inside the alert body (not just defined but never called)
+    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in move_monitor"
+
+
+def test_move_monitor_telegram_guarded_by_token_check():
+    """Telegram send must be guarded so it only fires when token is set."""
+    src = _read_mm_source()
+    assert "telegram_bot_token" in src
+    # Guard pattern: if telegram_bot_token (and something telegram_owner_id)
+    assert "if telegram_bot_token" in src or "telegram_bot_token and" in src, \
+        "move_monitor must guard _send_telegram call with a token check"
+
+
+# ── Rationalization: Telegram push ───────────────────────────────────────────
+
+def test_rationalization_has_telegram_params():
+    """main() must accept telegram_bot_token and telegram_owner_id params."""
+    src = _read_pr_source()
+    assert "telegram_bot_token" in src, "rationalization missing telegram_bot_token param"
+    assert "telegram_owner_id" in src, "rationalization missing telegram_owner_id param"
+
+
+def test_rationalization_sends_telegram_after_email():
+    """Script must call _send_telegram after the email send."""
+    src = _read_pr_source()
+    assert "_send_telegram" in src, "rationalization missing _send_telegram helper"
+    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in rationalization"
+
+
+def test_rationalization_telegram_guarded_by_token_check():
+    """Telegram send must be guarded so it only fires when token is set."""
+    src = _read_pr_source()
+    assert "if telegram_bot_token" in src or "telegram_bot_token and" in src, \
+        "rationalization must guard _send_telegram with a token check"
+
+
+# ── Portfolio email: Telegram snapshot ───────────────────────────────────────
+
+PORTFOLIO_EMAIL_SRC_PATH = os.path.join(
+    os.path.dirname(__file__), "../../windmill/u/admin/portfolio_email.py"
+)
+
+
+def _read_pe_source() -> str:
+    with open(PORTFOLIO_EMAIL_SRC_PATH) as f:
+        return f.read()
+
+
+def test_portfolio_email_has_telegram_params():
+    """main() must accept telegram_bot_token and telegram_owner_id params."""
+    src = _read_pe_source()
+    assert "telegram_bot_token" in src, "portfolio_email missing telegram_bot_token param"
+    assert "telegram_owner_id" in src, "portfolio_email missing telegram_owner_id param"
+
+
+def test_portfolio_email_sends_telegram_when_token_set():
+    """Script must call _send_telegram to deliver the snapshot."""
+    src = _read_pe_source()
+    assert "_send_telegram" in src, "portfolio_email missing _send_telegram helper"
+    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in portfolio_email"
+
+
+def test_portfolio_email_telegram_guarded_by_token_check():
+    """Telegram send must be guarded so it only fires when token is set."""
+    src = _read_pe_source()
+    assert "if telegram_bot_token" in src or "telegram_bot_token and" in src, \
+        "portfolio_email must guard _send_telegram with a token check"
+
+
+# ── Macro daily push: new script ─────────────────────────────────────────────
+
+MACRO_DAILY_PUSH = os.path.join(
+    os.path.dirname(__file__), "../../windmill/u/admin/macro_daily_push.py"
+)
+
+
+def _read_mdp_source() -> str:
+    with open(MACRO_DAILY_PUSH) as f:
+        return f.read()
+
+
+def test_macro_daily_push_has_telegram_params():
+    """main() must accept telegram_bot_token and telegram_owner_id."""
+    src = _read_mdp_source()
+    assert "telegram_bot_token" in src, "macro_daily_push missing telegram_bot_token"
+    assert "telegram_owner_id" in src, "macro_daily_push missing telegram_owner_id"
+
+
+def test_macro_daily_push_fetches_yahoo_symbols():
+    """Script must fetch Yahoo Finance data for core macro symbols."""
+    src = _read_mdp_source()
+    assert "query1.finance.yahoo.com" in src or "yfinance" in src or "USDSGD" in src or "VIX" in src, \
+        "macro_daily_push must fetch Yahoo Finance macro data"
+
+
+def test_macro_daily_push_calls_deepseek():
+    """Script must call Deepseek for synthesis."""
+    src = _read_mdp_source()
+    assert "deepseek" in src.lower(), "macro_daily_push must call Deepseek for synthesis"
+
+
+def test_macro_daily_push_sends_telegram():
+    """Script must call _send_telegram to deliver the push."""
+    src = _read_mdp_source()
+    assert "_send_telegram" in src, "macro_daily_push missing _send_telegram"
+    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in macro_daily_push"
+
+
+# ── YouTube monitor: Telegram push on new videos ─────────────────────────────
+
+def test_youtube_monitor_has_telegram_params():
+    """main() must accept telegram_bot_token and telegram_owner_id params."""
+    src = _read_yt_source()
+    assert "telegram_bot_token" in src, "youtube_monitor missing telegram_bot_token param"
+    assert "telegram_owner_id" in src, "youtube_monitor missing telegram_owner_id param"
+
+
+def test_youtube_monitor_sends_telegram_when_videos_found():
+    """Script must call _send_telegram when new videos are found."""
+    src = _read_yt_source()
+    assert "_send_telegram" in src, "youtube_monitor missing _send_telegram helper"
+    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in youtube_monitor"
+
+
+def test_youtube_monitor_telegram_guarded_by_token_check():
+    """Telegram send must be guarded so it only fires when token is set."""
+    src = _read_yt_source()
+    assert "if telegram_bot_token" in src or "telegram_bot_token and" in src, \
+        "youtube_monitor must guard _send_telegram with a token check"

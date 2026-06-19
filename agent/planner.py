@@ -7,7 +7,7 @@ from config import DEEPSEEK_KEY, DEEPSEEK_MODEL
 _ALLOWED_TOOLS = {
     "portfolio_snapshot", "portfolio_digest", "ticker_detail", "live_prices",
     "health_check", "news_digest", "youtube_digest", "thesis_read",
-    "earnings_calendar", "news_search", "macro_indicators",
+    "earnings", "news_search", "macro_indicators",
 }
 
 PLANNER_SYSTEM_PROMPT = """You are a research planner for a personal finance assistant.
@@ -18,7 +18,7 @@ Available tools:
 - portfolio_snapshot: {} — current portfolio values and P&L
 - news_digest: {} — latest morning news digest
 - ticker_detail: {"ticker": "SYMBOL"} — detailed price and fundamentals for one stock
-- earnings_calendar: {"ticker": "SYMBOL or null"} — upcoming earnings dates
+- earnings: {"ticker": "SYMBOL or null"} — upcoming earnings calendar or latest stored earnings analysis
 - news_search: {"query": "search terms"} — search for specific news
 - macro_indicators: {} — SGD/USD, HKD/USD, VIX, Brent, 10Y UST
 - thesis_read: {"ticker": "SYMBOL"} — stored investment thesis

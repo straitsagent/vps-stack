@@ -29,24 +29,33 @@ STRUCT_RESEARCH_RE = re.compile(
     re.IGNORECASE | re.DOTALL,
 )
 
+STRUCT_CANDIDATE_RE = re.compile(
+    r"^candidate\s+(\S+)(.*)?$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+TELEGRAM_COMMANDS = [
+    {"command": "analyze",       "description": "Portfolio deep analysis with macro context and news"},
+    {"command": "candidate",     "description": "Evaluate a candidate stock: ADD / WATCH / PASS verdict (~60s)"},
+    {"command": "deepresearch",  "description": "In-depth research with agentic gap analysis (~$0.20)"},
+    {"command": "earnings",      "description": "Upcoming earnings calendar or stored analysis for a ticker"},
+    {"command": "health",        "description": "System health check + 24h API cost"},
+    {"command": "macro",         "description": "Macro indicators, news context and portfolio synthesis (~15s)"},
+    {"command": "news",          "description": "Latest morning news digest"},
+    {"command": "portfolio",     "description": "Live portfolio snapshot"},
+    {"command": "prices",        "description": "Trigger portfolio price refresh"},
+    {"command": "rationalize",   "description": "Run portfolio rationalization scoring (~10 min)"},
+    {"command": "research",      "description": "General research on a topic or stock, standard depth"},
+    {"command": "search",        "description": "Search news via Exa neural search"},
+    {"command": "stockresearch", "description": "Deep stock research report (cached 90 days)"},
+    {"command": "thesis",        "description": "Read or write investment thesis for a position"},
+    {"command": "youtube",       "description": "Latest YouTube channel digest"},
+]
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await meta.set_my_commands([
-        {"command": "stockresearch", "description": "Deep stock research (cached 90d)"},
-        {"command": "research",      "description": "General research, standard"},
-        {"command": "deepresearch",  "description": "General research, deep + agentic (~$0.20)"},
-        {"command": "earnings",      "description": "Upcoming or recent earnings"},
-        {"command": "portfolio",     "description": "Live portfolio snapshot"},
-        {"command": "prices",        "description": "Refresh portfolio prices"},
-        {"command": "news",          "description": "Latest news digest"},
-        {"command": "youtube",       "description": "Latest YouTube digest"},
-        {"command": "macro",         "description": "Macro indicators"},
-        {"command": "thesis",        "description": "Read/write stock thesis"},
-        {"command": "health",        "description": "System health check"},
-        {"command": "search",        "description": "Search news (Exa)"},
-        {"command": "digest",        "description": "Morning digest"},
-    ])
+    await meta.set_my_commands(TELEGRAM_COMMANDS)
     task = asyncio.create_task(polling_loop())
     yield
     task.cancel()
@@ -140,6 +149,39 @@ async def handle_owner(phone: str, text: str, t0: float):
             await db.write_audit(
                 phone=phone, inbound_text=text, intent="research", tool="research",
                 tool_args=args, latency_ms=int((time.monotonic() - t0) * 1000),
+                router_tokens=0, synth_tokens=None, cost_usd=None,
+                wm_job_id=job_id, response_text=ack,
+                status="dispatched" if job_id else "cached", error=None,
+            )
+            return
+
+    # ── Structured candidate shortcut (only fires for /candidate TICKER)
+    if was_slash:
+        mc = STRUCT_CANDIDATE_RE.match(text)
+        if mc:
+            ticker = mc.group(1).upper()
+            thesis_text = (mc.group(2) or "").strip() or None
+            args = {"ticker": ticker}
+            if thesis_text:
+                args["thesis_text"] = thesis_text
+            executor = ASYNC_NOTIFY_EXECUTORS.get("candidate_evaluation")
+            try:
+                result = await executor(args, phone)
+            except Exception as e:
+                await meta.send_message(phone, f"❌ Failed to dispatch candidate eval: {e}")
+                return
+            ack = result["text"]
+            job_id = result.get("job_id")
+            await meta.send_message(phone, ack)
+            await db.append_history(phone, "user", text)
+            await db.append_history(phone, "assistant", ack,
+                                    tool_called="candidate_evaluation", tool_args=args)
+            if job_id:
+                await db.create_pending_job(job_id, phone, "candidate_evaluation", args)
+            await db.write_audit(
+                phone=phone, inbound_text=text, intent="candidate_evaluation",
+                tool="candidate_evaluation", tool_args=args,
+                latency_ms=int((time.monotonic() - t0) * 1000),
                 router_tokens=0, synth_tokens=None, cost_usd=None,
                 wm_job_id=job_id, response_text=ack,
                 status="dispatched" if job_id else "cached", error=None,

@@ -175,3 +175,50 @@ def test_candidate_evaluation_intent():
 def test_candidate_evaluation_shortcuts():
     assert "evaluate" in SYSTEM_PROMPT.lower(), \
         "'evaluate' shortcut missing from SYSTEM_PROMPT — 'evaluate TICKER' won't route to candidate_evaluation"
+
+
+# ── New tests: macro routing, analyze shortcut, planner bug ──────────────────
+
+def test_macro_shortcut_routes_to_macro_brief():
+    """'macro' and 'rates' shortcuts must map to macro_brief, not macro_indicators."""
+    lower = SYSTEM_PROMPT.lower()
+    hints_start = lower.rfind("single-word")
+    assert hints_start != -1, "No single-word shortcuts section found"
+    hints_section = lower[hints_start:]
+    # Find the macro shortcut line and confirm it points to macro_brief
+    assert "macro_brief" in hints_section, \
+        "'macro'/'rates' shortcut must route to macro_brief (not macro_indicators)"
+    # The shortcut for raw data must NOT be the default for 'macro'
+    # Find the position of 'macro' shortcut and ensure macro_brief follows it
+    idx_macro = hints_section.find('"macro"')
+    idx_brief = hints_section.find("macro_brief")
+    assert idx_macro != -1, "'macro' shortcut not found in hints section"
+    assert idx_brief != -1, "macro_brief target not found in hints section"
+
+
+def test_macro_indicators_still_listed_as_intent():
+    """macro_indicators must remain as a listed intent for explicit raw-data requests."""
+    assert "macro_indicators" in SYSTEM_PROMPT, \
+        "macro_indicators intent was removed — users who ask for 'raw macro data' will fail"
+
+
+def test_analyze_shortcut_routes_to_portfolio_analysis():
+    """'analyze' shortcut must appear in hints section pointing to portfolio_analysis."""
+    lower = SYSTEM_PROMPT.lower()
+    hints_start = lower.rfind("single-word")
+    assert hints_start != -1, "No single-word shortcuts section found"
+    hints_section = lower[hints_start:]
+    assert "analyze" in hints_section, \
+        "'analyze' shortcut missing — /analyze command won't route to portfolio_analysis"
+    assert "portfolio_analysis" in hints_section, \
+        "portfolio_analysis target missing from hints section"
+
+
+def test_candidate_shortcut_in_system_prompt():
+    """'candidate TICKER' must be listed as a shortcut for candidate_evaluation."""
+    lower = SYSTEM_PROMPT.lower()
+    hints_start = lower.rfind("single-word")
+    assert hints_start != -1, "No single-word shortcuts section found"
+    hints_section = lower[hints_start:]
+    assert "candidate" in hints_section, \
+        "'candidate' shortcut missing from hints section — /candidate TICKER won't route correctly"

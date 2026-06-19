@@ -15,6 +15,7 @@ Output: emailed HTML report + /root/research/portfolio/rationalization_YYYY-MM-D
 import json
 import os
 import smtplib
+import requests
 from datetime import date, datetime
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
@@ -45,6 +46,17 @@ MIN_POOL_SIZE = 8
 
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
+
+def _send_telegram(bot_token: str, chat_id: str, text: str):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception as e:
+        log.warning(f"[Telegram] Failed to send: {e}")
+
 
 def _conn(portfolio_db: dict):
     return psycopg2.connect(
@@ -863,6 +875,8 @@ def main(
     deepseek_key: str,
     recipient_email: str = "",
     include_research: bool = False,
+    telegram_bot_token: str = "",
+    telegram_owner_id: str = "",
 ):
     today_str = date.today().strftime("%Y-%m-%d")
     log.info(f"[Rationalization] Starting run for {today_str}")
@@ -1201,6 +1215,20 @@ Below are the position verdicts. Generate the executive summary, portfolio const
         _send_email(gmail_smtp, f"Portfolio Rationalization — {today_str}", report_md, html_body, recipient_email)
     else:
         log.warning("[Email] No gmail_smtp provided — skipping email delivery")
+
+    if telegram_bot_token and telegram_owner_id:
+        sorted_tickers = sorted(tickers, key=lambda t: ranks.get(t, {}).get("balanced", 99))
+        top3 = sorted_tickers[:3]
+        bot3 = sorted_tickers[-3:][::-1]
+        top_str = ", ".join(f"{t} ({i+1})" for i, t in enumerate(top3))
+        bot_str = ", ".join(f"{t} ({len(sorted_tickers)-i})" for i, t in enumerate(bot3))
+        tg_text = (
+            f"*Portfolio Rationalization — {today_str}*\n\n"
+            f"Top keeps: {top_str}\n"
+            f"Review: {bot_str}\n\n"
+            f"Full report sent to email."
+        )
+        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 
     # ── 13. Upsert portfolio_scores ────────────────────────────────────────────
     upsert_cur = conn.cursor()

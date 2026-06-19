@@ -106,3 +106,111 @@ def test_struct_stockresearch_ticker_uppercased():
     parts = remainder.split(None, 1)
     ticker = parts[0].upper() if parts else ""
     assert ticker == "NVDA"
+
+
+# ── Telegram command menu (source-inspection) ────────────────────────────────
+# Parse main.py source to extract and validate the TELEGRAM_COMMANDS list.
+# Source-inspection avoids pulling in FastAPI which isn't installed on the host.
+
+import ast
+import os as _os
+
+_MAIN_PY = _os.path.join(_os.path.dirname(__file__), "../main.py")
+
+
+def _parse_telegram_commands() -> list[dict]:
+    """Extract the TELEGRAM_COMMANDS list literal from main.py via AST parsing."""
+    with open(_MAIN_PY) as f:
+        src = f.read()
+    tree = ast.parse(src)
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Assign):
+            for target in node.targets:
+                if isinstance(target, ast.Name) and target.id == "TELEGRAM_COMMANDS":
+                    return ast.literal_eval(node.value)
+    raise AssertionError("TELEGRAM_COMMANDS not found as a module-level constant in main.py")
+
+
+def test_command_list_is_alphabetical():
+    """Command names must be in alphabetical order for discoverability."""
+    commands = _parse_telegram_commands()
+    names = [c["command"] for c in commands]
+    assert names == sorted(names), \
+        f"Commands not in alphabetical order. Got: {names}"
+
+
+def test_digest_command_removed():
+    """'digest' was a duplicate of 'news' and must be removed from the menu."""
+    commands = _parse_telegram_commands()
+    names = [c["command"] for c in commands]
+    assert "digest" not in names, \
+        "'digest' command still in menu — it duplicates /news"
+
+
+def test_command_count_within_telegram_limits():
+    """Telegram allows up to 100 commands."""
+    commands = _parse_telegram_commands()
+    assert len(commands) <= 100, \
+        f"Too many commands: {len(commands)} (Telegram limit is 100)"
+
+
+def test_all_command_names_within_32_chars():
+    """Telegram limits command names to 32 characters."""
+    for c in _parse_telegram_commands():
+        assert len(c["command"]) <= 32, \
+            f"Command name too long ({len(c['command'])} chars): {c['command']!r}"
+
+
+def test_all_command_descriptions_within_256_chars():
+    """Telegram limits command descriptions to 256 characters."""
+    for c in _parse_telegram_commands():
+        assert len(c["description"]) <= 256, \
+            f"Description too long ({len(c['description'])} chars) for /{c['command']}"
+
+
+def test_analyze_command_in_menu():
+    """'/analyze' must be in the command menu."""
+    names = [c["command"] for c in _parse_telegram_commands()]
+    assert "analyze" in names, "'/analyze' command missing from menu"
+
+
+def test_rationalize_command_in_menu():
+    """'/rationalize' must be in the command menu."""
+    names = [c["command"] for c in _parse_telegram_commands()]
+    assert "rationalize" in names, "'/rationalize' command missing from menu"
+
+
+def test_candidate_command_in_menu():
+    """'/candidate' must be in the command menu."""
+    names = [c["command"] for c in _parse_telegram_commands()]
+    assert "candidate" in names, "'/candidate' command missing from menu"
+
+
+# ── STRUCT_CANDIDATE_RE fast-path regex ──────────────────────────────────────
+
+STRUCT_CANDIDATE_RE = re.compile(
+    r"^candidate\s+(\S+)(.*)?$",
+    re.IGNORECASE | re.DOTALL,
+)
+
+
+def test_struct_candidate_re_extracts_ticker():
+    m = STRUCT_CANDIDATE_RE.match("candidate NVDA")
+    assert m is not None
+    assert m.group(1).upper() == "NVDA"
+
+
+def test_struct_candidate_re_extracts_ticker_with_thesis():
+    m = STRUCT_CANDIDATE_RE.match("candidate AAPL growth story in AI")
+    assert m is not None
+    assert m.group(1).upper() == "AAPL"
+    assert "growth story" in (m.group(2) or "")
+
+
+def test_struct_candidate_re_case_insensitive():
+    assert STRUCT_CANDIDATE_RE.match("CANDIDATE nvda") is not None
+
+
+def test_struct_candidate_re_no_match_bare_candidate():
+    """Bare 'candidate' without a ticker must not match (falls through to classifier)."""
+    assert STRUCT_CANDIDATE_RE.match("candidate") is None

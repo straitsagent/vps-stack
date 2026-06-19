@@ -7,6 +7,7 @@ import smtplib
 import time
 import psycopg2
 import pytz
+import requests
 import yfinance as yf
 from datetime import datetime
 from email.mime.multipart import MIMEMultipart
@@ -17,6 +18,17 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
 
+def _send_telegram(bot_token: str, chat_id: str, text: str):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception as e:
+        log.warning(f"[Telegram] Failed to send: {e}")
+
+
 PORTFOLIO_ALERT_THRESHOLD = 0.015   # ±1.5%
 POSITION_ALERT_THRESHOLD  = 0.05    # ±5%
 GREEN = "#1a7f37"
@@ -24,7 +36,13 @@ RED   = "#cf222e"
 GRAY  = "#666"
 
 
-def main(portfolio_db: dict, gmail_smtp: dict = {}, recipient_email: str = ""):
+def main(
+    portfolio_db: dict,
+    gmail_smtp: dict = {},
+    recipient_email: str = "",
+    telegram_bot_token: str = "",
+    telegram_owner_id: str = "",
+):
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
 
@@ -254,6 +272,18 @@ def main(portfolio_db: dict, gmail_smtp: dict = {}, recipient_email: str = ""):
         server.quit()
 
         log.info(f"Alert sent: {subject}")
+
+    if telegram_bot_token and telegram_owner_id:
+        direction = "▲" if portfolio_move >= 0 else "▼"
+        pos_lines = []
+        for p in sorted(position_alerts, key=lambda x: abs(x["intraday_pct"]), reverse=True)[:5]:
+            sign = "+" if p["intraday_pct"] >= 0 else ""
+            pos_lines.append(f"• {p['ticker']} {sign}{p['intraday_pct']:.1f}%")
+        pos_block = "\n".join(pos_lines) if pos_lines else ""
+        tg_text = f"*Move Alert — {time_str}*\nPortfolio: {direction}{abs(portfolio_move):.2f}%"
+        if pos_block:
+            tg_text += f"\n\n{pos_block}"
+        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 
     return {
         "alerted":          True,

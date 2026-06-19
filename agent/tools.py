@@ -707,7 +707,7 @@ async def thesis_read(args: dict) -> dict:
     if catalysts:
         lines += ["", "*Key Catalysts:*"] + [f"• {c}" for c in catalysts]
     if risks:
-        lines += ["", "*Risks:*"] + [f"• c" for c in risks]
+        lines += ["", "*Risks:*"] + [f"• {c}" for c in risks]
     if r.get("target_price_usd"):
         lines.append(f"\nTarget: ${r['target_price_usd']:.2f}")
     return {"text": "\n".join(lines)}

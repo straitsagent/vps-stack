@@ -4,6 +4,7 @@
 # feedparser>=6.0
 
 import smtplib
+import requests
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime
@@ -19,6 +20,17 @@ log = logging.getLogger(__name__)
 GREEN = "#1a7f37"
 RED   = "#cf222e"
 GRAY  = "#666"
+
+
+def _send_telegram(bot_token: str, chat_id: str, text: str):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception as e:
+        log.warning(f"[Telegram] Failed to send: {e}")
 
 CURRENCY_SYMBOLS = {
     "USD": "$", "HKD": "HK$", "SGD": "S$",
@@ -59,7 +71,13 @@ def price_cell_html(price, currency, price_usd):
     return cell
 
 
-def main(portfolio_db: dict, gmail_smtp: dict, recipient_email: str = ""):
+def main(
+    portfolio_db: dict,
+    gmail_smtp: dict,
+    recipient_email: str = "",
+    telegram_bot_token: str = "",
+    telegram_owner_id: str = "",
+):
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
 
@@ -412,6 +430,20 @@ def main(portfolio_db: dict, gmail_smtp: dict, recipient_email: str = ""):
 
     log.info(f"Sent: {subject}")
     log.info(f"{len(positions)} positions | {fmt_usd(total_value)} | P&L: {fmt_pnl(total_pnl)} ({fmt_pct(total_pnl_pct)})")
+
+    if telegram_bot_token and telegram_owner_id:
+        time_label = now_sgt.strftime("%-I%p SGT").lower()
+        gainers = [it for it in top_up[:3] if it.get("pnl_pct") is not None]
+        losers  = [it for it in top_down[:3] if it.get("pnl_pct") is not None]
+        g_str = "  ".join(f"{it['label']} {fmt_pct(it['pnl_pct'])}" for it in gainers) or "—"
+        l_str = "  ".join(f"{it['label']} {fmt_pct(it['pnl_pct'])}" for it in losers) or "—"
+        tg_text = (
+            f"*Portfolio — {time_label} ({session})*\n"
+            f"Total: {fmt_usd(total_value)}  {fmt_pct(total_pnl_pct)} ({fmt_pnl(total_pnl)})\n\n"
+            f"📈 {g_str}\n"
+            f"📉 {l_str}"
+        )
+        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 
     # ── Write markdown digest ──────────────────────────────────────────────
     import os as _os
