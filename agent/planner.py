@@ -1,4 +1,5 @@
 """Multi-step reasoning: planner LLM call → sequential FAST tool execution → synthesis."""
+import asyncio
 import json
 
 import httpx
@@ -27,13 +28,26 @@ Choose 2-4 tools that best answer the question. Output ONLY valid JSON array. No
 
 SYNTHESISER_SYSTEM_PROMPT = """You are a concise personal finance assistant. You receive tool outputs and synthesise them into a clear, direct answer for the user. Write in plain text with markdown formatting. Be brief — aim for 200-400 words unless the question demands more detail."""
 
-MACRO_SYNTHESISER_SYSTEM_PROMPT = """You are a macro analyst for a personal finance assistant. Structure your response exactly as follows:
+_NEWS_SECTIONS = {
+    "Indices & Vol":  "stock markets equities S&P Nasdaq Hang Seng volatility VIX",
+    "Rates":          "US treasury yields interest rates Federal Reserve bonds",
+    "Commodities":    "oil Brent gold copper commodities prices",
+    "FX":             "dollar USD currency CNY JPY SGD exchange rates",
+    "Economics":      "Fed inflation CPI PCE unemployment US economy",
+}
 
-1. Output the macro indicators data verbatim (preserve the header and every data line exactly as received — do not reformat or omit any values).
-2. Write 2-3 sentences of commentary interpreting the macro environment for a portfolio ~40% HK equities / ~60% US equities. Be direct and specific about what the data signals.
-3. End with a *Sources* section listing each news headline and its publication source on a separate bullet line.
+MACRO_SYNTHESISER_SYSTEM_PROMPT = """You are a macro analyst for a personal finance assistant.
 
-Use markdown. Keep total length under 400 words."""
+You receive: macro indicators data (grouped by section) and news results labelled by section.
+
+For EACH section in the data, output:
+1. A divider: ━━━━━━━━━━━━━━━━━━━━
+2. The section header and ALL data rows EXACTLY as given (preserve spacing and values)
+3. 2-4 sentences of in-depth commentary interpreting what the indicators signal for a portfolio ~40% HK equities / ~60% US equities. Be specific about portfolio implications.
+4. Relevant news sources with hyperlinks: • [Title](url) — Publication
+
+Output sections in this order: Indices, Rates, Vol, Commodities, FX, Economics (FRED).
+Use Markdown. No preamble or conclusion text outside the sections."""
 
 
 def _parse_plan(raw: str) -> list[dict]:
@@ -126,3 +140,47 @@ async def synthesise_macro(question: str, tool_results: dict[str, str]) -> str:
     except Exception as e:
         print(f"[MacroSynthesiser] ERROR: {e}")
         return f"Macro analysis failed: {e}"
+
+
+async def run_macro_brief(question: str) -> str:
+    """Fetch macro data + 5 targeted news searches in parallel, then synthesise per-section."""
+    from tools import macro_indicators, news_search
+
+    queries = list(_NEWS_SECTIONS.values())
+    section_names = list(_NEWS_SECTIONS.keys())
+
+    tasks = [macro_indicators({})] + [news_search({"query": q}) for q in queries]
+    all_results = await asyncio.gather(*tasks, return_exceptions=True)
+
+    macro_result = all_results[0]
+    macro_data = macro_result.get("text", "Macro data unavailable.") if not isinstance(macro_result, Exception) else "Macro data unavailable."
+
+    news_parts = []
+    for i, name in enumerate(section_names):
+        r = all_results[i + 1]
+        news_text = r.get("text", "") if not isinstance(r, Exception) else ""
+        news_parts.append(f"[News — {name}]\n{news_text}")
+
+    combined = f"[Macro Data]\n{macro_data}\n\n" + "\n\n".join(news_parts)
+
+    messages = [
+        {"role": "system", "content": MACRO_SYNTHESISER_SYSTEM_PROMPT},
+        {"role": "user", "content": f"{combined}\n\nUser question: {question}"},
+    ]
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            r = await client.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {DEEPSEEK_KEY}"},
+                json={
+                    "model": DEEPSEEK_MODEL,
+                    "messages": messages,
+                    "temperature": 0.3,
+                    "max_tokens": 2500,
+                },
+            )
+            r.raise_for_status()
+        return r.json()["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        print(f"[run_macro_brief] ERROR: {e}")
+        return f"Macro brief failed: {e}"

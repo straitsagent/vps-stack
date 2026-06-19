@@ -214,3 +214,12 @@ def test_struct_candidate_re_case_insensitive():
 def test_struct_candidate_re_no_match_bare_candidate():
     """Bare 'candidate' without a ticker must not match (falls through to classifier)."""
     assert STRUCT_CANDIDATE_RE.match("candidate") is None
+
+
+def test_macro_brief_calls_run_macro_brief():
+    """main.py must call pl.run_macro_brief for macro_brief intent (not the generic step-loop)."""
+    import pathlib
+    main_path = pathlib.Path(__file__).parent.parent / "main.py"
+    src = main_path.read_text()
+    assert "run_macro_brief" in src, \
+        "main.py must call pl.run_macro_brief for macro_brief — the step-loop cannot handle 5 parallel news searches"

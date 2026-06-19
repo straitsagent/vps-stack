@@ -294,22 +294,22 @@ async def handle_owner(phone: str, text: str, t0: float):
     # ── MULTI_STEP ─────────────────────────────────────────────────────────────
     if tool_class == MULTI_STEP:
         import planner as pl
-        steps = await pl.plan(intent, args, text)
-        if not steps:
-            fallback = FAST_EXECUTORS.get(intent)
-            reply = (await fallback(args))["text"] if fallback else "Couldn't plan a response for that."
+        if intent == "macro_brief":
+            reply = await pl.run_macro_brief(text)
         else:
-            results = {}
-            for step in steps:
-                executor = FAST_EXECUTORS.get(step["tool"])
-                if executor:
-                    try:
-                        results[step["tool"]] = (await executor(step.get("args", {})))["text"]
-                    except Exception as e:
-                        results[step["tool"]] = f"[{step['tool']} error: {e}]"
-            if intent == "macro_brief":
-                reply = await pl.synthesise_macro(text, results)
+            steps = await pl.plan(intent, args, text)
+            if not steps:
+                fallback = FAST_EXECUTORS.get(intent)
+                reply = (await fallback(args))["text"] if fallback else "Couldn't plan a response for that."
             else:
+                results = {}
+                for step in steps:
+                    executor = FAST_EXECUTORS.get(step["tool"])
+                    if executor:
+                        try:
+                            results[step["tool"]] = (await executor(step.get("args", {})))["text"]
+                        except Exception as e:
+                            results[step["tool"]] = f"[{step['tool']} error: {e}]"
                 reply = await pl.synthesise(text, results)
         await meta.send_message(phone, reply)
         await db.append_history(phone, "assistant", reply, tool_called=intent, tool_args=args)

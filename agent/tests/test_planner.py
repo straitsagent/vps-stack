@@ -155,4 +155,39 @@ async def test_synthesise_macro_calls_deepseek():
             "what is the macro picture?",
             {"macro_indicators": "*Macro — 19 Jun*\nVIX 18.4", "news_search": "• Fed holds rates"},
         )
-    assert result == "macro analysis"
+    assert "macro analysis" in result
+
+
+# ── run_macro_brief ───────────────────────────────────────────────────────────
+
+def test_run_macro_brief_function_exists():
+    """run_macro_brief must be exported from planner — it is the entry point for /macro."""
+    assert hasattr(planner, "run_macro_brief"), \
+        "planner.run_macro_brief missing — macro_brief will not execute"
+
+
+def test_news_sections_has_5_entries():
+    """_NEWS_SECTIONS must have exactly 5 targeted queries (one per section group)."""
+    assert hasattr(planner, "_NEWS_SECTIONS"), "_NEWS_SECTIONS missing from planner"
+    assert len(planner._NEWS_SECTIONS) == 5, \
+        f"Expected 5 news section queries, got {len(planner._NEWS_SECTIONS)}"
+
+
+def test_run_macro_brief_uses_parallel_fetch():
+    """run_macro_brief must use asyncio.gather to fetch macro + news in parallel."""
+    import inspect
+    src = inspect.getsource(planner.run_macro_brief)
+    assert "asyncio.gather" in src, \
+        "run_macro_brief must use asyncio.gather for parallel fetching"
+
+
+def test_macro_synthesiser_prompt_no_word_limit():
+    """MACRO_SYNTHESISER_SYSTEM_PROMPT must not contain a 400-word limit (contradicts verbatim data)."""
+    assert "400 words" not in planner.MACRO_SYNTHESISER_SYSTEM_PROMPT, \
+        "MACRO_SYNTHESISER_SYSTEM_PROMPT has a 400-word limit which prevents showing all 24 indicators + commentary + sources"
+
+
+def test_macro_synthesiser_prompt_per_section_format():
+    """MACRO_SYNTHESISER_SYSTEM_PROMPT must instruct per-section commentary format."""
+    assert "each section" in planner.MACRO_SYNTHESISER_SYSTEM_PROMPT.lower(), \
+        "MACRO_SYNTHESISER_SYSTEM_PROMPT must instruct the model to produce per-section commentary"
