@@ -14,7 +14,7 @@ os.environ.setdefault("XAI_KEY", "test")
 import tempfile
 import unittest.mock
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, AsyncMock
 
 import tools
 from tools import (
@@ -613,3 +613,79 @@ async def test_dispatch_research_includes_fred_key():
         "dispatch_research must include fred_key in wm_args — "
         "research_tool.py uses it for FRED macro data at standard/deep depth"
     )
+
+
+# ── macro_indicators — currency direction + format ───────────────────────────
+
+def test_macro_symbols_use_usd_base_labels():
+    """Currency labels must be USD/SGD and USD/HKD (not SGD/USD, HKD/USD)."""
+    labels = [v[0] if isinstance(v, tuple) else v for v in tools._MACRO_SYMBOLS.values()]
+    assert "USD/SGD" in labels, "USD/SGD label missing from _MACRO_SYMBOLS"
+    assert "USD/HKD" in labels, "USD/HKD label missing from _MACRO_SYMBOLS"
+    assert "SGD/USD" not in labels, "SGD/USD still in _MACRO_SYMBOLS — should be USD/SGD"
+    assert "HKD/USD" not in labels, "HKD/USD still in _MACRO_SYMBOLS — should be USD/HKD"
+
+
+def test_macro_symbols_fx_marked_for_inversion():
+    """SGDUSD=X and HKDUSD=X must be marked invert=True so reciprocal is displayed."""
+    for sym in ("SGDUSD=X", "HKDUSD=X"):
+        entry = tools._MACRO_SYMBOLS[sym]
+        assert isinstance(entry, tuple) and entry[1] is True, \
+            f"{sym} must be (label, True) to flag reciprocal display"
+
+
+@pytest.mark.asyncio
+async def test_macro_indicators_output_has_date():
+    """macro_indicators output must start with a date-stamped header."""
+    mock_result = {
+        "chart": {"result": [{
+            "indicators": {"quote": [{"close": [0.745, 0.746]}]}
+        }]}
+    }
+    mock_resp = unittest.mock.MagicMock()
+    mock_resp.json.return_value = mock_result
+
+    with patch("tools.httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.get = AsyncMock(return_value=mock_resp)
+        result = await tools.macro_indicators({})
+
+    import re
+    assert re.search(r"Macro.*(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)", result["text"]), \
+        "macro_indicators output must have a date header like '*Macro — 19 Jun 2026*'"
+
+
+@pytest.mark.asyncio
+async def test_macro_indicators_inverts_fx_values():
+    """USD/SGD value must be > 1 (reciprocal of ~0.74 Yahoo rate)."""
+    def make_resp(close_val):
+        m = unittest.mock.MagicMock()
+        m.json.return_value = {
+            "chart": {"result": [{
+                "indicators": {"quote": [{"close": [close_val - 0.001, close_val]}]}
+            }]}
+        }
+        return m
+
+    fx_resp = make_resp(0.745)   # SGDUSD=X — Yahoo gives ~0.745 for SGD in USD
+    other_resp = make_resp(18.5) # generic for VIX, Brent, TNX
+
+    call_count = 0
+    async def fake_get(url, **kwargs):
+        nonlocal call_count
+        call_count += 1
+        if "SGDUSD" in url or "HKDUSD" in url:
+            return make_resp(0.745)
+        return other_resp
+
+    with patch("tools.httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.get = fake_get
+        result = await tools.macro_indicators({})
+
+    text = result["text"]
+    assert "USD/SGD" in text
+    # Value shown must be reciprocal: 1/0.745 ≈ 1.342, definitely > 1.0
+    import re
+    m = re.search(r"USD/SGD\s+([\d.]+)", text)
+    assert m, "Could not find USD/SGD value in output"
+    assert float(m.group(1)) > 1.0, \
+        f"USD/SGD value should be ~1.34 (reciprocal of 0.745), got {m.group(1)}"

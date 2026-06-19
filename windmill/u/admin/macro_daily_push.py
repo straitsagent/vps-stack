@@ -25,9 +25,11 @@ SYMBOLS = {
     "Gold":     "GC=F",
     "Brent":    "BZ=F",
     "SP500":    "^GSPC",
-    "SGDUSD":   "SGD=X",
-    "HKDUSD":   "HKD=X",
+    "USDSGD":   "SGD=X",   # Yahoo ticker returns price of 1 SGD in USD; we invert
+    "USDHKD":   "HKD=X",   # Yahoo ticker returns price of 1 HKD in USD; we invert
 }
+# FX symbols where Yahoo value is (foreign/USD) — invert to display as USD/foreign
+_INVERT_SYMBOLS = {"USDSGD", "USDHKD"}
 
 SYNTHESIS_PROMPT = (
     "You are a macro analyst. Given these 8 market data points, write exactly 2-3 concise sentences "
@@ -58,6 +60,9 @@ def _fetch_macro() -> dict:
         val  = float(close[sym]) if sym in close else None
         pval = float(prev[sym])  if sym in prev  else None
         chg  = ((val - pval) / pval * 100) if (val and pval and pval != 0) else None
+        if name in _INVERT_SYMBOLS and val:
+            val = 1.0 / val
+            chg = -chg if chg is not None else None
         results[name] = {"value": val, "change_pct": chg}
     return results
 
@@ -65,6 +70,9 @@ def _fetch_macro() -> dict:
 def _fmt_arrow(chg):
     if chg is None: return ""
     return " ↑" if chg > 0.1 else (" ↓" if chg < -0.1 else "")
+
+
+_DISPLAY_NAMES = {"USDSGD": "USD/SGD", "USDHKD": "USD/HKD"}
 
 
 def _synthesise(macro: dict, deepseek_key: str) -> str:
@@ -75,7 +83,8 @@ def _synthesise(macro: dict, deepseek_key: str) -> str:
         if v is None:
             continue
         chg_str = f" ({c:+.1f}%)" if c is not None else ""
-        lines.append(f"{name}: {v:.4g}{chg_str}")
+        display = _DISPLAY_NAMES.get(name, name)
+        lines.append(f"{display}: {v:.4g}{chg_str}")
     data_str = "\n".join(lines)
     prompt = SYNTHESIS_PROMPT.format(data=data_str)
     try:
@@ -124,8 +133,8 @@ def main(
     sp500_val    = macro.get("SP500", {}).get("value")
     sp500_chg    = macro.get("SP500", {}).get("change_pct")
     sp500_str    = (f"S&P 500 {sp500_val:,.0f} {sp500_chg:+.1f}%" if sp500_val and sp500_chg is not None else "S&P 500 N/A")
-    sgd_str      = f"SGD/USD {fv('SGDUSD', '.4f')}"
-    hkd_str      = f"HKD/USD {fv('HKDUSD', '.4f')}"
+    sgd_str      = f"USD/SGD {fv('USDSGD', '.4f')}{fa('USDSGD')}"
+    hkd_str      = f"USD/HKD {fv('USDHKD', '.4f')}{fa('USDHKD')}"
 
     log.info("[MacroPush] Running Deepseek synthesis...")
     synthesis = _synthesise(macro, deepseek_key)

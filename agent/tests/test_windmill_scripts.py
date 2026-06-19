@@ -2893,3 +2893,14 @@ def test_youtube_monitor_telegram_guarded_by_token_check():
     src = _read_yt_source()
     assert "if telegram_bot_token" in src or "telegram_bot_token and" in src, \
         "youtube_monitor must guard _send_telegram with a token check"
+
+
+# ── macro_daily_push: USD/xxx currency direction ──────────────────────────────
+
+def test_macro_daily_push_uses_usd_base_labels():
+    """macro_daily_push must display USD/SGD and USD/HKD (not SGD/USD, HKD/USD)."""
+    src = _read_mdp_source()
+    assert "USD/SGD" in src, "macro_daily_push must use USD/SGD label (not SGD/USD)"
+    assert "USD/HKD" in src, "macro_daily_push must use USD/HKD label (not HKD/USD)"
+    assert "SGD/USD" not in src, "macro_daily_push still shows SGD/USD — must be USD/SGD"
+    assert "HKD/USD" not in src, "macro_daily_push still shows HKD/USD — must be USD/HKD"

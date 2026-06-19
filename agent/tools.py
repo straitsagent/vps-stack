@@ -645,20 +645,23 @@ async def news_search(args: dict) -> dict:
     return {"text": "\n".join(lines)}
 
 
+# (label, invert) — invert=True means display 1/value (USD/SGD instead of SGD/USD)
 _MACRO_SYMBOLS = {
-    "SGDUSD=X": "SGD/USD",
-    "HKDUSD=X": "HKD/USD",
-    "^VIX":     "VIX",
-    "BZ=F":     "Brent",
-    "^TNX":     "UST 10Y",
+    "SGDUSD=X": ("USD/SGD",  True),
+    "HKDUSD=X": ("USD/HKD",  True),
+    "^VIX":     ("VIX",      False),
+    "BZ=F":     ("Brent",    False),
+    "^TNX":     ("UST 10Y",  False),
 }
 
 
 async def macro_indicators(_args: dict) -> dict:
-    lines = ["*Macro Indicators*\n"]
+    sgt = timezone(timedelta(hours=8))
+    date_str = datetime.now(sgt).strftime("%-d %b %Y")
+    lines = [f"*Macro — {date_str}*\n"]
     errors = 0
     async with httpx.AsyncClient(timeout=10) as client:
-        for symbol, label in _MACRO_SYMBOLS.items():
+        for symbol, (label, invert) in _MACRO_SYMBOLS.items():
             try:
                 r = await client.get(
                     f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}",
@@ -672,6 +675,9 @@ async def macro_indicators(_args: dict) -> dict:
                     raise ValueError("no data")
                 latest = closes[-1]
                 chg = ((closes[-1] / closes[0]) - 1) * 100 if len(closes) >= 2 else 0
+                if invert:
+                    latest = 1.0 / latest
+                    chg = -chg
                 arrow = "▲" if chg >= 0 else "▼"
                 lines.append(f"{label:10}  {latest:>10.4f}  {arrow}{abs(chg):.2f}% (5d)")
             except Exception:

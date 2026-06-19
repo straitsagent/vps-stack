@@ -111,3 +111,48 @@ def test_planner_system_prompt_has_earnings():
     """PLANNER_SYSTEM_PROMPT must describe the current 'earnings' tool."""
     assert "earnings" in planner.PLANNER_SYSTEM_PROMPT, \
         "PLANNER_SYSTEM_PROMPT missing 'earnings' tool description — planner can't select it"
+
+
+# ── macro_brief synthesiser ───────────────────────────────────────────────────
+
+def test_synthesise_macro_function_exists():
+    """synthesise_macro must be exported from planner for macro_brief MULTI_STEP path."""
+    assert hasattr(planner, "synthesise_macro"), \
+        "planner.synthesise_macro missing — macro_brief MULTI_STEP path will fall back to generic synthesiser"
+
+
+def test_macro_synthesiser_prompt_exists():
+    """MACRO_SYNTHESISER_SYSTEM_PROMPT must be defined in planner."""
+    assert hasattr(planner, "MACRO_SYNTHESISER_SYSTEM_PROMPT"), \
+        "MACRO_SYNTHESISER_SYSTEM_PROMPT missing from planner"
+
+
+def test_macro_synthesiser_prompt_has_sources_section():
+    """MACRO_SYNTHESISER_SYSTEM_PROMPT must instruct model to list news sources."""
+    assert "sources" in planner.MACRO_SYNTHESISER_SYSTEM_PROMPT.lower(), \
+        "MACRO_SYNTHESISER_SYSTEM_PROMPT must mention 'sources' so the model lists news origins"
+
+
+def test_macro_synthesiser_prompt_instructs_data_first():
+    """MACRO_SYNTHESISER_SYSTEM_PROMPT must tell model to show data before commentary."""
+    prompt = planner.MACRO_SYNTHESISER_SYSTEM_PROMPT.lower()
+    assert "data" in prompt or "indicators" in prompt, \
+        "MACRO_SYNTHESISER_SYSTEM_PROMPT must instruct model to output the data section"
+
+
+@pytest.mark.asyncio
+async def test_synthesise_macro_calls_deepseek():
+    """synthesise_macro must call Deepseek and return its response."""
+    mock_resp = MagicMock()
+    mock_resp.raise_for_status = lambda: None
+    mock_resp.json.return_value = {
+        "choices": [{"message": {"content": "macro analysis"}}],
+        "usage": {"total_tokens": 40},
+    }
+    with patch("planner.httpx.AsyncClient") as MockClient:
+        MockClient.return_value.__aenter__.return_value.post = AsyncMock(return_value=mock_resp)
+        result = await planner.synthesise_macro(
+            "what is the macro picture?",
+            {"macro_indicators": "*Macro — 19 Jun*\nVIX 18.4", "news_search": "• Fed holds rates"},
+        )
+    assert result == "macro analysis"

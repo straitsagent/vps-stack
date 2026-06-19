@@ -307,7 +307,10 @@ async def handle_owner(phone: str, text: str, t0: float):
                         results[step["tool"]] = (await executor(step.get("args", {})))["text"]
                     except Exception as e:
                         results[step["tool"]] = f"[{step['tool']} error: {e}]"
-            reply = await pl.synthesise(text, results)
+            if intent == "macro_brief":
+                reply = await pl.synthesise_macro(text, results)
+            else:
+                reply = await pl.synthesise(text, results)
         await meta.send_message(phone, reply)
         await db.append_history(phone, "assistant", reply, tool_called=intent, tool_args=args)
         await db.write_audit(
