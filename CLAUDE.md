@@ -214,7 +214,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-18 (Candidate eval auto-fetch + research integration live; rationalization changed to weekly Monday 9PM SGT + optional `include_research`. Implementation logs backfilled in `docs/logs/`. 353 tests passing. Repo: `vps-stack`.)
+**Last updated:** 2026-06-19 (Telegram bot improvements: 15-command alphabetical menu, /macro→macro_brief, /candidate fast-path, push notifications from 5 Windmill scripts (move monitor, rationalization, portfolio email, youtube monitor), new macro_daily_push Windmill script (7:30 AM SGT). 388 tests passing. Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`
@@ -265,7 +265,7 @@ See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/res
 ### Telegram Agent — Build Status
 See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full component inventory.
 
-**Summary:** Agent fully live — FastAPI service, Telegram webhook, 13 commands, W2/W3/W4 tools + candidate_evaluation, 353 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
+**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief, /candidate fast-path, push notifications from 5 Windmill scripts, 388 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
 
 ### Next Up
 1. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`
