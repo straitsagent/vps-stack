@@ -223,7 +223,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-19 (Telegram bot improvements: 15-command alphabetical menu, /macro→macro_brief, /candidate fast-path, push notifications from 5 Windmill scripts (move monitor, rationalization, portfolio email, youtube monitor), new macro_daily_push Windmill script (7:30 AM SGT). macro_indicators expanded to 24 indicators across 6 groups (Indices, Rates, Vol, Commodities, FX, FRED Economics). /macro output: per-section commentary + news sources with hyperlinks (5 parallel news searches via run_macro_brief). 409 tests passing. Repo: `vps-stack`.)
+**Last updated:** 2026-06-20 (Notification quality fixes: macro NaN/FX inversion, week P&L 5-day SQL lookback, portfolio_email SGT case, portfolio_rationalization NameError + KEEP/TRIM/EXIT in Telegram, portfolio_review commentary snippet in Telegram. Test overhaul: 8 behavioral mock tests replacing source-inspection approach. 431 tests passing. Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`
@@ -274,7 +274,7 @@ See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/res
 ### Telegram Agent — Build Status
 See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full component inventory.
 
-**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 5 Windmill scripts, macro_daily_push at 7:30 AM SGT, 409 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
+**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 5 Windmill scripts, macro_daily_push at 7:30 AM SGT, 431 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
 
 ### Next Up
 1. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`
