@@ -3026,3 +3026,194 @@ def test_portfolio_review_has_telegram_push():
     tg_block = src[tg_idx: tg_idx + 600]
     assert "week_pnl" in tg_block or "week_impact" in tg_block, \
         "portfolio_review tg_text must include week P&L data"
+
+
+# ── Behavioral tests (mock-based) ────────────────────────────────────────────
+# These test actual runtime behavior, not just code structure.
+
+import math as _math_module
+import sys as _sys
+import importlib.util as _importlib_util
+from unittest.mock import MagicMock
+
+
+class _FakeSeries:
+    """Minimal pandas Series substitute — no pandas dependency needed."""
+    def __init__(self, data: dict):
+        self._data = data
+
+    def __contains__(self, sym):
+        return sym in self._data
+
+    def __getitem__(self, sym):
+        return self._data.get(sym, _math_module.nan)
+
+
+class _FakeDF:
+    """Minimal pandas DataFrame substitute for mocking yfinance returns."""
+    def __init__(self, rows: list):
+        self._rows = rows
+
+    def __getitem__(self, key):
+        return self  # data["Close"] → self
+
+    def ffill(self):
+        filled = []
+        last = {}
+        for row in self._rows:
+            new_data = {}
+            for k, v in row._data.items():
+                is_nan = isinstance(v, float) and _math_module.isnan(v)
+                if not is_nan:
+                    last[k] = v
+                new_data[k] = last.get(k, v)
+            filled.append(_FakeSeries(new_data))
+        return _FakeDF(filled)
+
+    def __len__(self):
+        return len(self._rows)
+
+    class _Iloc:
+        def __init__(self, rows):
+            self._rows = rows
+        def __getitem__(self, idx):
+            return self._rows[idx]
+
+    @property
+    def iloc(self):
+        return self._Iloc(self._rows)
+
+
+def _load_macro_module():
+    """Load macro_daily_push.py with external deps mocked (no yfinance needed)."""
+    for name in ('yfinance', 'requests', 'pytz'):
+        _sys.modules.setdefault(name, MagicMock())
+
+    path = str(pathlib.Path(__file__).parent.parent.parent /
+               "windmill" / "u" / "admin" / "macro_daily_push.py")
+    spec = _importlib_util.spec_from_file_location("macro_daily_push_btest", path)
+    mod = _importlib_util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"Could not load macro_daily_push: {e}")
+    return mod
+
+
+def _make_macro_df(syms, friday_data, saturday_overrides=None):
+    """Two-row FakeDF: Friday (all real data), Saturday (mostly NaN — weekend)."""
+    saturday_data = {s: _math_module.nan for s in syms}
+    if saturday_overrides:
+        saturday_data.update(saturday_overrides)
+    return _FakeDF([_FakeSeries(friday_data), _FakeSeries(saturday_data)])
+
+
+def test_macro_ffill_prevents_weekend_nan():
+    """With ffill, Friday's equity values must carry through to Saturday NaN rows."""
+    mod = _load_macro_module()
+    syms = list(mod.SYMBOLS.values())
+    friday = {s: (15.5 if s == "^VIX" else 4.30 if s == "^TNX" else
+                  7.84 if s == "HKD=X" else 1.34 if s == "SGD=X" else 100.0)
+              for s in syms}
+    fake_df = _make_macro_df(syms, friday, saturday_overrides={"HKD=X": 7.85, "BZ=F": 85.0})
+    mod.yf.download.return_value = fake_df
+
+    result = mod._fetch_macro()
+
+    vix = result.get("VIX", {}).get("value")
+    assert vix is not None and not _math_module.isnan(vix), \
+        f"VIX should be filled from Friday (15.5) via ffill, got {vix}"
+    assert abs(vix - 15.5) < 0.01, f"VIX expected ~15.5, got {vix}"
+
+
+def test_macro_fx_not_inverted():
+    """HKD=X ~7.84 must NOT be inverted — Yahoo already returns HKD-per-USD."""
+    mod = _load_macro_module()
+    syms = list(mod.SYMBOLS.values())
+    data = {s: (7.84 if s == "HKD=X" else 1.34 if s == "SGD=X" else 100.0) for s in syms}
+    mod.yf.download.return_value = _FakeDF([_FakeSeries(data), _FakeSeries(data)])
+
+    result = mod._fetch_macro()
+
+    hkd = result.get("USDHKD", {}).get("value")
+    assert hkd is not None, "USDHKD must have a value"
+    assert abs(hkd - 7.84) < 0.1, \
+        f"USDHKD must NOT be inverted: expected ~7.84, got {hkd} (0.1276 = inverted bug)"
+
+
+def test_macro_unfillable_nan_becomes_none_not_nan_string():
+    """When ALL rows for a ticker are NaN, result must be None (not float nan)."""
+    mod = _load_macro_module()
+    syms = list(mod.SYMBOLS.values())
+    all_nan = {s: _math_module.nan for s in syms}
+    all_nan["HKD=X"] = 7.84  # only FX has data
+    mod.yf.download.return_value = _FakeDF([_FakeSeries(all_nan)])
+
+    result = mod._fetch_macro()
+
+    vix = result.get("VIX", {}).get("value")
+    assert vix is None, \
+        f"When all rows are NaN, value must be None not float('nan'); got {vix}"
+    # Verify the formatter produces 'N/A' not 'nan'
+    formatted = f"{vix:.3g}" if vix is not None else "N/A"
+    assert formatted == "N/A" and "nan" not in formatted.lower()
+
+
+def test_rationalization_no_undefined_call1_result():
+    """call1_result must not appear in rationalization — tokens must be accumulated."""
+    src_path = str(pathlib.Path(__file__).parent.parent.parent /
+                   "windmill" / "u" / "admin" / "portfolio_rationalization.py")
+    with open(src_path) as f:
+        src = f.read()
+    matches = re.findall(r"\bcall1_result\b", src)
+    assert len(matches) == 0, \
+        f"call1_result used {len(matches)}x but never assigned — use call1_total_input/output"
+
+
+def test_rationalization_telegram_includes_recommendation():
+    """Rationalization Telegram bottom-3 must show KEEP/TRIM/EXIT, not just scores."""
+    src_path = str(pathlib.Path(__file__).parent.parent.parent /
+                   "windmill" / "u" / "admin" / "portfolio_rationalization.py")
+    with open(src_path) as f:
+        src = f.read()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in portfolio_rationalization"
+    context = src[max(0, tg_idx - 700): tg_idx + 400]
+    assert "recommendation" in context or "rec_tag" in context, \
+        "Rationalization Telegram must include KEEP/TRIM/EXIT recommendation for bottom positions"
+
+
+def test_portfolio_review_week_uses_5day_lookback():
+    """portfolio_review must use a 5+ day interval for week P&L, not just rn=2."""
+    src_path = str(pathlib.Path(__file__).parent.parent.parent /
+                   "windmill" / "u" / "admin" / "portfolio_review.py")
+    with open(src_path) as f:
+        src = f.read()
+    has_interval = ("INTERVAL '5 days'" in src or "INTERVAL '7 days'" in src or
+                    "interval '5" in src.lower())
+    assert has_interval, \
+        "portfolio_review must use INTERVAL '5 days' (or '7 days') for week P&L lookback"
+    assert "WHERE rn <= 2" not in src, \
+        "Old 2-row limit must be removed — need 5-7 day lookback for week P&L"
+
+
+def test_portfolio_review_telegram_includes_synthesis():
+    """portfolio_review Telegram must include Deepseek commentary first sentence."""
+    with open(str(pathlib.Path(__file__).parent.parent.parent /
+                  "windmill" / "u" / "admin" / "portfolio_review.py")) as f:
+        src = f.read()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1
+    context = src[max(0, tg_idx - 500): tg_idx + 500]
+    assert "commentary" in context, \
+        "portfolio_review Telegram must include Deepseek commentary snippet"
+
+
+def test_portfolio_email_sgt_uppercase():
+    """portfolio_email time_label must produce uppercase 'SGT', not 'sgt'."""
+    with open(str(pathlib.Path(__file__).parent.parent.parent /
+                  "windmill" / "u" / "admin" / "portfolio_email.py")) as f:
+        src = f.read()
+    # The fix: .lower() only on am/pm, then append " SGT"
+    assert '.lower() + " SGT"' in src or ".lower() + ' SGT'" in src, \
+        "time_label must use .lower() only on am/pm part, then append ' SGT' (uppercase)"

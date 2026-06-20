@@ -1008,6 +1008,8 @@ Rationale: [2-3 sentences — opportunity cost relative to other positions; note
 
     # ── 8a. Grok Call 1a — first batch (positions 1–{CALL1_BATCH_SIZE}) ──────────
     call1_model = "grok-4.3"
+    call1_total_input = 0
+    call1_total_output = 0
     per_position_analysis_parts = []
     call1_structured = {}
     for batch_idx, batch_blocks in enumerate(call1_batches):
@@ -1025,6 +1027,8 @@ Rationale: [2-3 sentences — opportunity cost relative to other positions; note
             max_tokens=8000,
         )
         call1_model = result["model"]
+        call1_total_input  += result["input_tokens"]
+        call1_total_output += result["output_tokens"]
         log.info(f"[Grok Call 1 batch {batch_idx+1}] Done — model={call1_model}, "
               f"tokens={result['input_tokens']}in/{result['output_tokens']}out")
         per_position_analysis_parts.append(result["text"])
@@ -1191,7 +1195,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
 ---
 
 *Models: Call 1={call1_model}, Call 2={call2_model}*
-*Total input tokens: {call1_result['input_tokens'] + call2_result['input_tokens']:,} | Output tokens: {call1_result['output_tokens'] + call2_result['output_tokens']:,}*
+*Total input tokens: {call1_total_input + call2_result['input_tokens']:,} | Output tokens: {call1_total_output + call2_result['output_tokens']:,}*
 """
     if fallback_warnings:
         report_md += f"\n⚠️ Grok unavailable for {', '.join(fallback_warnings)} — synthesised with deepseek-chat\n"
@@ -1223,8 +1227,12 @@ Below are the position verdicts. Generate the executive summary, portfolio const
         def _score(t):
             s = ranks.get(t, {}).get("balanced", None)
             return f" {s:.1f}" if s is not None else ""
+        _REC_LABELS = {"KEEP": "", "TRIM": " TRIM", "EXIT": " EXIT"}
+        def _rec_tag(t):
+            r = call1_structured.get(t, {}).get("recommendation", "")
+            return _REC_LABELS.get(r.upper(), "")
         top_str = "  ".join(f"{t}{_score(t)}" for t in top3)
-        bot_str = "  ".join(f"{t}{_score(t)}" for t in bot3)
+        bot_str = "  ".join(f"{t}{_score(t)}{_rec_tag(t)}" for t in bot3)
         tg_text = (
             f"*Portfolio Rationalization — {today_str}*\n"
             f"_{len(sorted_tickers)} positions scored_\n\n"

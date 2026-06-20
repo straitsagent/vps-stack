@@ -9,6 +9,7 @@ synthesises 2-3 sentences via Deepseek, and sends a Telegram message.
 No email, no DB write. Push is the only output.
 """
 
+import math
 import requests
 import yfinance as yf
 import pytz
@@ -25,11 +26,11 @@ SYMBOLS = {
     "Gold":     "GC=F",
     "Brent":    "BZ=F",
     "SP500":    "^GSPC",
-    "USDSGD":   "SGD=X",   # Yahoo ticker returns price of 1 SGD in USD; we invert
-    "USDHKD":   "HKD=X",   # Yahoo ticker returns price of 1 HKD in USD; we invert
+    "USDSGD":   "SGD=X",   # Yahoo returns SGD-per-USD (USD/SGD conventional quote) — no inversion needed
+    "USDHKD":   "HKD=X",   # Yahoo returns HKD-per-USD (USD/HKD conventional quote) — no inversion needed
 }
-# FX symbols where Yahoo value is (foreign/USD) — invert to display as USD/foreign
-_INVERT_SYMBOLS = {"USDSGD", "USDHKD"}
+# Yahoo FX tickers already return the conventional USD/FX rate — nothing to invert
+_INVERT_SYMBOLS: set = set()
 
 SYNTHESIS_PROMPT = (
     "You are a macro analyst. Given these 8 market data points, write exactly 2-3 concise sentences "
@@ -52,15 +53,20 @@ def _send_telegram(bot_token: str, chat_id: str, text: str):
 
 def _fetch_macro() -> dict:
     tickers = list(SYMBOLS.values())
-    data = yf.download(tickers, period="2d", progress=False, auto_adjust=True)
-    close = data["Close"].iloc[-1]
-    prev  = data["Close"].iloc[-2] if len(data) > 1 else data["Close"].iloc[-1]
+    data = yf.download(tickers, period="5d", progress=False, auto_adjust=True)
+    filled = data["Close"].ffill()  # carry last valid price forward across weekend gaps
+    close = filled.iloc[-1]
+    prev  = filled.iloc[-2] if len(filled) > 1 else filled.iloc[-1]
     results = {}
     for name, sym in SYMBOLS.items():
         val  = float(close[sym]) if sym in close else None
-        pval = float(prev[sym])  if sym in prev  else None
-        chg  = ((val - pval) / pval * 100) if (val and pval and pval != 0) else None
-        if name in _INVERT_SYMBOLS and val:
+        if val is not None and math.isnan(val):
+            val = None
+        pval = float(prev[sym]) if sym in prev else None
+        if pval is not None and math.isnan(pval):
+            pval = None
+        chg  = ((val - pval) / pval * 100) if (val is not None and pval and pval != 0) else None
+        if name in _INVERT_SYMBOLS and val is not None:
             val = 1.0 / val
             chg = -chg if chg is not None else None
         results[name] = {"value": val, "change_pct": chg}

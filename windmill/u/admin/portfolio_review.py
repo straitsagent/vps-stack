@@ -52,12 +52,18 @@ def main(portfolio_db: dict, finnhub_key: str, deepseek_key: str, gmail_smtp: di
         pos_rows = cur.fetchall()
 
         cur.execute("""
-            WITH ranked AS (
-                SELECT ticker, price_date, close_price,
-                       ROW_NUMBER() OVER (PARTITION BY ticker ORDER BY price_date DESC) AS rn
+            SELECT ticker, price_date, close_price, rn FROM (
+                SELECT ticker, price_date, close_price, 1 AS rn
                 FROM price_history
-            )
-            SELECT ticker, price_date, close_price, rn FROM ranked WHERE rn <= 2
+                WHERE (ticker, price_date) IN (
+                    SELECT ticker, MAX(price_date) FROM price_history GROUP BY ticker
+                )
+                UNION ALL
+                SELECT DISTINCT ON (ticker) ticker, price_date, close_price, 2 AS rn
+                FROM price_history
+                WHERE price_date <= CURRENT_DATE - INTERVAL '5 days'
+                ORDER BY ticker, price_date DESC
+            ) t
         """)
         price_rows = cur.fetchall()
 
@@ -487,11 +493,17 @@ Be factual and concise. Do not give buy/sell recommendations."""
             return f"{p['ticker']} {pct}{impact}"
         g_str = "  ".join(_mover_str(p) for p in gainers) or "—"
         l_str = "  ".join(_mover_str(p) for p in losers) or "—"
+        commentary_snippet = ""
+        if commentary:
+            first_sentence = commentary.split(".")[0].strip()
+            if first_sentence:
+                commentary_snippet = f"\n\n_{first_sentence}._"
         tg_text = (
             f"*Weekly Review — w/e {we_str}*\n"
             f"{fmt_usd(total_value)} | Week: {sign_pnl}${abs(week_k):.1f}k ({sign_pct}{week_pct_total:.2f}%)\n\n"
             f"📈 {g_str}\n"
-            f"📉 {l_str}\n\n"
+            f"📉 {l_str}"
+            f"{commentary_snippet}\n\n"
             f"_Full review → email_"
         )
         _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)

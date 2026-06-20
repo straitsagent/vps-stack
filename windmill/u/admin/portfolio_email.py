@@ -433,7 +433,7 @@ def main(
 
     if telegram_bot_token and telegram_owner_id:
         date_str  = now_sgt.strftime("%a %-d %b")
-        time_label = now_sgt.strftime("%-I%p SGT").lower()
+        time_label = now_sgt.strftime("%-I%p").lower() + " SGT"
         def _fmt_k(val):
             if val is None: return ""
             k = val / 1000
