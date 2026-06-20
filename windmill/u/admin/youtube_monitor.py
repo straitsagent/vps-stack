@@ -28,15 +28,9 @@ SGT = timezone(timedelta(hours=8))
 RAPIDAPI_HOST = "youtube-transcribe-fastest-youtube-transcriber.p.rapidapi.com"
 
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):
-    try:
-        requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
-        )
-    except Exception as e:
-        log.warning(f"[Telegram] Failed to send: {e}")
+WM_BASE_DISPATCH  = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
+WM_WORKSPACE_DISPATCH = "admins"
+
 TRANSCRIPT_MAX_CHARS = 8000
 MAX_STATE_IDS = 1000
 MAX_ATTEMPTS = 3
@@ -233,6 +227,35 @@ def build_email_html(videos: list, prompt_tokens: int, completion_tokens: int) -
 
 # ── Main ─────────────────────────────────────────────────────────────────────
 
+def _dispatch_formatter(formatter_name: str, md_path: str,
+                        telegram_bot_token: str, telegram_owner_id: str,
+                        portfolio_db: dict, wm_token: str = "") -> str:
+    """Dispatch a Telegram formatter script fire-and-forget. Returns job_id or ''."""
+    token = wm_token or os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
+        return ""
+    url = f"{WM_BASE_DISPATCH}/api/w/{WM_WORKSPACE_DISPATCH}/jobs/run/p/u/admin/{formatter_name}"
+    args = {
+        "md_path": md_path,
+        "telegram_bot_token": telegram_bot_token,
+        "telegram_owner_id": telegram_owner_id,
+        "portfolio_db": portfolio_db,
+    }
+    try:
+        resp = requests.post(
+            url, headers={"Authorization": f"Bearer {token}",
+                          "Content-Type": "application/json"},
+            json=args, timeout=10,
+        )
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
+        return job_id
+    except Exception as e:
+        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
+        return ""
+
+
 def main(
     smtp_resource: smtp,
     deepseek_key: str,
@@ -241,6 +264,8 @@ def main(
     recipient_email: str = "",
     telegram_bot_token: str = "",
     telegram_owner_id: str = "",
+    portfolio_db: dict = {},
+    wm_token: str = "",
 ):
     cutoff = datetime.now(timezone.utc) - timedelta(hours=24)
     feeds = json.loads(youtube_feeds)
@@ -311,39 +336,55 @@ def main(
         server.sendmail(username, [recipient_email], msg.as_string())
     log.info(f"Sent: {subject}")
 
-    if telegram_bot_token and telegram_owner_id:
-        date_str = datetime.now(SGT).strftime("%-d %b")
-        top_vids = results[:3]
-        lines = [
-            f"• [{v['title']}]({v['watch_url']}) — {v['channel_name']}"
-            for v in top_vids
-        ]
-        extra = len(results) - len(top_vids)
-        if extra > 0:
-            lines.append(f"_+ {extra} more — full digest in email_")
-        tg_text = f"*YouTube — {date_str} | {n_summarised} new*\n\n" + "\n".join(lines)
-        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
-
     est_cost = (total_prompt_tokens / 1_000_000) * 0.14 + (total_completion_tokens / 1_000_000) * 0.28
     log.info(f"Deepseek: {total_prompt_tokens:,} prompt + {total_completion_tokens:,} completion tokens · est. ${est_cost:.4f}")
 
-    # ── Write markdown digest — one file per run ──────────────────────────
+    # ── Write canonical .md + dispatch Telegram formatter ────────────────────
     import os as _os
     _os.makedirs("/research/youtube", exist_ok=True)
-    if results:
-        run_time = datetime.now(SGT)
-        md_path = f"/research/youtube/{run_time.strftime('%Y-%m-%d_%H%M')}.md"
-        md_lines = []
-        for v in results:
-            md_lines.append(f"## {v['channel_name']}")
-            md_lines.append(f"**[{v['title']}]({v['watch_url']})**")
-            md_lines.append("")
-            md_lines.append(v["summary"] if v.get("summary") else "_No transcript available_")
-            md_lines.append("")
-        with open(md_path, "w") as f:
-            f.write(f"# YouTube Digest — {run_time.strftime('%d %b %Y, %H:%M SGT')}\n\n")
-            f.write("\n".join(md_lines))
-        log.info(f"[md] Written {md_path}")
+    run_time = datetime.now(SGT)
+    date_str = run_time.strftime("%-d %b")
+    md_path = f"/research/youtube/{run_time.strftime('%Y-%m-%d_%H%M')}.md"
+
+    # Build video list with summaries for front-matter
+    fm_videos = []
+    for v in results:
+        fm_videos.append({
+            "title":        v["title"],
+            "watch_url":    v["watch_url"],
+            "channel_name": v["channel_name"],
+            "summary":      v.get("summary") or f"[No transcript available — bare link: {v['watch_url']}]",
+        })
+
+    front_matter = {
+        "date_str":    date_str,
+        "n_summarised": n_summarised,
+        "videos":      fm_videos,
+    }
+    # Build detailed per-video sections for the narrative area
+    detail_sections = []
+    for v in results:
+        detail_sections.append(
+            f"**[{v['title']}]({v['watch_url']})** — {v['channel_name']}\n\n"
+            + (v.get("summary") or "_No transcript available_")
+        )
+    narrative = "\n\n---\n\n".join(detail_sections)
+
+    md_content = (
+        f"```json\n{json.dumps(front_matter, indent=2)}\n```\n\n"
+        f"{narrative}\n\n"
+        "<!-- DETAIL -->\n"
+    )
+    with open(md_path, "w") as f:
+        f.write(md_content)
+    log.info(f"[md] Written {md_path}")
+
+    if telegram_bot_token and telegram_owner_id:
+        _dispatch_formatter(
+            "youtube_monitor_telegram", md_path,
+            telegram_bot_token, telegram_owner_id,
+            portfolio_db, wm_token,
+        )
 
     return {
         "status": "sent",

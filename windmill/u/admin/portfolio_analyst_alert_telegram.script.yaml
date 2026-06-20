@@ -1,0 +1,9 @@
+summary: ''
+description: ''
+lock: '!inline u/admin/portfolio_analyst_alert_telegram.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties: {}
+  required: []

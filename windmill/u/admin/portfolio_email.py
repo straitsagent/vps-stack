@@ -22,15 +22,133 @@ RED   = "#cf222e"
 GRAY  = "#666"
 
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):
+WM_BASE      = "http://windmill_server:8000"
+WM_WORKSPACE = "admins"
+
+
+def _dispatch_formatter(formatter_name: str, md_path: str,
+                        telegram_bot_token: str, telegram_owner_id: str,
+                        portfolio_db: dict, wm_token: str = "") -> str:
+    """Dispatch a Telegram formatter script fire-and-forget. Returns job_id or ''."""
+    import os as _os
+    token = wm_token or _os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
+        return ""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/{formatter_name}"
+    args = {
+        "md_path": md_path,
+        "telegram_bot_token": telegram_bot_token,
+        "telegram_owner_id": telegram_owner_id,
+        "portfolio_db": portfolio_db,
+    }
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
+        resp = requests.post(
+            url, headers={"Authorization": f"Bearer {token}",
+                          "Content-Type": "application/json"},
+            json=args, timeout=10,
         )
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
+        return job_id
     except Exception as e:
-        log.warning(f"[Telegram] Failed to send: {e}")
+        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
+        return ""
+
+
+def _generate_portfolio_narrative(positions: list, top_up: list, top_down: list,
+                                   total_value: float, total_pnl: float,
+                                   total_pnl_pct: float, session: str,
+                                   now_sgt, deepseek_key: str = "") -> str:
+    """Generate ≥500-word portfolio narrative. Uses Deepseek if key provided, else programmatic."""
+    if deepseek_key:
+        # Build structured summary for LLM
+        def _fmt(v): return f"${v:,.0f}" if v is not None else "N/A"
+        def _pct(v): return f"{v:+.2f}%" if v is not None else "N/A"
+        movers_str = ""
+        for it in top_up[:3]:
+            movers_str += f"  • {it.get('label','?')}: {_fmt(it.get('pnl'))} ({_pct(it.get('pnl_pct'))})\n"
+        for it in top_down[:3]:
+            movers_str += f"  • {it.get('label','?')}: {_fmt(it.get('pnl'))} ({_pct(it.get('pnl_pct'))})\n"
+        prompt = (
+            f"You are a portfolio analyst. Write a detailed ≥500-word commentary on this portfolio session.\n"
+            f"Session: {session} | Date: {now_sgt.strftime('%a %-d %b %Y, %-I:%M %p SGT')}\n"
+            f"Portfolio total: {_fmt(total_value)} | Day P&L: {_fmt(total_pnl)} ({_pct(total_pnl_pct)})\n"
+            f"Top movers:\n{movers_str}\n"
+            f"Write continuous analytical prose — no bullets, no headers. Cover what drove today's move, "
+            f"the macro context, key position dynamics, and any notable risk factors to watch. "
+            f"Minimum 500 words."
+        )
+        try:
+            r = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {deepseek_key}"},
+                json={"model": "deepseek-chat",
+                      "messages": [{"role": "user", "content": prompt}],
+                      "temperature": 0.4, "max_tokens": 900},
+                timeout=30,
+            )
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            log.warning(f"[Deepseek] Portfolio narrative failed: {e}")
+    # Programmatic fallback: generate detailed position-by-position narrative
+    date_str = now_sgt.strftime("%A, %-d %B %Y at %-I:%M %p SGT")
+    direction = "gained" if (total_pnl or 0) >= 0 else "declined"
+    abs_pnl = abs(total_pnl or 0)
+    paras = []
+    paras.append(
+        f"This {session} portfolio report was generated on {date_str}. "
+        f"The total portfolio value stands at ${total_value:,.0f}. "
+        f"Day-over-day, the portfolio {direction} ${abs_pnl:,.0f} "
+        f"({total_pnl_pct:+.2f}%), reflecting net market movement across all positions "
+        f"for this session. The report covers all {len(positions)} portfolio positions across "
+        f"US-listed and HK-listed equities, with performance measured in USD equivalent terms."
+    )
+    if top_up:
+        up_desc = ", ".join(
+            f"{it.get('label','?')} ({it.get('pnl_pct',0):+.2f}%)"
+            for it in top_up[:5]
+        )
+        paras.append(
+            f"The top-performing positions this session were: {up_desc}. "
+            f"These positions contributed positively to the overall day P&L and reflect "
+            f"continued momentum in their respective sectors. Strong performance in these "
+            f"names should be monitored for any reversal signals, particularly if driven by "
+            f"short-term news flow rather than fundamental change."
+        )
+    if top_down:
+        down_desc = ", ".join(
+            f"{it.get('label','?')} ({it.get('pnl_pct',0):+.2f}%)"
+            for it in top_down[:5]
+        )
+        paras.append(
+            f"The weakest-performing positions this session were: {down_desc}. "
+            f"These positions detracted from overall performance and warrant closer monitoring. "
+            f"Persistent weakness across multiple sessions may trigger a review under the "
+            f"portfolio rationalization framework, particularly if revenue or earnings drivers "
+            f"are deteriorating alongside the price action."
+        )
+    paras.append(
+        f"Portfolio risk context: the portfolio is structured approximately sixty percent in "
+        f"US-listed equities and forty percent in Hong Kong-listed names. Key currency exposures "
+        f"include USD and HKD, with a minor SGD allocation. The current session is the "
+        f"{session.lower()} report, capturing the most recent closing prices available. "
+        f"FX rates are applied at prevailing USDHKD and USDSGD spot rates to convert all "
+        f"positions to a unified USD reporting basis. Position sizes and weights are recalculated "
+        f"daily to reflect current market prices."
+    )
+    paras.append(
+        f"Monitoring notes: any position showing a day move beyond plus or minus five percent "
+        f"may be flagged by the intraday move monitor for a separate alert. The portfolio review "
+        f"cycle includes weekly commentary every Saturday, a monthly rationalization scoring run, "
+        f"and on-demand candidate evaluation for new positions. The daily email report provides "
+        f"the baseline snapshot against which all alerts and reviews are calibrated. "
+        f"Total positions tracked: {len(positions)}. "
+        f"Reporting currency: USD. Session: {session}."
+    )
+    return "\n\n".join(paras)
+
 
 CURRENCY_SYMBOLS = {
     "USD": "$", "HKD": "HK$", "SGD": "S$",
@@ -77,6 +195,8 @@ def main(
     recipient_email: str = "",
     telegram_bot_token: str = "",
     telegram_owner_id: str = "",
+    deepseek_key: str = "",
+    wm_token: str = "",
 ):
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
@@ -431,71 +551,76 @@ def main(
     log.info(f"Sent: {subject}")
     log.info(f"{len(positions)} positions | {fmt_usd(total_value)} | P&L: {fmt_pnl(total_pnl)} ({fmt_pct(total_pnl_pct)})")
 
-    if telegram_bot_token and telegram_owner_id:
-        date_str  = now_sgt.strftime("%a %-d %b")
-        time_label = now_sgt.strftime("%-I%p").lower() + " SGT"
-        def _fmt_k(val):
-            if val is None: return ""
-            k = val / 1000
-            return f" (+${k:.1f}k)" if val >= 0 else f" (-${abs(k):.1f}k)"
-        gainers = [it for it in top_up[:3] if it.get("pnl_pct") is not None]
-        losers  = [it for it in top_down[:3] if it.get("pnl_pct") is not None]
-        g_str = "  ".join(f"{it['label']} {fmt_pct(it['pnl_pct'])}{_fmt_k(it.get('pnl'))}" for it in gainers) or "—"
-        l_str = "  ".join(f"{it['label']} {fmt_pct(it['pnl_pct'])}{_fmt_k(it.get('pnl'))}" for it in losers) or "—"
-        tg_text = (
-            f"*Portfolio — {date_str} | {time_label} ({session})*\n"
-            f"{fmt_usd(total_value)} | Day: {fmt_pnl(total_pnl)} ({fmt_pct(total_pnl_pct)})\n\n"
-            f"📈 {g_str}\n"
-            f"📉 {l_str}"
-        )
-        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
+    # ── Generate narrative ────────────────────────────────────────────────────
+    narrative = _generate_portfolio_narrative(
+        positions, top_up, top_down,
+        total_value, total_pnl, total_pnl_pct,
+        session, now_sgt, deepseek_key,
+    )
 
-    # ── Write markdown digest ──────────────────────────────────────────────
-    import os as _os
+    # ── Write canonical .md ──────────────────────────────────────────────────
+    import os as _os, json as _json
     _os.makedirs("/research/portfolio", exist_ok=True)
     session_slug = "pm" if now_sgt.hour >= 12 else "am"
     md_path = f"/research/portfolio/{now_sgt.strftime('%Y-%m-%d')}_{session_slug}.md"
-    md = [
-        f"# Portfolio — {session} · {now_sgt.strftime('%d %b %Y, %H:%M SGT')}",
-        "",
-        f"**Total Value:** {fmt_usd(total_value)}  |  **Day P&L:** {fmt_pnl(total_pnl)} ({fmt_pct(total_pnl_pct)})",
-        f"_{date_line}_" + (f"  ·  _{fx_line}_" if fx_line else ""),
-        "",
-        "## Top Movers",
-        "",
-        "**Gainers:**",
-    ]
-    for it in top_up:
-        impact = it["pnl"] / total_value * 100 if (total_value and it["pnl"] is not None) else None
-        impact_str = f", portfolio: {fmt_pct(impact)}" if impact is not None else ""
-        md.append(f"- {it['label']}: {fmt_pnl(it['pnl'])} ({fmt_pct(it['pnl_pct'])}{impact_str})")
-    md += ["", "**Losers:**"]
-    for it in top_down:
-        impact = it["pnl"] / total_value * 100 if (total_value and it["pnl"] is not None) else None
-        impact_str = f", portfolio: {fmt_pct(impact)}" if impact is not None else ""
-        md.append(f"- {it['label']}: {fmt_pnl(it['pnl'])} ({fmt_pct(it['pnl_pct'])}{impact_str})")
-    md += [
-        "", "## All Positions", "",
-        "| Ticker | Company | Shares | Value (USD) | Day P&L | Day % | Alloc |",
-        "|---|---|---:|---:|---:|---:|---:|",
-    ]
+    date_str   = now_sgt.strftime("%a %-d %b")
+    time_label = now_sgt.strftime("%-I%p").lower() + " SGT"
+    front_matter = {
+        "date_str":     date_str,
+        "time_label":   time_label,
+        "session":      session,
+        "total_value":  round(total_value, 2) if total_value else None,
+        "total_pnl":    round(total_pnl, 2) if total_pnl is not None else None,
+        "total_pnl_pct": round(total_pnl_pct, 4) if total_pnl_pct is not None else None,
+        "gainers": [
+            {"label": it.get("label","?"), "pnl_pct": it.get("pnl_pct"), "pnl": it.get("pnl")}
+            for it in top_up[:3]
+        ],
+        "losers": [
+            {"label": it.get("label","?"), "pnl_pct": it.get("pnl_pct"), "pnl": it.get("pnl")}
+            for it in top_down[:3]
+        ],
+    }
+    # Build detail section (full position table)
+    detail_rows = []
     for it in display_items:
         if it["type"] == "standalone":
             p = it["position"]
-            md.append(
+            detail_rows.append(
                 f"| {p['ticker']} | {p['company']} | {p['shares']:,.0f} | "
                 f"{fmt_usd(p['value_today'])} | {fmt_pnl(p['pnl'])} | {fmt_pct(p['pnl_pct'])} | {p['alloc_pct']:.1f}% |"
             )
         else:
-            md.append(
+            detail_rows.append(
                 f"| **{it['label']}** | {it['company']} | — | "
                 f"**{fmt_usd(it['value'])}** | **{fmt_pnl(it['pnl'])}** | **{fmt_pct(it['pnl_pct'])}** | {it['alloc_pct']:.1f}% |"
             )
             for m in it["members"]:
-                md.append(
+                detail_rows.append(
                     f"| ↳ {m['ticker']} | {m['company']} | {m['shares']:,.0f} | "
                     f"{fmt_usd(m['value_today'])} | {fmt_pnl(m['pnl'])} | {fmt_pct(m['pnl_pct'])} | — |"
                 )
+    detail_table = "\n".join([
+        "| Ticker | Company | Shares | Value (USD) | Day P&L | Day % | Alloc |",
+        "|---|---|---:|---:|---:|---:|---:|",
+    ] + detail_rows)
+    md_content = (
+        f"```json\n{_json.dumps(front_matter, indent=2)}\n```\n\n"
+        f"{narrative}\n\n"
+        f"<!-- DETAIL -->\n\n"
+        f"# Portfolio — {session} · {now_sgt.strftime('%d %b %Y, %H:%M SGT')}\n\n"
+        f"**Total:** {fmt_usd(total_value)} | Day P&L: {fmt_pnl(total_pnl)} ({fmt_pct(total_pnl_pct)})\n\n"
+        f"_{date_line}_" + (f"  ·  _{fx_line}_" if fx_line else "") + "\n\n"
+        f"{detail_table}\n"
+    )
     with open(md_path, "w") as f:
-        f.write("\n".join(md) + "\n")
+        f.write(md_content)
     log.info(f"[md] Written {md_path}")
+
+    # ── Dispatch Telegram formatter ──────────────────────────────────────────
+    if telegram_bot_token and telegram_owner_id:
+        _dispatch_formatter(
+            "portfolio_email_telegram", md_path,
+            telegram_bot_token, telegram_owner_id,
+            portfolio_db, wm_token,
+        )

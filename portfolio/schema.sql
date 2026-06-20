@@ -525,3 +525,16 @@ CREATE TABLE IF NOT EXISTS portfolio_candidate_evals (
     output_tokens           INT,
     UNIQUE (eval_date, ticker)
 );
+
+-- Telegram outbox — persistent record of every Telegram send
+CREATE TABLE IF NOT EXISTS telegram_outbox (
+    id          SERIAL PRIMARY KEY,
+    sent_at     TIMESTAMPTZ NOT NULL DEFAULT now(),
+    script_name TEXT NOT NULL,
+    message_text TEXT NOT NULL,
+    char_count  INTEGER,
+    word_count  INTEGER,
+    delivered   BOOLEAN,
+    error       TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_telegram_outbox_sent_at ON telegram_outbox (sent_at DESC);

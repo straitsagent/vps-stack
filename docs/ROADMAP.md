@@ -331,6 +331,26 @@ All variables and resources are in the `u/admin` workspace. Credentials come fro
 | `u/admin/recipient_email` | variable | Default report recipient email |
 | `u/admin/telegram_owner_id` | variable | Owner Telegram chat ID |
 
+### Telegram Formatter Architecture (md-driven)
+
+Every Windmill notification now uses a **canonical markdown → dedicated formatter** pattern:
+
+1. **Main script** writes `/research/<type>/<date>.md` with: JSON front-matter block + ≥500-word narrative + `<!-- DETAIL -->` separator.
+2. **`<name>_telegram.py` formatter** reads the `.md`, builds the ≥500-word self-contained Telegram message, sends via the shared sender, logs full text + writes `telegram_outbox`.
+
+| Formatter Script | Main Script |
+|---|---|
+| `u/admin/macro_daily_push_telegram` | `u/admin/macro_daily_push` |
+| `u/admin/portfolio_email_telegram` | `u/admin/portfolio_email` |
+| `u/admin/portfolio_review_telegram` | `u/admin/portfolio_review` |
+| `u/admin/portfolio_rationalization_telegram` | `u/admin/portfolio_rationalization` |
+| `u/admin/portfolio_move_monitor_telegram` | `u/admin/portfolio_move_monitor` |
+| `u/admin/portfolio_analyst_alert_telegram` | `u/admin/portfolio_analyst_alert` |
+| `u/admin/health_check_telegram` | `u/admin/health_check` |
+| `u/admin/youtube_monitor_telegram` | `u/admin/youtube_monitor` |
+
+**`telegram_outbox` table** — Postgres, every Telegram send logged with: `script_name`, `message_text`, `char_count`, `word_count`, `delivered`, `error`. Index on `sent_at DESC`.
+
 ---
 
 ## Telegram Agent Build Status
@@ -343,7 +363,7 @@ All variables and resources are in the `u/admin` workspace. Credentials come fro
 | Telegram bot | ✅ Live | Token in `agent.env`, webhook registered with secret token |
 | Slash command support | ✅ Live | `/portfolio`, `/research NVDA` etc. — leading `/` stripped before classification |
 | DB schema (8 agent tables) | ✅ Applied | `agent_*` tables + `portfolio_thesis` + `agent_kv` in `portfolio` DB |
-| Unit tests (pytest) | ✅ 353 passing | `agent/tests/` — classifier, telegram, tools, db.py (16 ops), schema (14 tables), Windmill scripts, W3/W4 coverage |
+| Unit tests (pytest) | ✅ 521 passing | `agent/tests/` — classifier, telegram, tools, db.py (16 ops), schema (14 tables), Windmill scripts, W3/W4 coverage, 8 formatter behavioral tests |
 | Telegram command menu | ✅ Live | 13 commands: stockresearch, research, deepresearch, earnings, portfolio, prices, news, youtube, macro, thesis, health, search, digest |
 | W2 tools: portfolio_snapshot, prices, news_search, macro_indicators, news/youtube/portfolio digest | ✅ Live | FAST class |
 | W2 tools: portfolio_thesis (read/write) | ✅ Live | thesis_read (FAST), thesis_write (GATED_WRITE) |

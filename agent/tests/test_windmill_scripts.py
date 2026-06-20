@@ -2761,11 +2761,11 @@ def test_move_monitor_has_telegram_params():
 
 
 def test_move_monitor_sends_telegram_on_breach():
-    """Script must call _send_telegram in the alert (threshold-breached) path."""
+    """Script must dispatch the Telegram formatter in the alert (threshold-breached) path."""
     src = _read_mm_source()
-    assert "_send_telegram" in src, "move_monitor missing _send_telegram helper"
-    # The call must be inside the alert body (not just defined but never called)
-    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in move_monitor"
+    assert "_dispatch_formatter" in src, "move_monitor missing _dispatch_formatter helper"
+    assert "portfolio_move_monitor_telegram" in src, \
+        "_dispatch_formatter not called with formatter name in move_monitor"
 
 
 def test_move_monitor_telegram_guarded_by_token_check():
@@ -2787,10 +2787,11 @@ def test_rationalization_has_telegram_params():
 
 
 def test_rationalization_sends_telegram_after_email():
-    """Script must call _send_telegram after the email send."""
+    """Script must dispatch the Telegram formatter after the email send."""
     src = _read_pr_source()
-    assert "_send_telegram" in src, "rationalization missing _send_telegram helper"
-    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in rationalization"
+    assert "_dispatch_formatter" in src, "rationalization missing _dispatch_formatter helper"
+    assert "portfolio_rationalization_telegram" in src, \
+        "_dispatch_formatter not called with formatter name in rationalization"
 
 
 def test_rationalization_telegram_guarded_by_token_check():
@@ -2820,10 +2821,11 @@ def test_portfolio_email_has_telegram_params():
 
 
 def test_portfolio_email_sends_telegram_when_token_set():
-    """Script must call _send_telegram to deliver the snapshot."""
+    """Script must dispatch the Telegram formatter to deliver the snapshot."""
     src = _read_pe_source()
-    assert "_send_telegram" in src, "portfolio_email missing _send_telegram helper"
-    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in portfolio_email"
+    assert "_dispatch_formatter" in src, "portfolio_email missing _dispatch_formatter helper"
+    assert "portfolio_email_telegram" in src, \
+        "_dispatch_formatter not called with formatter name in portfolio_email"
 
 
 def test_portfolio_email_telegram_guarded_by_token_check():
@@ -2866,10 +2868,11 @@ def test_macro_daily_push_calls_deepseek():
 
 
 def test_macro_daily_push_sends_telegram():
-    """Script must call _send_telegram to deliver the push."""
+    """Script must dispatch the Telegram formatter to deliver the push."""
     src = _read_mdp_source()
-    assert "_send_telegram" in src, "macro_daily_push missing _send_telegram"
-    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in macro_daily_push"
+    assert "_dispatch_formatter" in src, "macro_daily_push missing _dispatch_formatter"
+    assert "macro_daily_push_telegram" in src, \
+        "_dispatch_formatter not called with formatter name in macro_daily_push"
 
 
 # ── YouTube monitor: Telegram push on new videos ─────────────────────────────
@@ -2882,10 +2885,11 @@ def test_youtube_monitor_has_telegram_params():
 
 
 def test_youtube_monitor_sends_telegram_when_videos_found():
-    """Script must call _send_telegram when new videos are found."""
+    """Script must dispatch the Telegram formatter when new videos are found."""
     src = _read_yt_source()
-    assert "_send_telegram" in src, "youtube_monitor missing _send_telegram helper"
-    assert src.count("_send_telegram(") >= 1, "_send_telegram not called in youtube_monitor"
+    assert "_dispatch_formatter" in src, "youtube_monitor missing _dispatch_formatter helper"
+    assert "youtube_monitor_telegram" in src, \
+        "_dispatch_formatter not called with formatter name in youtube_monitor"
 
 
 def test_youtube_monitor_telegram_guarded_by_token_check():
@@ -2915,75 +2919,76 @@ def _read_analyst_alert_source() -> str:
 
 
 def test_youtube_telegram_includes_links():
-    """youtube_monitor Telegram push must include watch_url as a clickable link and channel_name."""
+    """youtube_monitor front-matter must include watch_url and channel_name per video."""
     src = _read_yt_source()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in youtube_monitor"
-    tg_block = src[max(0, tg_idx - 500): tg_idx + 600]
-    assert "watch_url" in tg_block, \
-        "youtube_monitor tg_text must include watch_url as a clickable link"
-    assert "channel_name" in tg_block, \
-        "youtube_monitor tg_text must include channel_name"
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in youtube_monitor"
+    # fm_videos (built just before front_matter) carries watch_url and channel_name
+    fm_block = src[max(0, fm_idx - 400): fm_idx + 400]
+    assert "watch_url" in fm_block, \
+        "youtube_monitor front_matter must include watch_url as a clickable link"
+    assert "channel_name" in fm_block, \
+        "youtube_monitor front_matter must include channel_name"
 
 
 def test_youtube_telegram_includes_date():
-    """youtube_monitor Telegram push must include a date (day and month)."""
+    """youtube_monitor front-matter must include a date (day and month)."""
     src = _read_yt_source()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in youtube_monitor"
-    tg_block = src[tg_idx: tg_idx + 800]
-    assert "strftime" in tg_block or "%d" in tg_block or "%-d" in tg_block, \
-        "youtube_monitor tg_text must include a formatted date"
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in youtube_monitor"
+    fm_block = src[fm_idx: fm_idx + 400]
+    assert "date_str" in fm_block or "strftime" in fm_block or "%-d" in fm_block, \
+        "youtube_monitor front_matter must include a formatted date via date_str"
 
 
 def test_portfolio_email_telegram_includes_date():
-    """portfolio_email Telegram push must include full date (day + month), not just time."""
+    """portfolio_email front-matter must include full date (day + month), not just time."""
     src = _read_pe_source()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in portfolio_email"
-    tg_block = src[tg_idx: tg_idx + 600]
-    assert "%b" in tg_block or "%-d" in tg_block or "%d" in tg_block, \
-        "portfolio_email tg_text must include a day/month date format"
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in portfolio_email"
+    fm_block = src[fm_idx: fm_idx + 400]
+    assert "date_str" in fm_block or "%b" in fm_block or "%-d" in fm_block, \
+        "portfolio_email front_matter must include a day/month date via date_str"
 
 
 def test_portfolio_email_telegram_includes_dollar_impact():
-    """portfolio_email Telegram push must include dollar P&L per top mover."""
+    """portfolio_email front-matter must include dollar P&L per top mover."""
     src = _read_pe_source()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in portfolio_email"
-    tg_block = src[tg_idx: tg_idx + 600]
-    assert "pnl" in tg_block or "impact" in tg_block or "dollar" in tg_block, \
-        "portfolio_email tg_text must include dollar P&L per mover (pnl/impact field)"
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in portfolio_email"
+    fm_block = src[fm_idx: fm_idx + 600]
+    assert "pnl" in fm_block or "total_pnl" in fm_block, \
+        "portfolio_email front_matter must include dollar P&L per mover (pnl/total_pnl field)"
 
 
 def test_move_monitor_telegram_includes_dollar_impact():
-    """portfolio_move_monitor Telegram push must include dollar_impact per position."""
+    """portfolio_move_monitor front-matter must include dollar_impact per position."""
     src = _read_mm_source()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in portfolio_move_monitor"
-    tg_block = src[max(0, tg_idx - 500): tg_idx + 600]
-    assert "dollar_impact" in tg_block, \
-        "portfolio_move_monitor tg_text must include dollar_impact per alerted position"
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in portfolio_move_monitor"
+    fm_block = src[fm_idx: fm_idx + 600]
+    assert "dollar_impact" in fm_block, \
+        "portfolio_move_monitor front_matter must include dollar_impact per alerted position"
 
 
 def test_move_monitor_telegram_includes_threshold_label():
-    """portfolio_move_monitor Telegram push must state which threshold was breached."""
+    """portfolio_move_monitor front-matter must include the threshold that was breached."""
     src = _read_mm_source()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in portfolio_move_monitor"
-    tg_block = src[max(0, tg_idx - 500): tg_idx + 800]
-    assert "threshold" in tg_block.lower() or "PORTFOLIO_ALERT_THRESHOLD" in tg_block or "±" in tg_block, \
-        "portfolio_move_monitor tg_text must indicate which threshold (±1.5%/±5%) was breached"
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in portfolio_move_monitor"
+    fm_block = src[fm_idx: fm_idx + 600]
+    assert "pct_threshold" in fm_block or "threshold" in fm_block.lower(), \
+        "portfolio_move_monitor front_matter must include pct_threshold info"
 
 
 def test_rationalization_telegram_includes_scores():
-    """portfolio_rationalization Telegram push must include composite scores, not just rank numbers."""
+    """portfolio_rationalization _make_entry must use composite scores, not just rank numbers."""
     src = _read_pr_source()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in portfolio_rationalization"
-    tg_block = src[tg_idx: tg_idx + 600]
-    assert "balanced" in tg_block or "score" in tg_block.lower(), \
-        "portfolio_rationalization tg_text must include composite scores (balanced)"
+    make_entry_idx = src.find("def _make_entry")
+    assert make_entry_idx != -1, "_make_entry not found in portfolio_rationalization"
+    context = src[make_entry_idx: make_entry_idx + 300]
+    assert "balanced" in context or "composites" in context, \
+        "portfolio_rationalization _make_entry must include composite scores (balanced)"
 
 
 def test_morning_news_has_telegram_push():
@@ -3001,31 +3006,31 @@ def test_morning_news_has_telegram_push():
 
 
 def test_health_check_has_telegram_push():
-    """health_check must have _send_telegram and use rows data to show pass/fail status."""
+    """health_check must dispatch the Telegram formatter and include rows/status in front-matter."""
     src = _read_hc_source()
-    assert "_send_telegram" in src, \
-        "health_check missing _send_telegram — no Telegram push implemented"
+    assert "_dispatch_formatter" in src, \
+        "health_check missing _dispatch_formatter — no Telegram push implemented"
     assert "telegram_bot_token" in src, \
         "health_check main() must accept telegram_bot_token param"
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in health_check"
-    tg_block = src[tg_idx: tg_idx + 600]
-    assert "rows" in tg_block or "status" in tg_block, \
-        "health_check tg_text must use rows/status data"
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in health_check"
+    fm_block = src[fm_idx: fm_idx + 400]
+    assert "rows" in fm_block or "ok_count" in fm_block, \
+        "health_check front_matter must include rows/ok_count data"
 
 
 def test_portfolio_review_has_telegram_push():
-    """portfolio_review must have _send_telegram with week P&L and top movers."""
+    """portfolio_review must dispatch the Telegram formatter with week P&L in front-matter."""
     src = _read_rv_source()
-    assert "_send_telegram" in src, \
-        "portfolio_review missing _send_telegram — no Telegram push implemented"
+    assert "_dispatch_formatter" in src, \
+        "portfolio_review missing _dispatch_formatter — no Telegram push implemented"
     assert "telegram_bot_token" in src, \
         "portfolio_review main() must accept telegram_bot_token param"
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in portfolio_review"
-    tg_block = src[tg_idx: tg_idx + 600]
-    assert "week_pnl" in tg_block or "week_impact" in tg_block, \
-        "portfolio_review tg_text must include week P&L data"
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in portfolio_review"
+    fm_block = src[fm_idx: fm_idx + 400]
+    assert "week_pnl" in fm_block or "week_impact" in fm_block, \
+        "portfolio_review front_matter must include week P&L data"
 
 
 # ── Behavioral tests (mock-based) ────────────────────────────────────────────
@@ -3171,16 +3176,16 @@ def test_rationalization_no_undefined_call1_result():
 
 
 def test_rationalization_telegram_includes_recommendation():
-    """Rationalization Telegram bottom-3 must show KEEP/TRIM/EXIT, not just scores."""
+    """Rationalization front-matter _make_entry must include verdict (KEEP/TRIM/EXIT)."""
     src_path = str(pathlib.Path(__file__).parent.parent.parent /
                    "windmill" / "u" / "admin" / "portfolio_rationalization.py")
     with open(src_path) as f:
         src = f.read()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in portfolio_rationalization"
-    context = src[max(0, tg_idx - 700): tg_idx + 400]
-    assert "recommendation" in context or "rec_tag" in context, \
-        "Rationalization Telegram must include KEEP/TRIM/EXIT recommendation for bottom positions"
+    make_entry_idx = src.find("def _make_entry")
+    assert make_entry_idx != -1, "_make_entry not found in portfolio_rationalization"
+    context = src[make_entry_idx: make_entry_idx + 400]
+    assert "verdict" in context, \
+        "Rationalization _make_entry must include verdict (KEEP/TRIM/EXIT) for positions"
 
 
 def test_portfolio_review_week_uses_5day_lookback():
@@ -3198,15 +3203,16 @@ def test_portfolio_review_week_uses_5day_lookback():
 
 
 def test_portfolio_review_telegram_includes_synthesis():
-    """portfolio_review Telegram must include Deepseek commentary first sentence."""
+    """portfolio_review md narrative must be sourced from Deepseek commentary."""
     with open(str(pathlib.Path(__file__).parent.parent.parent /
                   "windmill" / "u" / "admin" / "portfolio_review.py")) as f:
         src = f.read()
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1
-    context = src[max(0, tg_idx - 500): tg_idx + 500]
+    fm_idx = src.find("front_matter")
+    assert fm_idx != -1, "front_matter not found in portfolio_review"
+    # Window is 700 chars — front_matter dict is ~500 chars; commentary assignment follows
+    context = src[fm_idx: fm_idx + 700]
     assert "commentary" in context, \
-        "portfolio_review Telegram must include Deepseek commentary snippet"
+        "portfolio_review md narrative must include Deepseek commentary"
 
 
 def test_portfolio_email_sgt_uppercase():
@@ -3217,3 +3223,762 @@ def test_portfolio_email_sgt_uppercase():
     # The fix: .lower() only on am/pm, then append " SGT"
     assert '.lower() + " SGT"' in src or ".lower() + ' SGT'" in src, \
         "time_label must use .lower() only on am/pm part, then append ' SGT' (uppercase)"
+
+
+# =============================================================================
+# FORMATTER SCRIPTS — behavioral tests for per-notification Telegram formatters
+# =============================================================================
+# Each formatter script lives at windmill/u/admin/<name>_telegram.py and
+# exposes a _build_message(front_matter: dict, narrative: str) -> str pure
+# function. Tests import and call that function directly.
+# =============================================================================
+
+import json as _json
+
+_SCRIPTS_DIR = pathlib.Path(__file__).parent.parent.parent / "windmill" / "u" / "admin"
+
+# A canonical ≥500-word narrative used as mock LLM output in all formatter tests.
+_TEST_NARRATIVE = (
+    "The portfolio delivered a strong performance this week driven by technology names across "
+    "both US and Hong Kong markets, with broad-based gains more than offsetting selective weakness "
+    "in commodity-exposed and lower-quality growth positions. The macro backdrop remained "
+    "constructive, with the Federal Reserve signalling a patient approach to rate adjustments and "
+    "resilient labour market data continuing to support the soft-landing narrative. Equity "
+    "volatility as measured by the VIX remained anchored below twenty, suggesting investor "
+    "confidence is holding despite ongoing geopolitical uncertainty in several regions globally.\n\n"
+    "In the US book, semiconductor and artificial intelligence infrastructure names led gains "
+    "convincingly. NVIDIA continued its structural dominance in the data-centre compute cycle, "
+    "with the position benefiting from accelerating capital expenditure commitments across "
+    "hyperscalers and sovereign AI programmes globally. Taiwan Semiconductor similarly reflected "
+    "robust advanced-node demand, with margin expansion reinforcing the quality of earnings and "
+    "justifying the current premium to book value. Meta Platforms added meaningfully on "
+    "advertising revenue strength and Llama model adoption across enterprise clients, while "
+    "Microsoft contributed steadily through its Azure cloud momentum and integrated AI tooling.\n\n"
+    "On the Hong Kong side, Tencent extended its recovery trajectory supported by gaming revenue "
+    "normalisation and improving regulatory clarity from Beijing. TCOM remained the standout "
+    "value name, with travel demand data pointing to outbound bookings well above pre-pandemic "
+    "levels and analyst upside exceeding seventy percent from consensus price targets. The BABA "
+    "and BIDU positions continued to weigh on relative performance, and the rationalization "
+    "framework flags both for exit given structural revenue headwinds, elevated short interest "
+    "in the ADR form, and insufficient factor-coverage scores to justify retention in a "
+    "concentrated book.\n\n"
+    "US Treasury yields held in a narrow range this week, with the ten-year anchored near "
+    "four-point-four-five percent, reflecting a balanced risk between sticky services inflation "
+    "and softening goods deflation. The DXY retreated modestly, providing a marginal tailwind "
+    "for USD-denominated overseas earnings translations. Brent crude softened below eighty-one "
+    "dollars per barrel, consistent with demand uncertainty from Chinese industrial data, while "
+    "gold held above four thousand one hundred dollars as a structural hedge against fiscal risks.\n\n"
+    "Portfolio construction notes: the book remains approximately sixty percent US equity and "
+    "forty percent HK-listed names by market value. The largest single risk concentration is "
+    "the ALIBABA consolidated position at roughly ten percent of the book, which is flagged for "
+    "reduction given dual red flags on revenue trajectory and weight. The top five positions "
+    "account for approximately fifty percent of total value, within acceptable concentration "
+    "bounds given their quality scores. Key risks entering the coming week include US-China "
+    "tariff re-escalation, a hotter-than-expected CPI print, and earnings revisions across "
+    "the semiconductor supply chain given elevated forward multiples.\n\n"
+    "Looking at cross-asset signals, the Singapore dollar held steady against the US dollar near "
+    "one-point-three-four, reflecting steady monetary authority policy and a benign regional "
+    "inflation environment. The Hong Kong peg remained well within its trading band, and no "
+    "intervention signals were observed from the HKMA. Currency risk within the portfolio is "
+    "therefore limited to the inherent USD and HKD denomination of underlying securities, "
+    "with no active hedging positions currently deployed. This summary represents a complete "
+    "self-contained assessment of portfolio status, requiring no additional reference materials."
+)
+
+_MIN_WORDS = 500
+
+def _word_count(text: str) -> int:
+    return len(text.split())
+
+def _has_email_pointer(text: str) -> bool:
+    """Return True if the message tells the user to refer to email — forbidden."""
+    patterns = [
+        "→ email", "-> email",
+        "full report → email", "full report -> email",
+        "full digest in email", "full review → email",
+        "full analysis → email", "+ more — full digest",
+        "see email", "refer to email",
+    ]
+    lower = text.lower()
+    return any(p.lower() in lower for p in patterns)
+
+
+def _load_formatter(name: str):
+    """Load a formatter script and return its module."""
+    path = _SCRIPTS_DIR / f"{name}_telegram.py"
+    spec = importlib.util.spec_from_file_location(f"_fmt_{name}", str(path))
+    mod = importlib.util.module_from_spec(spec)
+    for stub in ["requests", "psycopg2", "yfinance", "pytz", "wmill"]:
+        sys.modules.setdefault(stub, type(sys)(stub))
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        pass
+    return mod
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Infrastructure: _split_telegram_message
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _load_split_fn():
+    """Load _split_telegram_message from any formatter (it's shared/duplicated)."""
+    mod = _load_formatter("macro_daily_push")
+    fn = getattr(mod, "_split_telegram_message", None)
+    if fn is None:
+        # try another formatter
+        mod = _load_formatter("portfolio_email")
+        fn = getattr(mod, "_split_telegram_message", None)
+    return fn
+
+
+def test_split_telegram_message_short_passthrough():
+    """Short text (<= 4096 chars) returns a single-element list unchanged."""
+    fn = _load_split_fn()
+    assert fn is not None, "_split_telegram_message not found in any formatter"
+    text = "Hello Telegram"
+    parts = fn(text)
+    assert len(parts) == 1
+    assert parts[0] == text
+
+
+def test_split_telegram_message_long_splits():
+    """Text > 4096 chars is split into multiple parts each <= 4096 chars."""
+    fn = _load_split_fn()
+    assert fn is not None, "_split_telegram_message not found"
+    # Build a >4096-char string of repeated paragraphs
+    para = "This is a test paragraph with enough words to be realistic. " * 10 + "\n\n"
+    long_text = para * 20  # ~12 000 chars
+    parts = fn(long_text)
+    assert len(parts) > 1, "Long text must be split into multiple parts"
+    for p in parts:
+        assert len(p) <= 4096, f"Part exceeds 4096 chars: {len(p)}"
+    reassembled = "".join(parts)
+    # Re-assembled content should contain all the original text (minus part labels)
+    assert len(reassembled) >= len(long_text) * 0.95, "Split must not lose significant content"
+
+
+def test_split_telegram_message_reassembles():
+    """All parts can be concatenated without losing the original narrative."""
+    fn = _load_split_fn()
+    assert fn is not None
+    text = (_TEST_NARRATIVE + "\n\n") * 4  # ~14 000 chars
+    parts = fn(text)
+    # Original words should all appear somewhere across the parts
+    original_words = set(_TEST_NARRATIVE.split())
+    combined = " ".join(parts)
+    found = sum(1 for w in list(original_words)[:50] if w in combined)
+    assert found >= 45, "Split parts must contain the original narrative words"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 1. macro_daily_push_telegram
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_macro_formatter_min_words():
+    """macro_daily_push_telegram._build_message must produce >= 500 words."""
+    mod = _load_formatter("macro_daily_push")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None, "_build_message not found in macro_daily_push_telegram.py"
+    fm = {
+        "script": "macro_daily_push",
+        "timestamp": "2026-06-20T23:41:00+08:00",
+        "indicators": {
+            "VIX":    {"value": 16.4, "change_pct": -2.1},
+            "UST10Y": {"value": 4.45, "change_pct": 0.3},
+            "DXY":    {"value": 100.8, "change_pct": -0.4},
+            "Gold":   {"value": 4172.9, "change_pct": 0.8},
+            "Brent":  {"value": 80.6, "change_pct": -1.2},
+            "SP500":  {"value": 7500.6, "change_pct": 0.9},
+            "USDSGD": {"value": 1.2903, "change_pct": -0.1},
+            "USDHKD": {"value": 7.8368, "change_pct": 0.0},
+        },
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert _word_count(msg) >= _MIN_WORDS, \
+        f"macro Telegram message too short: {_word_count(msg)} words (need >= {_MIN_WORDS})"
+
+
+def test_macro_formatter_no_email_pointer():
+    """macro_daily_push_telegram must not tell user to refer to email."""
+    mod = _load_formatter("macro_daily_push")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "macro_daily_push", "indicators": {"VIX": {"value": 16.4, "change_pct": -2.1}}}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert not _has_email_pointer(msg), f"macro Telegram must not say '→ email': ...{msg[-200:]}..."
+
+
+def test_macro_formatter_shows_indicator_values():
+    """macro_daily_push_telegram must render indicator values from front-matter."""
+    mod = _load_formatter("macro_daily_push")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {
+        "script": "macro_daily_push",
+        "indicators": {
+            "VIX":    {"value": 16.4, "change_pct": -2.1},
+            "USDHKD": {"value": 7.8368, "change_pct": 0.0},
+            "SP500":  {"value": 7500.6, "change_pct": 0.9},
+        },
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "16.4" in msg or "16.4" in msg, "VIX value 16.4 must appear in macro message"
+    assert "7.83" in msg or "7.84" in msg, "USDHKD ~7.84 must appear — not the inverted 0.127"
+    # 7500.6 rounds to 7501 with :,.0f formatting
+    assert "7500" in msg or "7,500" in msg or "7501" in msg or "7,501" in msg, \
+        "S&P 500 value must appear in macro message"
+
+
+def test_macro_formatter_none_value_renders_na():
+    """None indicator value must render as N/A, not 'None' or 'nan'."""
+    mod = _load_formatter("macro_daily_push")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {
+        "script": "macro_daily_push",
+        "indicators": {"VIX": {"value": None, "change_pct": None}},
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "N/A" in msg or "n/a" in msg.lower(), "None value must render as N/A"
+    assert "None" not in msg, "Python None must not appear literally in Telegram message"
+    import re as _re
+    # Check that standalone "nan" (not part of a word like "Taiwan") doesn't appear
+    assert not _re.search(r'\bnan\b', msg, _re.IGNORECASE), \
+        "NaN must not appear as a standalone token in Telegram message"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 2. portfolio_email_telegram
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_portfolio_email_formatter_min_words():
+    """portfolio_email_telegram._build_message must produce >= 500 words."""
+    mod = _load_formatter("portfolio_email")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None, "_build_message not found in portfolio_email_telegram.py"
+    fm = {
+        "script": "portfolio_email",
+        "date_str": "Sat 20 Jun",
+        "time_label": "11pm SGT",
+        "session": "Asia Close",
+        "total_value": 1038998.27,
+        "total_pnl": 13439.0,
+        "total_pnl_pct": 1.31,
+        "gainers": [
+            {"label": "AMZN", "pnl_pct": 2.9, "pnl": 3790.0},
+            {"label": "TSM", "pnl_pct": 6.94, "pnl": 2997.0},
+        ],
+        "losers": [
+            {"label": "ALIBABA", "pnl_pct": -1.23, "pnl": -1284.0},
+        ],
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert _word_count(msg) >= _MIN_WORDS, \
+        f"portfolio_email Telegram too short: {_word_count(msg)} words (need >= {_MIN_WORDS})"
+
+
+def test_portfolio_email_formatter_no_email_pointer():
+    mod = _load_formatter("portfolio_email")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "portfolio_email", "date_str": "Sat 20 Jun", "time_label": "11pm SGT",
+          "session": "Asia Close", "total_value": 1038998.27, "total_pnl": 13439.0,
+          "total_pnl_pct": 1.31, "gainers": [], "losers": []}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert not _has_email_pointer(msg), "portfolio_email Telegram must not say '→ email'"
+
+
+def test_portfolio_email_formatter_sgt_uppercase():
+    """time_label in the rendered message must contain uppercase SGT."""
+    mod = _load_formatter("portfolio_email")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "portfolio_email", "date_str": "Sat 20 Jun", "time_label": "11pm SGT",
+          "session": "Asia Close", "total_value": 1038998.27, "total_pnl": 13439.0,
+          "total_pnl_pct": 1.31, "gainers": [], "losers": []}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "SGT" in msg, "portfolio_email Telegram must show uppercase SGT"
+    assert "sgt" not in msg, "portfolio_email Telegram must not show lowercase sgt"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 3. portfolio_review_telegram
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_portfolio_review_formatter_min_words():
+    """portfolio_review_telegram._build_message must produce >= 500 words."""
+    mod = _load_formatter("portfolio_review")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None, "_build_message not found in portfolio_review_telegram.py"
+    fm = {
+        "script": "portfolio_review",
+        "we_str": "19 Jun",
+        "total_value": 1038998.27,
+        "week_pnl": -7966.22,
+        "week_pct_total": -0.76,
+        "gainers": [
+            {"ticker": "NVDA", "week_pct": 4.2, "week_impact": 16100.0},
+            {"ticker": "AAPL", "week_pct": 3.1, "week_impact": 6200.0},
+        ],
+        "losers": [
+            {"ticker": "BIDU", "week_pct": -3.8, "week_impact": -3800.0},
+        ],
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert _word_count(msg) >= _MIN_WORDS, \
+        f"portfolio_review Telegram too short: {_word_count(msg)} words"
+
+
+def test_portfolio_review_formatter_no_email_pointer():
+    mod = _load_formatter("portfolio_review")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "portfolio_review", "we_str": "19 Jun", "total_value": 1038998.27,
+          "week_pnl": -7966.22, "week_pct_total": -0.76, "gainers": [], "losers": []}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert not _has_email_pointer(msg), "portfolio_review Telegram must not say '→ email'"
+
+
+def test_portfolio_review_formatter_includes_full_narrative():
+    """portfolio_review Telegram must include the full narrative, not a snippet."""
+    mod = _load_formatter("portfolio_review")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "portfolio_review", "we_str": "19 Jun", "total_value": 1038998.27,
+          "week_pnl": -7966.22, "week_pct_total": -0.76, "gainers": [], "losers": []}
+    msg = fn(fm, _TEST_NARRATIVE)
+    # The full narrative should appear — check that a phrase from the middle is present
+    assert "Treasury yields held" in msg or "Hong Kong side" in msg, \
+        "Full narrative must be included in portfolio_review Telegram, not just first sentence"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 4. portfolio_rationalization_telegram
+# ─────────────────────────────────────────────────────────────────────────────
+
+_RATION_FM = {
+    "script": "portfolio_rationalization",
+    "today_str": "20 Jun",
+    "n_positions": 31,
+    "top3": [
+        {"ticker": "NVDA", "score": 55.5, "verdict": "KEEP"},
+        {"ticker": "TCOM", "score": 51.5, "verdict": "KEEP"},
+        {"ticker": "TSM",  "score": 48.4, "verdict": "KEEP"},
+    ],
+    "bot3": [
+        {"ticker": "XLV",   "score": 2.9,  "verdict": "EXIT"},
+        {"ticker": "BRK-B", "score": 6.0,  "verdict": "EXIT"},
+        {"ticker": "ADM",   "score": 14.9, "verdict": "EXIT"},
+    ],
+}
+
+
+def test_rationalization_formatter_min_words():
+    """portfolio_rationalization_telegram._build_message must produce >= 500 words."""
+    mod = _load_formatter("portfolio_rationalization")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None, "_build_message not found in portfolio_rationalization_telegram.py"
+    msg = fn(_RATION_FM, _TEST_NARRATIVE)
+    assert _word_count(msg) >= _MIN_WORDS, \
+        f"rationalization Telegram too short: {_word_count(msg)} words"
+
+
+def test_rationalization_formatter_no_email_pointer():
+    mod = _load_formatter("portfolio_rationalization")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    msg = fn(_RATION_FM, _TEST_NARRATIVE)
+    assert not _has_email_pointer(msg), "rationalization Telegram must not say '→ email'"
+
+
+def test_rationalization_formatter_shows_composite_scores_not_ranks():
+    """Bottom-3 must show the composite score (2.9) not the rank integer (31)."""
+    mod = _load_formatter("portfolio_rationalization")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    msg = fn(_RATION_FM, _TEST_NARRATIVE)
+    assert "2.9" in msg, "XLV composite score 2.9 must appear in rationalization Telegram"
+    assert "6.0" in msg or "6.0" in msg, "BRK-B composite score 6.0 must appear"
+    # The rank integer 31 alone should NOT appear as a score label
+    # (It may appear in context like "31 positions" which is fine)
+    assert "XLV 31" not in msg, "XLV must show score 2.9 not rank 31"
+
+
+def test_rationalization_formatter_shows_verdict_tags():
+    """Bottom-3 must show EXIT/TRIM verdict tags from the front-matter."""
+    mod = _load_formatter("portfolio_rationalization")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    msg = fn(_RATION_FM, _TEST_NARRATIVE)
+    assert "EXIT" in msg, "EXIT verdict must appear in rationalization Telegram for bottom positions"
+    assert "XLV" in msg and "BRK-B" in msg, "Bottom-3 tickers must appear in rationalization Telegram"
+
+
+def test_rationalization_formatter_includes_full_exec_summary():
+    """Full executive summary narrative must be in rationalization Telegram."""
+    mod = _load_formatter("portfolio_rationalization")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    msg = fn(_RATION_FM, _TEST_NARRATIVE)
+    # The narrative includes "Treasury yields held" — confirm it's present (not truncated)
+    assert "Treasury yields held" in msg or "Hong Kong side" in msg, \
+        "Full narrative must appear in rationalization Telegram"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 5. portfolio_move_monitor_telegram
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_move_monitor_formatter_min_words():
+    """portfolio_move_monitor_telegram._build_message must produce >= 500 words."""
+    mod = _load_formatter("portfolio_move_monitor")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None, "_build_message not found in portfolio_move_monitor_telegram.py"
+    fm = {
+        "script": "portfolio_move_monitor",
+        "time_str": "10:30 AM SGT",
+        "portfolio_move": -2.1,
+        "total_impact": -21800.0,
+        "pct_threshold": 1.5,
+        "position_alerts": [
+            {"ticker": "NVDA", "intraday_pct": -5.8, "dollar_impact": -3660.0},
+        ],
+        "pos_threshold": 5.0,
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert _word_count(msg) >= _MIN_WORDS, \
+        f"move_monitor Telegram too short: {_word_count(msg)} words"
+
+
+def test_move_monitor_formatter_no_email_pointer():
+    mod = _load_formatter("portfolio_move_monitor")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "portfolio_move_monitor", "time_str": "10:30 AM SGT",
+          "portfolio_move": -2.1, "total_impact": -21800.0,
+          "pct_threshold": 1.5, "position_alerts": [], "pos_threshold": 5.0}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert not _has_email_pointer(msg), "move_monitor Telegram must not say '→ email'"
+
+
+def test_move_monitor_formatter_shows_alert_details():
+    """Move-monitor Telegram must show % move, $ impact, and threshold from front-matter."""
+    mod = _load_formatter("portfolio_move_monitor")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "portfolio_move_monitor", "time_str": "10:30 AM SGT",
+          "portfolio_move": -2.1, "total_impact": -21800.0,
+          "pct_threshold": 1.5,
+          "position_alerts": [{"ticker": "NVDA", "intraday_pct": -5.8, "dollar_impact": -3660.0}],
+          "pos_threshold": 5.0}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "2.1" in msg or "-2.1" in msg, "Portfolio % move must appear"
+    assert "NVDA" in msg, "Alert ticker must appear"
+    assert "5.8" in msg or "-5.8" in msg, "Position % move must appear"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 6. portfolio_analyst_alert_telegram
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_analyst_alert_formatter_min_words():
+    """portfolio_analyst_alert_telegram._build_message must produce >= 500 words."""
+    mod = _load_formatter("portfolio_analyst_alert")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None, "_build_message not found in portfolio_analyst_alert_telegram.py"
+    fm = {
+        "script": "portfolio_analyst_alert",
+        "today_str": "20 Jun",
+        "alerts": [
+            {"ticker": "NVDA", "action": "Upgrade", "old_rating": "Neutral", "new_rating": "Buy",
+             "period": "last 7 days"},
+        ],
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert _word_count(msg) >= _MIN_WORDS, \
+        f"analyst_alert Telegram too short: {_word_count(msg)} words"
+
+
+def test_analyst_alert_formatter_no_email_pointer():
+    mod = _load_formatter("portfolio_analyst_alert")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "portfolio_analyst_alert", "today_str": "20 Jun",
+          "alerts": [{"ticker": "NVDA", "action": "Upgrade",
+                      "old_rating": "Neutral", "new_rating": "Buy", "period": "7 days"}]}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert not _has_email_pointer(msg), "analyst_alert Telegram must not say '→ email'"
+
+
+def test_analyst_alert_formatter_shows_rating_details():
+    """Analyst alert Telegram must show ticker, direction, and old→new rating."""
+    mod = _load_formatter("portfolio_analyst_alert")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "portfolio_analyst_alert", "today_str": "20 Jun",
+          "alerts": [{"ticker": "NVDA", "action": "Upgrade",
+                      "old_rating": "Neutral", "new_rating": "Buy", "period": "7 days"}]}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "NVDA" in msg, "Ticker must appear"
+    assert "Upgrade" in msg or "upgrade" in msg, "Action must appear"
+    assert "Neutral" in msg and "Buy" in msg, "Old and new ratings must appear"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. health_check_telegram
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_health_check_formatter_min_words():
+    """health_check_telegram._build_message must produce >= 500 words."""
+    mod = _load_formatter("health_check")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None, "_build_message not found in health_check_telegram.py"
+    fm = {
+        "script": "health_check",
+        "tg_date": "20 Jun",
+        "ok_count": 5,
+        "total": 6,
+        "rows": [
+            {"label": "Morning News Digest", "status": "OK",  "age_str": "18h ago",  "error": None},
+            {"label": "Portfolio Email",      "status": "OK",  "age_str": "2h ago",   "error": None},
+            {"label": "YouTube Monitor",      "status": "OK",  "age_str": "4h ago",   "error": None},
+            {"label": "Portfolio Review",     "status": "OK",  "age_str": "10h ago",  "error": None},
+            {"label": "Portfolio Ration.",    "status": "OK",  "age_str": "3d ago",   "error": None},
+            {"label": "Move Monitor",         "status": "FAIL","age_str": "26h ago",  "error": "timeout"},
+        ],
+        "token_usage": [],
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert _word_count(msg) >= _MIN_WORDS, \
+        f"health_check Telegram too short: {_word_count(msg)} words"
+
+
+def test_health_check_formatter_no_email_pointer():
+    mod = _load_formatter("health_check")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "health_check", "tg_date": "20 Jun", "ok_count": 6, "total": 6, "rows": [],
+          "token_usage": []}
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert not _has_email_pointer(msg), "health_check Telegram must not say '→ email'"
+
+
+def test_health_check_formatter_shows_all_schedule_statuses():
+    """Health check Telegram must show status for every schedule in the rows list."""
+    mod = _load_formatter("health_check")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {
+        "script": "health_check", "tg_date": "20 Jun", "ok_count": 5, "total": 6,
+        "rows": [
+            {"label": "Portfolio Email", "status": "OK", "age_str": "2h ago", "error": None},
+            {"label": "Move Monitor",    "status": "FAIL", "age_str": "26h ago", "error": "timeout"},
+        ],
+        "token_usage": [],
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "Portfolio Email" in msg, "Portfolio Email label must appear"
+    assert "Move Monitor" in msg, "Move Monitor label must appear"
+    assert "timeout" in msg or "FAIL" in msg, "Error detail must appear for failed schedule"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 8. youtube_monitor_telegram
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_youtube_formatter_min_words():
+    """youtube_monitor_telegram._build_message must produce >= 500 words."""
+    mod = _load_formatter("youtube_monitor")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None, "_build_message not found in youtube_monitor_telegram.py"
+    fm = {
+        "script": "youtube_monitor",
+        "date_str": "20 Jun",
+        "n_summarised": 5,
+        "videos": [
+            {"title": "Fed Chair Powell Speaks on Rates", "watch_url": "https://youtu.be/aaa",
+             "channel_name": "Bloomberg", "summary": _TEST_NARRATIVE},
+            {"title": "China GDP Data Deep Dive", "watch_url": "https://youtu.be/bbb",
+             "channel_name": "CNBC", "summary": "China GDP grew faster than expected this quarter."},
+        ],
+    }
+    msg = fn(fm, "")  # youtube formatter builds body from per-video summaries, not a single narrative
+    assert _word_count(msg) >= _MIN_WORDS, \
+        f"youtube Telegram too short: {_word_count(msg)} words"
+
+
+def test_youtube_formatter_no_email_pointer():
+    mod = _load_formatter("youtube_monitor")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "youtube_monitor", "date_str": "20 Jun", "n_summarised": 1,
+          "videos": [{"title": "Test", "watch_url": "https://youtu.be/x",
+                      "channel_name": "Test Channel", "summary": _TEST_NARRATIVE}]}
+    msg = fn(fm, "")
+    assert not _has_email_pointer(msg), "youtube Telegram must not say '→ email' or 'full digest in email'"
+
+
+def test_youtube_formatter_includes_per_video_summaries():
+    """youtube_monitor Telegram must include per-video AI summaries, not just titles."""
+    mod = _load_formatter("youtube_monitor")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    summary_text = "This video explains the Federal Reserve policy in detail covering rate decisions."
+    fm = {"script": "youtube_monitor", "date_str": "20 Jun", "n_summarised": 1,
+          "videos": [{"title": "Fed Policy Explained", "watch_url": "https://youtu.be/x",
+                      "channel_name": "Bloomberg", "summary": summary_text}]}
+    msg = fn(fm, "")
+    assert "Federal Reserve policy" in msg or "rate decisions" in msg, \
+        "youtube Telegram must include the per-video summary text, not just the title/link"
+
+
+def test_youtube_formatter_includes_clickable_links():
+    """youtube_monitor Telegram must include watch URLs as clickable links."""
+    mod = _load_formatter("youtube_monitor")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {"script": "youtube_monitor", "date_str": "20 Jun", "n_summarised": 1,
+          "videos": [{"title": "Test Video", "watch_url": "https://youtu.be/testxyz",
+                      "channel_name": "TestChan", "summary": _TEST_NARRATIVE}]}
+    msg = fn(fm, "")
+    assert "youtu.be/testxyz" in msg or "https://youtu.be/testxyz" in msg, \
+        "youtube Telegram must include clickable watch URLs"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Cross-script guard tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+_FORMATTER_NAMES = [
+    "macro_daily_push", "portfolio_email", "portfolio_review",
+    "portfolio_rationalization", "portfolio_move_monitor",
+    "portfolio_analyst_alert", "health_check", "youtube_monitor",
+]
+
+_MAIN_SCRIPT_NAMES = [
+    "macro_daily_push", "portfolio_email", "portfolio_review",
+    "portfolio_rationalization", "portfolio_move_monitor",
+    "portfolio_analyst_alert", "health_check", "youtube_monitor",
+]
+
+
+@pytest.mark.parametrize("name", _FORMATTER_NAMES)
+def test_formatter_exists(name):
+    """Each formatter script file must exist."""
+    path = _SCRIPTS_DIR / f"{name}_telegram.py"
+    assert path.exists(), f"Formatter script missing: {name}_telegram.py"
+
+
+@pytest.mark.parametrize("name", _FORMATTER_NAMES)
+def test_formatter_logs_telegram_text(name):
+    """Every formatter's _send_telegram (or shared send helper) must log the full message text."""
+    path = _SCRIPTS_DIR / f"{name}_telegram.py"
+    if not path.exists():
+        pytest.skip(f"{name}_telegram.py does not exist yet")
+    src = path.read_text()
+    # Must have a log.info call that references the text being sent
+    has_log = ("log.info" in src and ("text" in src or "message" in src or "msg" in src))
+    assert has_log, f"{name}_telegram.py must call log.info with the message text before sending"
+
+
+@pytest.mark.parametrize("name", _FORMATTER_NAMES)
+def test_formatter_has_no_email_footer_in_source(name):
+    """No formatter source may contain a '→ email' / 'full digest in email' footer string."""
+    path = _SCRIPTS_DIR / f"{name}_telegram.py"
+    if not path.exists():
+        pytest.skip(f"{name}_telegram.py does not exist yet")
+    src = path.read_text()
+    forbidden = ["→ email", "-> email", "full digest in email", "Full report → email",
+                 "full review → email", "see email"]
+    for pat in forbidden:
+        assert pat not in src, \
+            f"{name}_telegram.py source contains forbidden email-pointer: '{pat}'"
+
+
+@pytest.mark.parametrize("name", _FORMATTER_NAMES)
+def test_formatter_checks_telegram_api_ok(name):
+    """Every formatter must inspect the Telegram API 'ok' field, not silently discard the response."""
+    path = _SCRIPTS_DIR / f"{name}_telegram.py"
+    if not path.exists():
+        pytest.skip(f"{name}_telegram.py does not exist yet")
+    src = path.read_text()
+    assert '"ok"' in src or "'ok'" in src or ".get(\"ok\")" in src or ".get('ok')" in src, \
+        f"{name}_telegram.py must check the Telegram API 'ok' response field"
+
+
+@pytest.mark.parametrize("name", _MAIN_SCRIPT_NAMES)
+def test_main_script_dispatches_formatter(name):
+    """Every main script must dispatch its formatter (contain a formatter job dispatch call)."""
+    path = _SCRIPTS_DIR / f"{name}.py"
+    if not path.exists():
+        pytest.skip(f"{name}.py does not exist")
+    src = path.read_text()
+    formatter_name = f"{name}_telegram"
+    assert formatter_name in src or f"{name.replace('_', '-')}_telegram" in src, \
+        f"{name}.py must dispatch {formatter_name} formatter"
+
+
+@pytest.mark.parametrize("name", _MAIN_SCRIPT_NAMES)
+def test_main_script_writes_canonical_md(name):
+    """Every main script must write a canonical markdown report file."""
+    path = _SCRIPTS_DIR / f"{name}.py"
+    if not path.exists():
+        pytest.skip(f"{name}.py does not exist")
+    src = path.read_text()
+    # Must write an md file somewhere under /research/
+    assert "/research/" in src and ".md" in src, \
+        f"{name}.py must write a canonical .md file to /research/"
+
+
+@pytest.mark.parametrize("name", _MAIN_SCRIPT_NAMES)
+def test_main_script_has_no_direct_send_telegram(name):
+    """Main scripts must not call _send_telegram directly — Telegram is handled by the formatter."""
+    path = _SCRIPTS_DIR / f"{name}.py"
+    if not path.exists():
+        pytest.skip(f"{name}.py does not exist")
+    src = path.read_text()
+    # Check for old inline send patterns — should not call _send_telegram or sendMessage
+    assert "_send_telegram(" not in src, \
+        f"{name}.py must not call _send_telegram directly — use the formatter script instead"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Rationalization data-layer fix tests
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_rationalization_uses_verdict_key_not_recommendation():
+    """portfolio_rationalization.py must read 'verdict' from call1_structured, not 'recommendation'."""
+    src = (_SCRIPTS_DIR / "portfolio_rationalization.py").read_text()
+    # The Telegram block must use 'verdict', not 'recommendation'
+    tg_idx = src.find("_build_tg_front_matter") if "_build_tg_front_matter" in src else src.find("top3")
+    # Search in the section building the front-matter / top3/bot3 for tg output
+    relevant = src[max(0, tg_idx - 200): tg_idx + 600] if tg_idx != -1 else src
+    assert '"recommendation"' not in relevant or 'verdict' in relevant, \
+        "portfolio_rationalization must use 'verdict' key (not 'recommendation') from call1_structured"
+
+
+def test_rationalization_writes_recommendation_to_db():
+    """portfolio_rationalization DB upsert must include the 'recommendation' column."""
+    src = (_SCRIPTS_DIR / "portfolio_rationalization.py").read_text()
+    upsert_idx = src.find("INSERT INTO portfolio_scores")
+    assert upsert_idx != -1, "INSERT INTO portfolio_scores not found"
+    upsert_block = src[upsert_idx: upsert_idx + 1200]
+    assert "recommendation" in upsert_block, \
+        "portfolio_scores INSERT must include the 'recommendation' column"
+
+
+def test_rationalization_score_is_composite_not_rank():
+    """portfolio_rationalization _make_entry must use composite score not rank integer."""
+    src = (_SCRIPTS_DIR / "portfolio_rationalization.py").read_text()
+    # _make_entry builds each top3/bot3 dict — must reference composites/balanced, not ranks
+    make_entry_idx = src.find("def _make_entry")
+    if make_entry_idx == -1:
+        # Fallback: look for _composite_score helper function
+        make_entry_idx = src.find("_composite_score")
+    context = src[max(0, make_entry_idx): make_entry_idx + 400] if make_entry_idx != -1 else ""
+    has_composite_ref = ("composites" in context or "composite_score" in context or
+                         "balanced" in context)
+    has_rank_only = ("ranks.get" in context and "composites" not in context)
+    assert has_composite_ref and not has_rank_only, \
+        "portfolio_rationalization _make_entry must use composite score, not rank integer"

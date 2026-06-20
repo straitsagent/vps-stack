@@ -33,22 +33,48 @@ SYMBOLS = {
 _INVERT_SYMBOLS: set = set()
 
 SYNTHESIS_PROMPT = (
-    "You are a macro analyst. Given these 8 market data points, write exactly 2-3 concise sentences "
-    "interpreting the current macro environment for a portfolio that is ~40% HK equities and ~60% US equities. "
-    "Focus on what matters most right now. No preamble, no bullet points — plain prose only.\n\n"
+    "You are a macro analyst. Given these 8 market data points, write a detailed macro brief of at least "
+    "500 words interpreting the current macro environment for a portfolio that is ~40% HK equities and "
+    "~60% US equities. Cover: (1) equity risk sentiment and what VIX signals, (2) interest rates and "
+    "yield context, (3) dollar strength and FX implications for the portfolio, (4) energy and commodity "
+    "context from Brent, (5) gold as a risk/hedge indicator, (6) implications for the specific HK and "
+    "US equity mix. Be specific about what the data means for portfolio positioning — not generic. "
+    "No preamble, no bullet points, no headers — continuous analytical prose only.\n\n"
     "Data:\n{data}"
 )
 
+WM_BASE      = "http://windmill_server:8000"
+WM_WORKSPACE = "admins"
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):
+
+def _dispatch_formatter(formatter_name: str, md_path: str,
+                        telegram_bot_token: str, telegram_owner_id: str,
+                        portfolio_db: dict, wm_token: str = "") -> str:
+    """Dispatch a Telegram formatter script fire-and-forget. Returns job_id or ''."""
+    import os as _os
+    token = wm_token or _os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
+        return ""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/{formatter_name}"
+    args = {
+        "md_path": md_path,
+        "telegram_bot_token": telegram_bot_token,
+        "telegram_owner_id": telegram_owner_id,
+        "portfolio_db": portfolio_db,
+    }
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
+        resp = requests.post(
+            url, headers={"Authorization": f"Bearer {token}",
+                          "Content-Type": "application/json"},
+            json=args, timeout=10,
         )
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
+        return job_id
     except Exception as e:
-        log.warning(f"[Telegram] Failed to send: {e}")
+        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
+        return ""
 
 
 def _fetch_macro() -> dict:
@@ -101,7 +127,7 @@ def _synthesise(macro: dict, deepseek_key: str) -> str:
                 "model": "deepseek-chat",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
-                "max_tokens": 200,
+                "max_tokens": 900,
             },
             timeout=20,
         )
@@ -116,7 +142,10 @@ def main(
     telegram_bot_token: str,
     telegram_owner_id: str,
     deepseek_key: str,
+    portfolio_db: dict = {},
+    wm_token: str = "",
 ):
+    import json as _json, os as _os
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
     time_label = now_sgt.strftime("%a %-d %b, %-I:%M %p SGT")
@@ -124,38 +153,30 @@ def main(
     log.info("[MacroPush] Fetching Yahoo Finance data...")
     macro = _fetch_macro()
 
-    def fv(name, fmt=".4g"):
-        v = macro.get(name, {}).get("value")
-        return f"{v:{fmt}}" if v is not None else "N/A"
-
-    def fa(name):
-        return _fmt_arrow(macro.get(name, {}).get("change_pct"))
-
-    vix_str      = f"VIX {fv('VIX', '.3g')}{fa('VIX')}"
-    ust_str      = f"UST10Y {float(macro['UST10Y']['value']):.2f}%{fa('UST10Y')}" if macro.get("UST10Y", {}).get("value") else "UST10Y N/A"
-    dxy_str      = f"DXY {fv('DXY', '.4g')}{fa('DXY')}"
-    brent_str    = f"Brent ${fv('Brent', '.4g')}{fa('Brent')}"
-    gold_str     = f"Gold ${fv('Gold', ',.0f')}{fa('Gold')}"
-    sp500_val    = macro.get("SP500", {}).get("value")
-    sp500_chg    = macro.get("SP500", {}).get("change_pct")
-    sp500_str    = (f"S&P 500 {sp500_val:,.0f} {sp500_chg:+.1f}%" if sp500_val and sp500_chg is not None else "S&P 500 N/A")
-    sgd_str      = f"USD/SGD {fv('USDSGD', '.4f')}{fa('USDSGD')}"
-    hkd_str      = f"USD/HKD {fv('USDHKD', '.4f')}{fa('USDHKD')}"
-
     log.info("[MacroPush] Running Deepseek synthesis...")
-    synthesis = _synthesise(macro, deepseek_key)
+    narrative = _synthesise(macro, deepseek_key)
 
-    tg_text = (
-        f"*Macro — {time_label}*\n\n"
-        f"{vix_str}  {ust_str}  {dxy_str}\n"
-        f"{brent_str}  {gold_str}\n"
-        f"{sgd_str}  {hkd_str}\n"
-        f"{sp500_str}\n"
+    # ── Write canonical .md ──────────────────────────────────────────────────
+    front_matter = {
+        "timestamp": now_sgt.isoformat(),
+        "indicators": macro,
+    }
+    _os.makedirs("/research/macro", exist_ok=True)
+    md_path = f"/research/macro/{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"
+    md_content = (
+        f"```json\n{_json.dumps(front_matter, indent=2)}\n```\n\n"
+        f"{narrative}\n\n"
+        "<!-- DETAIL -->\n"
     )
-    if synthesis:
-        tg_text += f"\n_{synthesis}_"
+    with open(md_path, "w") as f:
+        f.write(md_content)
+    log.info(f"[md] Written {md_path}")
 
-    _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
-    log.info("[MacroPush] Sent.")
+    # ── Dispatch Telegram formatter ──────────────────────────────────────────
+    _dispatch_formatter(
+        "macro_daily_push_telegram", md_path,
+        telegram_bot_token, telegram_owner_id,
+        portfolio_db, wm_token,
+    )
 
-    return {"status": "sent", "time": time_label}
+    return {"status": "dispatched", "md_path": md_path, "time": time_label}

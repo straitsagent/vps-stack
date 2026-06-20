@@ -57,6 +57,7 @@ After any SSH login, run `cr` to re-enter the persistent session.
 - **PostgreSQL is the data layer for the Portfolio Intelligence System.** Windmill scripts connect to it as an internal service — not exposed externally.
 - **Claude Code writes all scripts.** Scripts live in Windmill's script editor (Python or TypeScript). No manual coding.
 - **Keep it simple.** Each workflow should be buildable in a single Claude Code session and run unattended.
+- **Telegram notifications use the markdown-driven formatter architecture.** Each main script writes a canonical `.md` file (JSON front-matter block + ≥500-word LLM narrative + `<!-- DETAIL -->` separator). A dedicated `<name>_telegram.py` formatter script reads that `.md` and builds the self-contained ≥500-word Telegram message. The 8 formatters are: `macro_daily_push_telegram`, `portfolio_email_telegram`, `portfolio_review_telegram`, `portfolio_rationalization_telegram`, `portfolio_move_monitor_telegram`, `portfolio_analyst_alert_telegram`, `health_check_telegram`, `youtube_monitor_telegram`. Every Telegram send is logged to `telegram_outbox` (Postgres) and to the formatter job logs (`[Telegram] Sending ...`).
 
 ---
 
@@ -203,6 +204,8 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
     - The PostToolUse hook prints a TDD reminder after every Python file edit. Do not suppress or skip it.
     - For agent code: tests in `agent/tests/`, run `docker exec root-straitsagent-1 python -m pytest tests/ -v`, rebuild container.
     - For Windmill scripts: tests in `agent/tests/test_windmill_scripts.py`, then run a live Windmill job and verify the output file/email matches all expected fields.
+16. **Every Telegram/notification message must be a self-contained ≥500-word report. Never tell the user to "refer to email" or "see the full report in email".** Each notification is the complete report, not a pointer to one. The formatter script architecture enforces this: each main script writes a canonical `.md`, and a dedicated `<name>_telegram.py` formatter reads that `.md` and builds the full ≥500-word Telegram message.
+17. **Never claim a Telegram notification works without reading the actual logged message text and comparing it to the canonical `.md`/email/DB source.** `success: True` only means the job didn't crash — it does not verify content. Verification means: reading `[Telegram] Sending` in the formatter job logs, querying `telegram_outbox`, asserting ≥500 words, and confirming no "→ email" footer. Any report of "it works" without this evidence is invalid.
 
 ---
 
@@ -223,7 +226,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-20 (Notification quality fixes: macro NaN/FX inversion, week P&L 5-day SQL lookback, portfolio_email SGT case, portfolio_rationalization NameError + KEEP/TRIM/EXIT in Telegram, portfolio_review commentary snippet in Telegram. Test overhaul: 8 behavioral mock tests replacing source-inspection approach. 431 tests passing. Repo: `vps-stack`.)
+**Last updated:** 2026-06-20 (Markdown-driven Telegram formatter architecture: 8 `<name>_telegram.py` formatter scripts, `telegram_outbox` Postgres table, canonical `.md` per notification (JSON front-matter + ≥500w narrative + `<!-- DETAIL -->`). All main scripts dispatch formatter instead of calling `_send_telegram` directly. portfolio_rationalization data fixes: verdict key, composite score, DB recommendation column. portfolio_email SGT lowercase fix. 521 tests passing. Hard Rules 16 + 17 added. Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`
@@ -274,7 +277,7 @@ See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/res
 ### Telegram Agent — Build Status
 See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full component inventory.
 
-**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 5 Windmill scripts, macro_daily_push at 7:30 AM SGT, 431 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
+**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 8 Windmill scripts (all via md-driven formatter architecture), macro_daily_push at 7:30 AM SGT, 521 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
 
 ### Next Up
 1. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`

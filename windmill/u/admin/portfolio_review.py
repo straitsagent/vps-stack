@@ -27,18 +27,34 @@ GRAY  = "#666"
 ETF_TICKERS = {"XLV", "SPY", "QQQ", "IWM", "VTI"}
 
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):
+WM_BASE      = "http://windmill_server:8000"
+WM_WORKSPACE = "admins"
+
+
+def _dispatch_formatter(formatter_name: str, md_path: str,
+                        telegram_bot_token: str, telegram_owner_id: str,
+                        portfolio_db: dict, wm_token: str = "") -> str:
+    import os as _os
+    token = wm_token or _os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
+        return ""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/{formatter_name}"
+    args = {"md_path": md_path, "telegram_bot_token": telegram_bot_token,
+            "telegram_owner_id": telegram_owner_id, "portfolio_db": portfolio_db}
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
-        )
+        resp = requests.post(url, headers={"Authorization": f"Bearer {token}",
+                                           "Content-Type": "application/json"},
+                             json=args, timeout=10)
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
+        return job_id
     except Exception as e:
-        log.warning(f"[Telegram] Failed to send: {e}")
+        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
+        return ""
 
 
-def main(portfolio_db: dict, finnhub_key: str, deepseek_key: str, gmail_smtp: dict, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = ""):
+def main(portfolio_db: dict, finnhub_key: str, deepseek_key: str, gmail_smtp: dict, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = "", wm_token: str = ""):
     today = date.today()
 
     # ── 1. Load DB ────────────────────────────────────────────────────────
@@ -253,11 +269,13 @@ def main(portfolio_db: dict, finnhub_key: str, deepseek_key: str, gmail_smtp: di
 
 You are reviewing a personal investment portfolio for the week ending {last_friday.strftime('%d %b %Y')}.
 Above is the week's price performance and recent news headlines for the top movers.
-Write a 2-3 paragraph portfolio commentary covering:
+Write a detailed ≥500-word portfolio weekly commentary covering:
 1. What drove the notable movers this week (tie to news where possible)
 2. Any valuation observations (e.g. large discount to analyst target, elevated P/E)
 3. Key themes or risks across the portfolio (concentration, China exposure, sector trends)
-Be factual and concise. Do not give buy/sell recommendations."""
+4. Macro context relevant to the portfolio's US/HK equity mix this week
+5. Any positions that showed unusual divergence from sector trends
+Be analytical and specific. Do not give buy/sell recommendations. Minimum 500 words of continuous prose."""
 
     commentary = None
     try:
@@ -265,7 +283,7 @@ Be factual and concise. Do not give buy/sell recommendations."""
         resp = ds.chat.completions.create(
             model="deepseek-chat",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=600,
+            max_tokens=900,
             temperature=0.3,
         )
         commentary = resp.choices[0].message.content.strip()
@@ -476,37 +494,40 @@ Be factual and concise. Do not give buy/sell recommendations."""
 
     log.info(f"Sent: {subject}")
 
+    # ── Write canonical .md + dispatch Telegram formatter ────────────────────
     if telegram_bot_token and telegram_owner_id:
+        import os as _os, json as _json
+        _os.makedirs("/research/portfolio", exist_ok=True)
         we_str = last_friday.strftime("%-d %b")
-        sign_pnl = "+" if week_pnl >= 0 else ""
-        sign_pct = "+" if week_pct_total >= 0 else ""
-        week_k = week_pnl / 1000
-        gainers = sorted([p for p in top10_impact if (p.get("week_impact") or 0) > 0],
-                         key=lambda x: x["week_impact"], reverse=True)[:2]
-        losers  = sorted([p for p in top10_impact if (p.get("week_impact") or 0) < 0],
-                         key=lambda x: x["week_impact"])[:2]
-        def _mover_str(p):
-            pct = f"{'+' if (p.get('week_pct') or 0) >= 0 else ''}{p.get('week_pct') or 0:.1f}%"
-            wi = p.get("week_impact") or 0
-            k = wi / 1000
-            impact = f" (+${k:.1f}k)" if wi >= 0 else f" (-${abs(k):.1f}k)"
-            return f"{p['ticker']} {pct}{impact}"
-        g_str = "  ".join(_mover_str(p) for p in gainers) or "—"
-        l_str = "  ".join(_mover_str(p) for p in losers) or "—"
-        commentary_snippet = ""
-        if commentary:
-            first_sentence = commentary.split(".")[0].strip()
-            if first_sentence:
-                commentary_snippet = f"\n\n_{first_sentence}._"
-        tg_text = (
-            f"*Weekly Review — w/e {we_str}*\n"
-            f"{fmt_usd(total_value)} | Week: {sign_pnl}${abs(week_k):.1f}k ({sign_pct}{week_pct_total:.2f}%)\n\n"
-            f"📈 {g_str}\n"
-            f"📉 {l_str}"
-            f"{commentary_snippet}\n\n"
-            f"_Full review → email_"
+        gain2 = sorted([p for p in top10_impact if (p.get("week_impact") or 0) > 0],
+                       key=lambda x: x["week_impact"], reverse=True)[:2]
+        lose2 = sorted([p for p in top10_impact if (p.get("week_impact") or 0) < 0],
+                       key=lambda x: x["week_impact"])[:2]
+        front_matter = {
+            "we_str":           we_str,
+            "total_value":      round(total_value, 2),
+            "week_pnl":         round(week_pnl, 2),
+            "week_pct_total":   round(week_pct_total, 4),
+            "gainers": [{"label": p["ticker"], "week_pct": p.get("week_pct"),
+                         "week_impact": p.get("week_impact")} for p in gain2],
+            "losers":  [{"label": p["ticker"], "week_pct": p.get("week_pct"),
+                         "week_impact": p.get("week_impact")} for p in lose2],
+        }
+        narrative = commentary or ""
+        md_path = f"/research/portfolio/review_{last_friday.strftime('%Y-%m-%d')}.md"
+        md_content = (
+            f"```json\n{_json.dumps(front_matter, indent=2)}\n```\n\n"
+            f"{narrative}\n\n"
+            "<!-- DETAIL -->\n"
         )
-        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
+        with open(md_path, "w") as f:
+            f.write(md_content)
+        log.info(f"[md] Written {md_path}")
+        _dispatch_formatter(
+            "portfolio_review_telegram", md_path,
+            telegram_bot_token, telegram_owner_id,
+            portfolio_db, wm_token,
+        )
 
     return {
         "positions": len(positions),

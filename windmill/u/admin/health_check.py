@@ -13,18 +13,130 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):
-    import json as _json
+WM_BASE      = "http://windmill_server:8000"
+WM_WORKSPACE = "admins"
+
+
+def _dispatch_formatter(formatter_name: str, md_path: str,
+                        telegram_bot_token: str, telegram_owner_id: str,
+                        portfolio_db: dict, wm_token: str = "") -> str:
+    """Dispatch a Telegram formatter script fire-and-forget. Returns job_id or ''."""
+    import urllib.request as _ulr, json as _json
+    token = wm_token or os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
+        return ""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/{formatter_name}"
+    args = {
+        "md_path": md_path,
+        "telegram_bot_token": telegram_bot_token,
+        "telegram_owner_id": telegram_owner_id,
+        "portfolio_db": portfolio_db,
+    }
     try:
-        data = _json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
-        req = urllib.request.Request(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            data=data,
-            headers={"Content-Type": "application/json"},
-        )
-        urllib.request.urlopen(req, timeout=10)
+        data = _json.dumps(args).encode()
+        req = _ulr.Request(url, data=data, headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+        })
+        resp = _ulr.urlopen(req, timeout=10)
+        job_id = resp.read().decode().strip().strip('"')
+        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
+        return job_id
     except Exception as e:
-        log.warning(f"[Telegram] Failed to send: {e}")
+        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
+        return ""
+
+
+def _build_health_narrative(rows: list, ok_count: int, total: int,
+                             llm_rows: list, total_cost: float,
+                             now_sgt: datetime) -> str:
+    """Generate a ≥500-word narrative description of the health check results."""
+    date_str = now_sgt.strftime("%A, %-d %B %Y at %-I:%M %p SGT")
+    failed = [r for r in rows if r.get("status") != "OK"]
+    ok_rows = [r for r in rows if r.get("status") == "OK"]
+
+    paras = []
+
+    # Overview paragraph
+    overview_status = "all automated workflows are operating within expected parameters" if not failed else \
+        f"{len(failed)} of {total} automated workflows require attention"
+    paras.append(
+        f"This automated health check was executed on {date_str}. "
+        f"The monitoring system checks each scheduled workflow against its expected run interval and "
+        f"confirms that completed jobs returned successful results. At the time of this report, "
+        f"{overview_status}. The portfolio automation stack spans {total} core scheduled workflows "
+        f"covering market data ingestion, portfolio reporting, news monitoring, and system monitoring. "
+        f"A workflow is marked OK when its most recent completed job finished successfully and ran "
+        f"within the configured maximum-age window. STALE indicates the last successful run was "
+        f"outside the expected window; FAILED indicates the most recent job returned an error result."
+    )
+
+    # Per-schedule detail paragraphs
+    for row in rows:
+        label = row.get("label", "Unknown")
+        status = row.get("status", "?")
+        age_str = row.get("age_str", "unknown")
+        error = row.get("error", "")
+        if status == "OK":
+            paras.append(
+                f"{label}: status OK. Last completed run was {age_str}. "
+                f"The workflow completed successfully within its configured monitoring window. "
+                f"No errors were recorded in the most recent completed job. This schedule "
+                f"is operating normally and no manual intervention is required at this time."
+            )
+        else:
+            detail = f" The reported error was: {error}." if error else ""
+            paras.append(
+                f"{label}: status {status}.{detail} "
+                f"The most recent detected run was {age_str}. "
+                f"This schedule is currently outside its expected run window or returned an error. "
+                f"Recommended action: open the Windmill UI, navigate to this schedule, and inspect "
+                f"the most recent completed and failed jobs for stack traces or dependency errors. "
+                f"Common causes include temporary API unavailability, credential expiry, or "
+                f"network connectivity issues with external data providers."
+            )
+
+    # LLM cost paragraph
+    if llm_rows:
+        cost_str = f"${total_cost:.4f}"
+        job_names = ", ".join(r.get("label", "?") for r in llm_rows)
+        paras.append(
+            f"LLM API usage in the past 24 hours was recorded for the following workflows: "
+            f"{job_names}. The aggregate estimated API cost across all LLM-enabled workflows "
+            f"for this period was {cost_str}. Token consumption is tracked per job run to "
+            f"allow cost monitoring and budget management. If token usage appears abnormally "
+            f"high, inspect the prompt construction in the affected workflow for unexpected "
+            f"token inflation from oversized context or runaway retries."
+        )
+    else:
+        paras.append(
+            f"No LLM API token usage was recorded in the past 24 hours across the monitored "
+            f"workflows. This is expected on weekends or days when no LLM-enabled workflows ran. "
+            f"Token usage is tracked for billing monitoring and typically reflects Deepseek API "
+            f"calls made by the YouTube monitor and portfolio review workflows."
+        )
+
+    # Summary paragraph
+    if not failed:
+        paras.append(
+            f"Overall assessment: the automation stack is fully operational. "
+            f"All {total} monitored workflows are running on schedule and returning clean results. "
+            f"No manual intervention is required. The next scheduled health check will run in "
+            f"approximately 24 hours. If any workflow begins failing before then, a separate "
+            f"error alert will be triggered via the Windmill error notification system."
+        )
+    else:
+        paras.append(
+            f"Overall assessment: {len(failed)} workflow(s) require immediate attention. "
+            f"The affected workflows are: {', '.join(r.get('label', '?') for r in failed)}. "
+            f"Please investigate as soon as possible to prevent data gaps. The portfolio "
+            f"intelligence system depends on timely execution of all scheduled workflows for "
+            f"accurate reporting. Extended downtime in any single workflow may cause stale "
+            f"data to propagate into portfolio emails and rationalization scores."
+        )
+
+    return "\n\n".join(paras)
 
 
 WORKSPACE   = "admins"
@@ -277,7 +389,7 @@ def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_com
 </body></html>"""
 
 
-def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = ""):
+def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = "", portfolio_db: dict = {}, wm_token: str = ""):
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
     now_utc = datetime.now(timezone.utc)
@@ -436,21 +548,56 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
 
         log.info(f"Sent: {subject}")
 
-    if telegram_bot_token and telegram_owner_id:
-        tg_date = now_sgt.strftime("%-d %b")
-        icon = "✅" if ok_count == total else "⚠️"
-        tg_lines = [f"*Health Check — {tg_date} | {ok_count}/{total} OK {icon}*", ""]
-        for row in rows:
-            status_icon = "✅" if row["status"] == "OK" else "❌"
-            detail = f" — {row['error']}" if row.get("error") else f" — {row.get('age_str', '')}"
-            tg_lines.append(f"{status_icon} {row['label']}{detail}")
-        tg_text = "\n".join(tg_lines)
-        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
-
     log.info(f"Status: {ok_count}/{total} OK")
     log.info(f"Sent emails found in outbox: {len(sent_subjects)}")
     if total_prompt or total_completion:
         log.info(f"Tokens: {total_prompt:,} prompt + {total_completion:,} completion · est. ${total_cost:.4f}")
+
+    # ── Build token_usage list for front-matter ──────────────────────────────
+    token_usage = []
+    for row_llm in llm_rows:
+        token_usage.append({
+            "job": row_llm.get("label", "?"),
+            "model": "deepseek-chat",
+            "tokens": row_llm.get("prompt", 0) + row_llm.get("completion", 0),
+            "cost_usd": row_llm.get("cost", 0.0),
+        })
+
+    # ── Write canonical .md ──────────────────────────────────────────────────
+    if telegram_bot_token and telegram_owner_id:
+        tg_date = now_sgt.strftime("%-d %b")
+        # Build front-matter rows (strip email internals, keep only tg-relevant fields)
+        fm_rows = [
+            {"label": r["label"], "status": r["status"],
+             "age_str": r.get("age_str", ""), "error": r.get("error", "") or ""}
+            for r in rows
+        ]
+        front_matter = {
+            "tg_date":     tg_date,
+            "ok_count":    ok_count,
+            "total":       total,
+            "rows":        fm_rows,
+            "token_usage": token_usage,
+        }
+        narrative = _build_health_narrative(rows, ok_count, total, llm_rows, total_cost, now_sgt)
+        import os as _os2
+        _os2.makedirs("/research/health", exist_ok=True)
+        md_path = f"/research/health/{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"
+        md_content = (
+            f"```json\n{json.dumps(front_matter, indent=2)}\n```\n\n"
+            f"{narrative}\n\n"
+            "<!-- DETAIL -->\n"
+        )
+        with open(md_path, "w") as f:
+            f.write(md_content)
+        log.info(f"[md] Written {md_path}")
+
+        # ── Dispatch Telegram formatter ──────────────────────────────────────
+        _dispatch_formatter(
+            "health_check_telegram", md_path,
+            telegram_bot_token, telegram_owner_id,
+            portfolio_db, wm_token or token,
+        )
 
     return {
         "ok_count":   ok_count,

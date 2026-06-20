@@ -18,15 +18,111 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):
+WM_BASE      = "http://windmill_server:8000"
+WM_WORKSPACE = "admins"
+
+
+def _dispatch_formatter(formatter_name: str, md_path: str,
+                        telegram_bot_token: str, telegram_owner_id: str,
+                        portfolio_db: dict, wm_token: str = "") -> str:
+    import os as _os
+    token = wm_token or _os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
+        return ""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/{formatter_name}"
+    args = {"md_path": md_path, "telegram_bot_token": telegram_bot_token,
+            "telegram_owner_id": telegram_owner_id, "portfolio_db": portfolio_db}
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
-        )
+        resp = requests.post(url, headers={"Authorization": f"Bearer {token}",
+                                           "Content-Type": "application/json"},
+                             json=args, timeout=10)
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
+        return job_id
     except Exception as e:
-        log.warning(f"[Telegram] Failed to send: {e}")
+        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
+        return ""
+
+
+def _build_move_narrative(portfolio_move: float, total_impact: float,
+                           pct_threshold: float, position_alerts: list,
+                           pos_threshold: float, time_str: str,
+                           deepseek_key: str = "") -> str:
+    """Generate ≥500-word narrative for the move alert. LLM if key provided, else programmatic."""
+    if deepseek_key:
+        pos_desc = "\n".join(
+            f"  {p['ticker']}: {p['intraday_pct']:+.2f}% (${abs(p.get('dollar_impact',0)):,.0f} impact)"
+            for p in position_alerts[:5]
+        )
+        prompt = (
+            f"You are a portfolio risk analyst. A portfolio move alert was triggered at {time_str}.\n"
+            f"Portfolio move: {portfolio_move:+.2f}% (threshold ±{pct_threshold:.1f}%)\n"
+            f"Dollar impact: ${abs(total_impact):,.0f}\n"
+            f"Top position moves:\n{pos_desc}\n\n"
+            f"Write a detailed ≥500-word analytical report explaining likely causes of this move, "
+            f"the risk implications, what to watch next, and any recommended monitoring actions. "
+            f"Continuous prose, no bullet points or headers. Minimum 500 words."
+        )
+        try:
+            r = requests.post(
+                "https://api.deepseek.com/chat/completions",
+                headers={"Authorization": f"Bearer {deepseek_key}"},
+                json={"model": "deepseek-chat",
+                      "messages": [{"role": "user", "content": prompt}],
+                      "temperature": 0.4, "max_tokens": 900},
+                timeout=30,
+            )
+            r.raise_for_status()
+            return r.json()["choices"][0]["message"]["content"].strip()
+        except Exception as e:
+            log.warning(f"[Deepseek] Move narrative failed: {e}")
+    # Programmatic fallback
+    direction = "upward" if portfolio_move >= 0 else "downward"
+    abs_pct = abs(portfolio_move)
+    abs_impact = abs(total_impact)
+    paras = []
+    paras.append(
+        f"A portfolio move alert was triggered at {time_str}. The portfolio recorded an "
+        f"intraday {direction} move of {abs_pct:.2f}%, exceeding the configured threshold of "
+        f"±{pct_threshold:.1f}%. The total dollar impact of this move was approximately "
+        f"${abs_impact:,.0f}. This alert is triggered automatically when the aggregate "
+        f"intraday portfolio move, measured in USD equivalent terms, crosses the threshold in "
+        f"either direction. Single-position moves of ±{pos_threshold:.1f}% or more on individual "
+        f"holdings are also flagged as supplementary position alerts."
+    )
+    if position_alerts:
+        tickers = ", ".join(p["ticker"] for p in position_alerts[:5])
+        paras.append(
+            f"The following positions contributed to or amplified the portfolio move: {tickers}. "
+            f"Large intraday moves in individual positions can be driven by earnings announcements, "
+            f"analyst rating changes, macro data releases, or sector-wide risk-on/risk-off "
+            f"sentiment shifts. The move monitor captures these events in real time during market "
+            f"hours to ensure timely awareness of significant portfolio risk events."
+        )
+        for p in position_alerts[:5]:
+            t = p["ticker"]
+            pct = p.get("intraday_pct", 0)
+            imp = p.get("dollar_impact", 0)
+            sign = "gained" if pct >= 0 else "declined"
+            paras.append(
+                f"{t}: The position {sign} {abs(pct):.2f}% intraday, representing a dollar impact "
+                f"of approximately ${abs(imp):,.0f} on the portfolio. This move exceeds the per-position "
+                f"alert threshold of ±{pos_threshold:.1f}% and warrants monitoring for follow-through "
+                f"in subsequent sessions. If this move is driven by company-specific news, consider "
+                f"whether the event changes the fundamental thesis for the position."
+            )
+    paras.append(
+        f"Recommended monitoring actions: review the news flow for each flagged ticker to "
+        f"determine if the move is driven by fundamental news or technical/market-wide factors. "
+        f"Check whether any analyst rating changes, earnings releases, or macro data prints "
+        f"occurred around the time of the alert. If the move is sustained across multiple "
+        f"sessions without a clear fundamental catalyst, flag for review in the next weekly "
+        f"portfolio rationalization cycle. The portfolio move monitor runs hourly during "
+        f"market hours and will issue a further alert if the move extends materially beyond "
+        f"the current reading."
+    )
+    return "\n\n".join(paras)
 
 
 PORTFOLIO_ALERT_THRESHOLD = 0.015   # ±1.5%
@@ -42,6 +138,8 @@ def main(
     recipient_email: str = "",
     telegram_bot_token: str = "",
     telegram_owner_id: str = "",
+    deepseek_key: str = "",
+    wm_token: str = "",
 ):
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
@@ -274,24 +372,41 @@ def main(
         log.info(f"Alert sent: {subject}")
 
     if telegram_bot_token and telegram_owner_id:
-        direction = "▲" if portfolio_move >= 0 else "▼"
-        pct_threshold = int(PORTFOLIO_ALERT_THRESHOLD * 100)
-        pos_threshold = int(POSITION_ALERT_THRESHOLD * 100)
-        portfolio_line = (
-            f"Portfolio {direction}{abs(portfolio_move):.2f}% "
-            f"({fmt_impact(total_impact)}) [±{pct_threshold}% threshold]"
+        import os as _os, json as _json
+        pct_threshold = PORTFOLIO_ALERT_THRESHOLD * 100
+        pos_threshold = POSITION_ALERT_THRESHOLD * 100
+        front_matter = {
+            "time_str":        time_str,
+            "portfolio_move":  round(portfolio_move, 4),
+            "total_impact":    round(total_impact, 2),
+            "pct_threshold":   pct_threshold,
+            "position_alerts": [
+                {"ticker": p["ticker"],
+                 "intraday_pct": round(p.get("intraday_pct", 0), 4),
+                 "dollar_impact": round(p.get("dollar_impact", 0), 2)}
+                for p in position_alerts
+            ],
+            "pos_threshold":   pos_threshold,
+        }
+        narrative = _build_move_narrative(
+            portfolio_move, total_impact, pct_threshold,
+            position_alerts, pos_threshold, time_str, deepseek_key,
         )
-        pos_lines = []
-        for p in sorted(position_alerts, key=lambda x: abs(x["intraday_pct"]), reverse=True)[:5]:
-            pos_lines.append(
-                f"• {p['ticker']} {fmt_pct(p['intraday_pct'])} ({fmt_impact(p['dollar_impact'])}) "
-                f"[±{pos_threshold}% threshold]"
-            )
-        pos_block = "\n".join(pos_lines) if pos_lines else ""
-        tg_text = f"*Move Alert — {time_str}*\n{portfolio_line}"
-        if pos_block:
-            tg_text += f"\n\n{pos_block}"
-        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
+        _os.makedirs("/research/portfolio", exist_ok=True)
+        md_path = f"/research/portfolio/move_{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"
+        md_content = (
+            f"```json\n{_json.dumps(front_matter, indent=2)}\n```\n\n"
+            f"{narrative}\n\n"
+            "<!-- DETAIL -->\n"
+        )
+        with open(md_path, "w") as f:
+            f.write(md_content)
+        log.info(f"[md] Written {md_path}")
+        _dispatch_formatter(
+            "portfolio_move_monitor_telegram", md_path,
+            telegram_bot_token, telegram_owner_id,
+            portfolio_db, wm_token,
+        )
 
     return {
         "alerted":          True,

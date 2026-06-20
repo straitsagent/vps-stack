@@ -47,15 +47,31 @@ MIN_POOL_SIZE = 8
 
 # ── DB helpers ────────────────────────────────────────────────────────────────
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):
+WM_BASE      = "http://windmill_server:8000"
+WM_WORKSPACE = "admins"
+
+
+def _dispatch_formatter(formatter_name: str, md_path: str,
+                        telegram_bot_token: str, telegram_owner_id: str,
+                        portfolio_db: dict, wm_token: str = "") -> str:
+    import os as _os
+    token = wm_token or _os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
+        return ""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/{formatter_name}"
+    args = {"md_path": md_path, "telegram_bot_token": telegram_bot_token,
+            "telegram_owner_id": telegram_owner_id, "portfolio_db": portfolio_db}
     try:
-        requests.post(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
-            timeout=10,
-        )
+        resp = requests.post(url, headers={"Authorization": f"Bearer {token}",
+                                           "Content-Type": "application/json"},
+                             json=args, timeout=10)
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
+        return job_id
     except Exception as e:
-        log.warning(f"[Telegram] Failed to send: {e}")
+        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
+        return ""
 
 
 def _conn(portfolio_db: dict):
@@ -877,6 +893,7 @@ def main(
     include_research: bool = False,
     telegram_bot_token: str = "",
     telegram_owner_id: str = "",
+    wm_token: str = "",
 ):
     today_str = date.today().strftime("%Y-%m-%d")
     log.info(f"[Rationalization] Starting run for {today_str}")
@@ -1200,11 +1217,39 @@ Below are the position verdicts. Generate the executive summary, portfolio const
     if fallback_warnings:
         report_md += f"\n⚠️ Grok unavailable for {', '.join(fallback_warnings)} — synthesised with deepseek-chat\n"
 
-    # ── 11. Save file ─────────────────────────────────────────────────────────
+    # ── 11. Build front-matter + save canonical .md ──────────────────────────
+    # Sort by composite balanced score (descending = best first)
+    def _composite_score(t):
+        return composites.get(t, {}).get("composites", {}).get("balanced") or 0.0
+    sorted_by_score = sorted(tickers, key=_composite_score, reverse=True)
+    top3_tickers = sorted_by_score[:3]
+    bot3_tickers = sorted_by_score[-3:][::-1]
+
+    def _make_entry(t):
+        score = composites.get(t, {}).get("composites", {}).get("balanced")
+        verdict = call1_structured.get(t, {}).get("verdict", "KEEP").upper()
+        return {"ticker": t, "score": round(score, 1) if score is not None else None, "verdict": verdict}
+
+    import json as _json
+    tg_today_str = date.today().strftime("%-d %b")
+    front_matter = {
+        "today_str":   tg_today_str,
+        "n_positions": len(tickers),
+        "top3":        [_make_entry(t) for t in top3_tickers],
+        "bot3":        [_make_entry(t) for t in bot3_tickers],
+    }
+    # Canonical md: front-matter JSON + executive_summary as narrative + DETAIL separator + full report
+    canonical_md = (
+        f"```json\n{_json.dumps(front_matter, indent=2)}\n```\n\n"
+        f"{executive_summary}\n\n"
+        f"<!-- DETAIL -->\n\n"
+        + report_md
+    )
+
     os.makedirs(REPORT_DIR, exist_ok=True)
     file_path = os.path.join(REPORT_DIR, f"rationalization_{today_str}.md")
     with open(file_path, "w", encoding="utf-8") as f:
-        f.write(report_md)
+        f.write(canonical_md)
     log.info(f"[File] Saved to {file_path}")
 
     # ── 12. Email ─────────────────────────────────────────────────────────────
@@ -1220,27 +1265,13 @@ Below are the position verdicts. Generate the executive summary, portfolio const
     else:
         log.warning("[Email] No gmail_smtp provided — skipping email delivery")
 
+    # ── 13a. Dispatch Telegram formatter ──────────────────────────────────────
     if telegram_bot_token and telegram_owner_id:
-        sorted_tickers = sorted(tickers, key=lambda t: ranks.get(t, {}).get("balanced", 99))
-        top3 = sorted_tickers[:3]
-        bot3 = sorted_tickers[-3:][::-1]
-        def _score(t):
-            s = ranks.get(t, {}).get("balanced", None)
-            return f" {s:.1f}" if s is not None else ""
-        _REC_LABELS = {"KEEP": "", "TRIM": " TRIM", "EXIT": " EXIT"}
-        def _rec_tag(t):
-            r = call1_structured.get(t, {}).get("recommendation", "")
-            return _REC_LABELS.get(r.upper(), "")
-        top_str = "  ".join(f"{t}{_score(t)}" for t in top3)
-        bot_str = "  ".join(f"{t}{_score(t)}{_rec_tag(t)}" for t in bot3)
-        tg_text = (
-            f"*Portfolio Rationalization — {today_str}*\n"
-            f"_{len(sorted_tickers)} positions scored_\n\n"
-            f"🏆 {top_str}\n"
-            f"⚠️  {bot_str}\n\n"
-            f"Full report → email"
+        _dispatch_formatter(
+            "portfolio_rationalization_telegram", file_path,
+            telegram_bot_token, telegram_owner_id,
+            portfolio_db, wm_token,
         )
-        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 
     # ── 13. Upsert portfolio_scores ────────────────────────────────────────────
     upsert_cur = conn.cursor()
@@ -1251,6 +1282,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
         comp = c.get("composites", {})
         th = thesis_scores.get(t, {})
         d = delta_map.get(t, {})
+        verdict = call1_structured.get(t, {}).get("verdict", "KEEP").upper()
         upsert_cur.execute("""
             INSERT INTO portfolio_scores (
                 score_date, ticker, consolidated_name,
@@ -1259,7 +1291,8 @@ Below are the position verdicts. Generate the executive summary, portfolio const
                 data_completeness_pct, red_flag_count,
                 position_usd, portfolio_pct,
                 rank_balanced, rank_quality, rank_growth, rank_value,
-                delta_rank_balanced, delta_rank_quality, delta_rank_growth, delta_rank_value
+                delta_rank_balanced, delta_rank_quality, delta_rank_growth, delta_rank_value,
+                recommendation
             ) VALUES (
                 CURRENT_DATE, %s, %s,
                 %s, %s, %s, %s, %s,
@@ -1267,7 +1300,8 @@ Below are the position verdicts. Generate the executive summary, portfolio const
                 %s, %s,
                 %s, %s,
                 %s, %s, %s, %s,
-                %s, %s, %s, %s
+                %s, %s, %s, %s,
+                %s
             ) ON CONFLICT (score_date, ticker) DO UPDATE SET
                 consolidated_name = EXCLUDED.consolidated_name,
                 quality_score = EXCLUDED.quality_score,
@@ -1290,7 +1324,8 @@ Below are the position verdicts. Generate the executive summary, portfolio const
                 delta_rank_balanced = EXCLUDED.delta_rank_balanced,
                 delta_rank_quality = EXCLUDED.delta_rank_quality,
                 delta_rank_growth = EXCLUDED.delta_rank_growth,
-                delta_rank_value = EXCLUDED.delta_rank_value
+                delta_rank_value = EXCLUDED.delta_rank_value,
+                recommendation = EXCLUDED.recommendation
         """, (
             t, pos.get("company_name", t),
             round(factor_scores.get(t, {}).get("quality") or 0, 1) * 100 or None,
@@ -1311,6 +1346,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
             r.get("growth"),
             r.get("value"),
             d.get("balanced"), d.get("quality"), d.get("growth"), d.get("value"),
+            verdict,
         ))
     conn.commit()
     log.info(f"[DB] Upserted {len(positions)} rows into portfolio_scores")
