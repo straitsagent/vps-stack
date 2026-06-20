@@ -27,7 +27,18 @@ GRAY  = "#666"
 ETF_TICKERS = {"XLV", "SPY", "QQQ", "IWM", "VTI"}
 
 
-def main(portfolio_db: dict, finnhub_key: str, deepseek_key: str, gmail_smtp: dict, recipient_email: str = ""):
+def _send_telegram(bot_token: str, chat_id: str, text: str):
+    try:
+        requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text, "parse_mode": "Markdown"},
+            timeout=10,
+        )
+    except Exception as e:
+        log.warning(f"[Telegram] Failed to send: {e}")
+
+
+def main(portfolio_db: dict, finnhub_key: str, deepseek_key: str, gmail_smtp: dict, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = ""):
     today = date.today()
 
     # ── 1. Load DB ────────────────────────────────────────────────────────
@@ -458,6 +469,33 @@ Be factual and concise. Do not give buy/sell recommendations."""
     server.quit()
 
     log.info(f"Sent: {subject}")
+
+    if telegram_bot_token and telegram_owner_id:
+        we_str = last_friday.strftime("%-d %b")
+        sign_pnl = "+" if week_pnl >= 0 else ""
+        sign_pct = "+" if week_pct_total >= 0 else ""
+        week_k = week_pnl / 1000
+        gainers = sorted([p for p in top10_impact if (p.get("week_impact") or 0) > 0],
+                         key=lambda x: x["week_impact"], reverse=True)[:2]
+        losers  = sorted([p for p in top10_impact if (p.get("week_impact") or 0) < 0],
+                         key=lambda x: x["week_impact"])[:2]
+        def _mover_str(p):
+            pct = f"{'+' if (p.get('week_pct') or 0) >= 0 else ''}{p.get('week_pct') or 0:.1f}%"
+            wi = p.get("week_impact") or 0
+            k = wi / 1000
+            impact = f" (+${k:.1f}k)" if wi >= 0 else f" (-${abs(k):.1f}k)"
+            return f"{p['ticker']} {pct}{impact}"
+        g_str = "  ".join(_mover_str(p) for p in gainers) or "—"
+        l_str = "  ".join(_mover_str(p) for p in losers) or "—"
+        tg_text = (
+            f"*Weekly Review — w/e {we_str}*\n"
+            f"{fmt_usd(total_value)} | Week: {sign_pnl}${abs(week_k):.1f}k ({sign_pct}{week_pct_total:.2f}%)\n\n"
+            f"📈 {g_str}\n"
+            f"📉 {l_str}\n\n"
+            f"_Full review → email_"
+        )
+        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
+
     return {
         "positions": len(positions),
         "total_value_usd": round(total_value, 2),

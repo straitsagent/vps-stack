@@ -7,4 +7,6 @@ args:
   smtp_resource: $res:u/admin/gmail_smtp
   deepseek_key: $var:u/admin/deepseek_key
   recipient_email: $var:u/admin/recipient_email
+  telegram_bot_token: $var:u/admin/telegram_bot_token
+  telegram_owner_id: $var:u/admin/telegram_owner_id
 enabled: true

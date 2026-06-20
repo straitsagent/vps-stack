@@ -1220,13 +1220,17 @@ Below are the position verdicts. Generate the executive summary, portfolio const
         sorted_tickers = sorted(tickers, key=lambda t: ranks.get(t, {}).get("balanced", 99))
         top3 = sorted_tickers[:3]
         bot3 = sorted_tickers[-3:][::-1]
-        top_str = ", ".join(f"{t} ({i+1})" for i, t in enumerate(top3))
-        bot_str = ", ".join(f"{t} ({len(sorted_tickers)-i})" for i, t in enumerate(bot3))
+        def _score(t):
+            s = ranks.get(t, {}).get("balanced", None)
+            return f" {s:.1f}" if s is not None else ""
+        top_str = "  ".join(f"{t}{_score(t)}" for t in top3)
+        bot_str = "  ".join(f"{t}{_score(t)}" for t in bot3)
         tg_text = (
-            f"*Portfolio Rationalization — {today_str}*\n\n"
-            f"Top keeps: {top_str}\n"
-            f"Review: {bot_str}\n\n"
-            f"Full report sent to email."
+            f"*Portfolio Rationalization — {today_str}*\n"
+            f"_{len(sorted_tickers)} positions scored_\n\n"
+            f"🏆 {top_str}\n"
+            f"⚠️  {bot_str}\n\n"
+            f"Full report → email"
         )
         _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 

@@ -2904,3 +2904,125 @@ def test_macro_daily_push_uses_usd_base_labels():
     assert "USD/HKD" in src, "macro_daily_push must use USD/HKD label (not HKD/USD)"
     assert "SGD/USD" not in src, "macro_daily_push still shows SGD/USD — must be USD/SGD"
     assert "HKD/USD" not in src, "macro_daily_push still shows HKD/USD — must be USD/HKD"
+
+
+# ── Telegram notification quality tests ───────────────────────────────────────
+
+def _read_analyst_alert_source() -> str:
+    path = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/portfolio_analyst_alert.py")
+    with open(path) as f:
+        return f.read()
+
+
+def test_youtube_telegram_includes_links():
+    """youtube_monitor Telegram push must include watch_url as a clickable link and channel_name."""
+    src = _read_yt_source()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in youtube_monitor"
+    tg_block = src[max(0, tg_idx - 500): tg_idx + 600]
+    assert "watch_url" in tg_block, \
+        "youtube_monitor tg_text must include watch_url as a clickable link"
+    assert "channel_name" in tg_block, \
+        "youtube_monitor tg_text must include channel_name"
+
+
+def test_youtube_telegram_includes_date():
+    """youtube_monitor Telegram push must include a date (day and month)."""
+    src = _read_yt_source()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in youtube_monitor"
+    tg_block = src[tg_idx: tg_idx + 800]
+    assert "strftime" in tg_block or "%d" in tg_block or "%-d" in tg_block, \
+        "youtube_monitor tg_text must include a formatted date"
+
+
+def test_portfolio_email_telegram_includes_date():
+    """portfolio_email Telegram push must include full date (day + month), not just time."""
+    src = _read_pe_source()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in portfolio_email"
+    tg_block = src[tg_idx: tg_idx + 600]
+    assert "%b" in tg_block or "%-d" in tg_block or "%d" in tg_block, \
+        "portfolio_email tg_text must include a day/month date format"
+
+
+def test_portfolio_email_telegram_includes_dollar_impact():
+    """portfolio_email Telegram push must include dollar P&L per top mover."""
+    src = _read_pe_source()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in portfolio_email"
+    tg_block = src[tg_idx: tg_idx + 600]
+    assert "pnl" in tg_block or "impact" in tg_block or "dollar" in tg_block, \
+        "portfolio_email tg_text must include dollar P&L per mover (pnl/impact field)"
+
+
+def test_move_monitor_telegram_includes_dollar_impact():
+    """portfolio_move_monitor Telegram push must include dollar_impact per position."""
+    src = _read_mm_source()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in portfolio_move_monitor"
+    tg_block = src[max(0, tg_idx - 500): tg_idx + 600]
+    assert "dollar_impact" in tg_block, \
+        "portfolio_move_monitor tg_text must include dollar_impact per alerted position"
+
+
+def test_move_monitor_telegram_includes_threshold_label():
+    """portfolio_move_monitor Telegram push must state which threshold was breached."""
+    src = _read_mm_source()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in portfolio_move_monitor"
+    tg_block = src[max(0, tg_idx - 500): tg_idx + 800]
+    assert "threshold" in tg_block.lower() or "PORTFOLIO_ALERT_THRESHOLD" in tg_block or "±" in tg_block, \
+        "portfolio_move_monitor tg_text must indicate which threshold (±1.5%/±5%) was breached"
+
+
+def test_rationalization_telegram_includes_scores():
+    """portfolio_rationalization Telegram push must include composite scores, not just rank numbers."""
+    src = _read_pr_source()
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in portfolio_rationalization"
+    tg_block = src[tg_idx: tg_idx + 600]
+    assert "balanced" in tg_block or "score" in tg_block.lower(), \
+        "portfolio_rationalization tg_text must include composite scores (balanced)"
+
+
+def test_morning_news_has_telegram_push():
+    """morning_news_digest must have _send_telegram and use it with links from rss_headlines."""
+    src = _read_md_source()
+    assert "_send_telegram" in src, \
+        "morning_news_digest missing _send_telegram — no Telegram push implemented"
+    assert "telegram_bot_token" in src, \
+        "morning_news_digest main() must accept telegram_bot_token param"
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in morning_news_digest"
+    tg_block = src[max(0, tg_idx - 600): tg_idx + 600]
+    assert "link" in tg_block, \
+        "morning_news_digest tg_text must include article links from rss_headlines"
+
+
+def test_health_check_has_telegram_push():
+    """health_check must have _send_telegram and use rows data to show pass/fail status."""
+    src = _read_hc_source()
+    assert "_send_telegram" in src, \
+        "health_check missing _send_telegram — no Telegram push implemented"
+    assert "telegram_bot_token" in src, \
+        "health_check main() must accept telegram_bot_token param"
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in health_check"
+    tg_block = src[tg_idx: tg_idx + 600]
+    assert "rows" in tg_block or "status" in tg_block, \
+        "health_check tg_text must use rows/status data"
+
+
+def test_portfolio_review_has_telegram_push():
+    """portfolio_review must have _send_telegram with week P&L and top movers."""
+    src = _read_rv_source()
+    assert "_send_telegram" in src, \
+        "portfolio_review missing _send_telegram — no Telegram push implemented"
+    assert "telegram_bot_token" in src, \
+        "portfolio_review main() must accept telegram_bot_token param"
+    tg_idx = src.find("tg_text")
+    assert tg_idx != -1, "tg_text not found in portfolio_review"
+    tg_block = src[tg_idx: tg_idx + 600]
+    assert "week_pnl" in tg_block or "week_impact" in tg_block, \
+        "portfolio_review tg_text must include week P&L data"

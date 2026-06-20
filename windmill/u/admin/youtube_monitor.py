@@ -312,12 +312,16 @@ def main(
     log.info(f"Sent: {subject}")
 
     if telegram_bot_token and telegram_owner_id:
-        top_titles = [v["title"] for v in results[:3]]
-        lines = [f"• {t[:60]}" for t in top_titles]
-        extra = len(results) - len(top_titles)
+        date_str = datetime.now(SGT).strftime("%-d %b")
+        top_vids = results[:3]
+        lines = [
+            f"• [{v['title']}]({v['watch_url']}) — {v['channel_name']}"
+            for v in top_vids
+        ]
+        extra = len(results) - len(top_vids)
         if extra > 0:
-            lines.append(f"_and {extra} more_")
-        tg_text = f"*YouTube — {n_summarised} new video{'s' if n_summarised != 1 else ''}*\n\n" + "\n".join(lines)
+            lines.append(f"_+ {extra} more — full digest in email_")
+        tg_text = f"*YouTube — {date_str} | {n_summarised} new*\n\n" + "\n".join(lines)
         _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 
     est_cost = (total_prompt_tokens / 1_000_000) * 0.14 + (total_completion_tokens / 1_000_000) * 0.28

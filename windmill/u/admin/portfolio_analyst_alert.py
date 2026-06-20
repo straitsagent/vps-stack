@@ -132,7 +132,8 @@ def main(
 
     alerts_sent = 0
     if alerts:
-        msg = "*Analyst Rating Changes*\n\n" + "\n".join(alerts)
+        today_str = date.today().strftime("%-d %b")
+        msg = f"*Analyst Alerts — {today_str}*\n\n" + "\n".join(alerts)
         _send_telegram(telegram_bot_token, telegram_owner_id, msg)
         alerts_sent = len(alerts)
         log.info(f"[AnalystAlert] Sent {alerts_sent} alerts")

@@ -275,12 +275,20 @@ def main(
 
     if telegram_bot_token and telegram_owner_id:
         direction = "▲" if portfolio_move >= 0 else "▼"
+        pct_threshold = int(PORTFOLIO_ALERT_THRESHOLD * 100)
+        pos_threshold = int(POSITION_ALERT_THRESHOLD * 100)
+        portfolio_line = (
+            f"Portfolio {direction}{abs(portfolio_move):.2f}% "
+            f"({fmt_impact(total_impact)}) [±{pct_threshold}% threshold]"
+        )
         pos_lines = []
         for p in sorted(position_alerts, key=lambda x: abs(x["intraday_pct"]), reverse=True)[:5]:
-            sign = "+" if p["intraday_pct"] >= 0 else ""
-            pos_lines.append(f"• {p['ticker']} {sign}{p['intraday_pct']:.1f}%")
+            pos_lines.append(
+                f"• {p['ticker']} {fmt_pct(p['intraday_pct'])} ({fmt_impact(p['dollar_impact'])}) "
+                f"[±{pos_threshold}% threshold]"
+            )
         pos_block = "\n".join(pos_lines) if pos_lines else ""
-        tg_text = f"*Move Alert — {time_str}*\nPortfolio: {direction}{abs(portfolio_move):.2f}%"
+        tg_text = f"*Move Alert — {time_str}*\n{portfolio_line}"
         if pos_block:
             tg_text += f"\n\n{pos_block}"
         _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)

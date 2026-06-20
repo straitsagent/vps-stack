@@ -9,3 +9,5 @@ no_flow_overlap: true
 args:
   gmail_smtp: "$res:u/admin/gmail_smtp"
   recipient_email: "$var:u/admin/recipient_email"
+  telegram_bot_token: "$var:u/admin/telegram_bot_token"
+  telegram_owner_id: "$var:u/admin/telegram_owner_id"

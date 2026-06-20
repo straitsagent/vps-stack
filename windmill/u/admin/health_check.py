@@ -13,6 +13,20 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
 
+def _send_telegram(bot_token: str, chat_id: str, text: str):
+    import json as _json
+    try:
+        data = _json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
+        req = urllib.request.Request(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            data=data,
+            headers={"Content-Type": "application/json"},
+        )
+        urllib.request.urlopen(req, timeout=10)
+    except Exception as e:
+        log.warning(f"[Telegram] Failed to send: {e}")
+
+
 WORKSPACE   = "admins"
 WM_BASE_URL = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
 IMAP_HOST   = "imap.gmail.com"
@@ -263,7 +277,7 @@ def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_com
 </body></html>"""
 
 
-def main(gmail_smtp: dict = {}, recipient_email: str = ""):
+def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = ""):
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
     now_utc = datetime.now(timezone.utc)
@@ -421,6 +435,17 @@ def main(gmail_smtp: dict = {}, recipient_email: str = ""):
             server.send_message(msg)
 
         log.info(f"Sent: {subject}")
+
+    if telegram_bot_token and telegram_owner_id:
+        tg_date = now_sgt.strftime("%-d %b")
+        icon = "✅" if ok_count == total else "⚠️"
+        tg_lines = [f"*Health Check — {tg_date} | {ok_count}/{total} OK {icon}*", ""]
+        for row in rows:
+            status_icon = "✅" if row["status"] == "OK" else "❌"
+            detail = f" — {row['error']}" if row.get("error") else f" — {row.get('age_str', '')}"
+            tg_lines.append(f"{status_icon} {row['label']}{detail}")
+        tg_text = "\n".join(tg_lines)
+        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 
     log.info(f"Status: {ok_count}/{total} OK")
     log.info(f"Sent emails found in outbox: {len(sent_subjects)}")

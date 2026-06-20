@@ -432,14 +432,19 @@ def main(
     log.info(f"{len(positions)} positions | {fmt_usd(total_value)} | P&L: {fmt_pnl(total_pnl)} ({fmt_pct(total_pnl_pct)})")
 
     if telegram_bot_token and telegram_owner_id:
+        date_str  = now_sgt.strftime("%a %-d %b")
         time_label = now_sgt.strftime("%-I%p SGT").lower()
+        def _fmt_k(val):
+            if val is None: return ""
+            k = val / 1000
+            return f" (+${k:.1f}k)" if val >= 0 else f" (-${abs(k):.1f}k)"
         gainers = [it for it in top_up[:3] if it.get("pnl_pct") is not None]
         losers  = [it for it in top_down[:3] if it.get("pnl_pct") is not None]
-        g_str = "  ".join(f"{it['label']} {fmt_pct(it['pnl_pct'])}" for it in gainers) or "—"
-        l_str = "  ".join(f"{it['label']} {fmt_pct(it['pnl_pct'])}" for it in losers) or "—"
+        g_str = "  ".join(f"{it['label']} {fmt_pct(it['pnl_pct'])}{_fmt_k(it.get('pnl'))}" for it in gainers) or "—"
+        l_str = "  ".join(f"{it['label']} {fmt_pct(it['pnl_pct'])}{_fmt_k(it.get('pnl'))}" for it in losers) or "—"
         tg_text = (
-            f"*Portfolio — {time_label} ({session})*\n"
-            f"Total: {fmt_usd(total_value)}  {fmt_pct(total_pnl_pct)} ({fmt_pnl(total_pnl)})\n\n"
+            f"*Portfolio — {date_str} | {time_label} ({session})*\n"
+            f"{fmt_usd(total_value)} | Day: {fmt_pnl(total_pnl)} ({fmt_pct(total_pnl_pct)})\n\n"
             f"📈 {g_str}\n"
             f"📉 {l_str}"
         )
