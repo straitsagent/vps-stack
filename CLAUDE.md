@@ -116,6 +116,15 @@ Scripts are written as local files and pushed to Windmill — git is the source 
 
 **Always use `wmill script push <path>` for individual script changes.** Do NOT use `wmill sync push` for routine updates — it has wiped Windmill resources and variables (`gmail_smtp`, `deepseek_key`) and deployed stale archived versions on multiple occasions (2026-06-03). Only use `wmill sync push` if explicitly needed for a bulk workspace sync.
 
+**Schedule YAML changes require an explicit API push — they are NOT auto-synced.** The PostToolUse autopush hook only fires on `.py` file edits, not `.schedule.yaml` files. After editing a schedule YAML, push the updated args to Windmill via REST API:
+```bash
+WM_TOKEN=$(grep "WM_TOKEN" /root/agent.env | cut -d= -f2 | tr -d ' ')
+curl -s -X POST "http://localhost:8080/api/w/admins/schedules/update/u%2Fadmin%2F<schedule_path>" \
+  -H "Authorization: Bearer $WM_TOKEN" -H "Content-Type: application/json" \
+  -d '<full_args_json>'
+# To create a new schedule (not update): use /schedules/create with "path" in the body
+```
+
 To pull any changes made in the UI back to disk:
 ```
 cd /root/windmill && wmill sync pull --yes
