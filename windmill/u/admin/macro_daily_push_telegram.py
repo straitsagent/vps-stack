@@ -133,9 +133,10 @@ def _synthesise_telegram(narrative: str, deepseek_key: str) -> str:
     prompt = (
         "You are a macro research analyst. The text below is a detailed daily macro research "
         "report covering global equities, interest rates, Fed policy, FX/credit, commodities, "
-        "and HK/China markets. Write a coherent 500-600 word executive synthesis that captures "
+        "and HK/China markets. Write a coherent 400-450 word executive synthesis that captures "
         "the key themes and what they mean together for markets. Write in flowing analytical "
-        "prose — no bullet points, no section headers, no preamble. Be direct and specific.\n\n"
+        "prose — no bullet points, no section headers, no preamble. Be direct and specific. "
+        "End with a complete sentence.\n\n"
         f"{narrative}"
     )
     try:
@@ -146,7 +147,7 @@ def _synthesise_telegram(narrative: str, deepseek_key: str) -> str:
             json={"model": "deepseek-chat",
                   "messages": [{"role": "user", "content": prompt}],
                   "temperature": 0.3,
-                  "max_tokens": 1000},
+                  "max_tokens": 700},
             timeout=60,
         )
         r.raise_for_status()
