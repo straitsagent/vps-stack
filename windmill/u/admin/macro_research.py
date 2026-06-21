@@ -575,7 +575,7 @@ def _send_email(smtp_res: dict, recipient: str, subject: str, html_body: str):
 
 def _dispatch_formatter(md_path: str, telegram_bot_token: str,
                         telegram_owner_id: str, portfolio_db: dict,
-                        wm_token: str = "") -> str:
+                        deepseek_key: str = "", wm_token: str = "") -> str:
     token = wm_token or os.environ.get("WM_TOKEN", "")
     if not token:
         log.warning("[Dispatch] No WM_TOKEN — cannot dispatch macro_daily_push_telegram")
@@ -586,6 +586,7 @@ def _dispatch_formatter(md_path: str, telegram_bot_token: str,
         "telegram_bot_token": telegram_bot_token,
         "telegram_owner_id":  telegram_owner_id,
         "portfolio_db":       portfolio_db,
+        "deepseek_key":       deepseek_key,
     }
     try:
         resp = requests.post(
@@ -703,7 +704,7 @@ def main(
 
     # ── Dispatch Telegram formatter ───────────────────────────────────────────
     _dispatch_formatter(md_path, telegram_bot_token, telegram_owner_id,
-                        portfolio_db, wm_token)
+                        portfolio_db, deepseek_key, wm_token)
 
     total_words = sum(len(v.split()) for v in sections.values())
     return {

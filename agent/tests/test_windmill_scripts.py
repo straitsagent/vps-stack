@@ -4804,3 +4804,200 @@ def test_contract_macro_old_schema_still_works():
         os.unlink(md_path)
     assert "7.83" in msg or "7.84" in msg, \
         "Old flat schema must still render USDHKD correctly (backward compat)"
+
+
+# ── macro_daily_push_telegram: synthesis + expanded numbers (TDD) ─────────────
+
+_MACRO_TG = _SCRIPTS_DIR / "macro_daily_push_telegram.py"
+_MACRO_TG_YAML = _SCRIPTS_DIR / "macro_daily_push_telegram.script.yaml"
+
+_FULL_FRED_FM = {
+    "timestamp": "2026-06-23T07:00:00+08:00",
+    "indicators": {
+        "yahoo": {
+            "SP500":   {"value": 5500.0,  "change_pct": 0.5},
+            "NDX":     {"value": 19800.0, "change_pct": 0.6},
+            "HSI":     {"value": 19000.0, "change_pct": -0.3},
+            "CSI300":  {"value": 3800.0,  "change_pct": -0.1},
+            "VIX":     {"value": 14.2,    "change_pct": -1.0},
+            "UST10Y":  {"value": 4.45,    "change_pct": 0.02},
+            "DXY":     {"value": 100.85,  "change_pct": -0.1},
+            "Gold":    {"value": 3300.0,  "change_pct": 0.4},
+            "Brent":   {"value": 80.6,    "change_pct": -0.3},
+            "USDJPY":  {"value": 161.3,   "change_pct": -0.1},
+            "USDSGD":  {"value": 1.2903,  "change_pct": 0.0},
+            "BTC-USD": {"value": 105000.0,"change_pct": 1.2},
+        },
+        "fred": {
+            "DFF":          {"value": 3.63,   "date": "2026-06-17", "label": "Effective Fed Funds Rate (%)"},
+            "SOFR":         {"value": 3.63,   "date": "2026-06-17", "label": "SOFR (%)"},
+            "DGS2":         {"value": 4.20,   "date": "2026-06-17", "label": "UST 2Y Yield (%)"},
+            "T10Y2Y":       {"value": 0.27,   "date": "2026-06-18", "label": "10Y-2Y Spread (pp)"},
+            "T10Y3M":       {"value": 0.63,   "date": "2026-06-18", "label": "10Y-3M Spread (pp)"},
+            "T5YIE":        {"value": 2.27,   "date": "2026-06-18", "label": "5Y Breakeven Inflation (%)"},
+            "T10YIE":       {"value": 2.25,   "date": "2026-06-18", "label": "10Y Breakeven Inflation (%)"},
+            "BAMLH0A0HYM2": {"value": 2.63,   "date": "2026-06-17", "label": "HY OAS Spread (%)"},
+            "BAMLC0A0CM":   {"value": 0.74,   "date": "2026-06-17", "label": "IG OAS Spread (%)"},
+            "NFCI":         {"value": -0.505, "date": "2026-06-12", "label": "Chicago Fed Fin. Conditions"},
+            "CPIAUCSL":     {"value": 3.4,    "date": "2026-05-01", "label": "CPI YoY %"},
+            "PCEPI":        {"value": 2.7,    "date": "2026-04-01", "label": "PCE Inflation %"},
+            "UNRATE":       {"value": 4.3,    "date": "2026-05-01", "label": "Unemployment Rate %"},
+        },
+    },
+    "fed_items": [
+        {"title": "Federal Reserve issues FOMC statement", "date": "17 Jun 2026",
+         "type": "press", "speaker": "", "url": "https://federalreserve.gov/test"},
+    ],
+    "news_headlines": [
+        {"title": "Fed Holds Rates Steady", "source": "NYT", "date": "21 Jun",
+         "query": "federal reserve interest rates"},
+        {"title": "Markets Rally on Rate Pause", "source": "Bloomberg", "date": "21 Jun",
+         "query": "markets"},
+        {"title": "CPI Cools to 3.4%", "source": "Reuters", "date": "20 Jun",
+         "query": "inflation cpi"},
+    ],
+}
+
+
+def test_macro_tg_has_synthesise_telegram():
+    """Formatter must have _synthesise_telegram function."""
+    src = open(_MACRO_TG).read()
+    assert "_synthesise_telegram" in src, \
+        "macro_daily_push_telegram must define _synthesise_telegram"
+
+
+def test_macro_tg_main_accepts_deepseek_key():
+    """Formatter main() must accept deepseek_key parameter."""
+    import inspect
+    mod = _load_formatter("macro_daily_push")
+    main_fn = getattr(mod, "main", None)
+    assert main_fn is not None, "formatter must have main()"
+    sig = inspect.signature(main_fn)
+    assert "deepseek_key" in sig.parameters, \
+        "macro_daily_push_telegram main() must accept deepseek_key"
+
+
+def test_macro_tg_yaml_has_deepseek_key():
+    """Formatter YAML schema must include deepseek_key property."""
+    import yaml
+    assert _MACRO_TG_YAML.exists(), "macro_daily_push_telegram.script.yaml not found"
+    with open(_MACRO_TG_YAML) as f:
+        schema = yaml.safe_load(f)
+    props = schema.get("schema", {}).get("properties", {})
+    assert "deepseek_key" in props, \
+        "macro_daily_push_telegram.script.yaml must have deepseek_key property"
+
+
+def test_macro_dispatch_passes_deepseek_key():
+    """macro_research._dispatch_formatter must forward deepseek_key to the formatter."""
+    src = open(_MACRO_RESEARCH).read()
+    # _dispatch_formatter must accept and pass deepseek_key
+    assert "deepseek_key" in src, \
+        "_dispatch_formatter in macro_research must pass deepseek_key to formatter"
+
+
+def test_macro_tg_synthesise_calls_deepseek():
+    """_synthesise_telegram must POST to the Deepseek chat/completions endpoint."""
+    import sys
+    import unittest.mock as mock
+    mod = _load_formatter("macro_daily_push")
+    fn = getattr(mod, "_synthesise_telegram", None)
+    if fn is None:
+        pytest.skip("_synthesise_telegram not yet implemented")
+    fake_resp = mock.MagicMock()
+    fake_resp.json.return_value = {
+        "choices": [{"message": {"content": "synthesised macro text"}}],
+        "usage": {"prompt_tokens": 800, "completion_tokens": 300},
+    }
+    fake_resp.raise_for_status = mock.MagicMock()
+    req_stub = sys.modules.get("requests")
+    req_stub.post = mock.MagicMock(return_value=fake_resp)
+    result = fn("six section narrative about global markets", "fake-ds-key")
+    assert req_stub.post.called, "_synthesise_telegram must call requests.post"
+    call_url = req_stub.post.call_args[0][0]
+    assert "deepseek" in call_url.lower(), \
+        "_synthesise_telegram must call deepseek API endpoint"
+    assert result == "synthesised macro text"
+
+
+def test_macro_tg_source_includes_hsi():
+    """Formatter must reference HSI in the expanded Yahoo display block."""
+    src = open(_MACRO_TG).read()
+    assert '"HSI"' in src or "'HSI'" in src, \
+        "formatter numbers block must include HSI"
+
+
+def test_macro_tg_source_includes_ndx():
+    """Formatter must reference NDX in the expanded Yahoo display block."""
+    src = open(_MACRO_TG).read()
+    assert '"NDX"' in src or "'NDX'" in src, \
+        "formatter numbers block must include NDX"
+
+
+def test_macro_tg_source_includes_hy_oas():
+    """Formatter must reference HY OAS spread (BAMLH0A0HYM2) in FRED block."""
+    src = open(_MACRO_TG).read()
+    assert "BAMLH0A0HYM2" in src or "HY OAS" in src, \
+        "formatter FRED block must include HY OAS spread"
+
+
+def test_macro_tg_source_includes_unrate():
+    """Formatter must reference unemployment (UNRATE) in FRED block."""
+    src = open(_MACRO_TG).read()
+    assert "UNRATE" in src or "Unemployment" in src, \
+        "formatter FRED block must include unemployment rate"
+
+
+def test_macro_tg_source_includes_nfci():
+    """Formatter must reference Chicago FCI (NFCI) in FRED block."""
+    src = open(_MACRO_TG).read()
+    assert "NFCI" in src or "Chicago" in src, \
+        "formatter FRED block must include Chicago FCI"
+
+
+def test_contract_macro_tg_synthesis_appears_in_message():
+    """build_message must include the synthesis text it is passed."""
+    mod = _load_formatter("macro_daily_push")
+    build_fn = getattr(mod, "_build_message", None)
+    if build_fn is None:
+        pytest.skip("_build_message not yet implemented")
+    SYNTH = "Global markets are pausing as the Fed holds rates and inflation cools."
+    msg = build_fn(_FULL_FRED_FM, SYNTH)
+    assert SYNTH in msg, \
+        "synthesis text must appear verbatim in the final Telegram message"
+
+
+def test_contract_macro_tg_expanded_fred_values_visible():
+    """build_message must surface HY OAS, IG OAS, CPI, unemployment, and NFCI values."""
+    mod = _load_formatter("macro_daily_push")
+    build_fn = getattr(mod, "_build_message", None)
+    if build_fn is None:
+        pytest.skip("_build_message not yet implemented")
+    msg = build_fn(_FULL_FRED_FM, "Summary text.")
+    assert "2.63" in msg, "HY OAS (2.63) must appear in message"
+    assert "0.74" in msg, "IG OAS (0.74) must appear in message"
+    assert "3.4" in msg,  "CPI (3.4) must appear in message"
+    assert "4.3" in msg,  "Unemployment (4.3) must appear in message"
+    assert "-0.5" in msg or "0.505" in msg, "Chicago FCI (-0.505) must appear in message"
+
+
+def test_contract_macro_tg_expanded_yahoo_hsi_visible():
+    """build_message must render HSI value in the numbers block."""
+    mod = _load_formatter("macro_daily_push")
+    build_fn = getattr(mod, "_build_message", None)
+    if build_fn is None:
+        pytest.skip("_build_message not yet implemented")
+    msg = build_fn(_FULL_FRED_FM, "Summary text.")
+    assert "19,000" in msg or "19000" in msg, \
+        "HSI value must appear in the Yahoo numbers block"
+
+
+def test_contract_macro_tg_news_headlines_visible():
+    """build_message must include news headline titles from front-matter."""
+    mod = _load_formatter("macro_daily_push")
+    build_fn = getattr(mod, "_build_message", None)
+    if build_fn is None:
+        pytest.skip("_build_message not yet implemented")
+    msg = build_fn(_FULL_FRED_FM, "Summary text.")
+    assert "Fed Holds Rates Steady" in msg, \
+        "news headline must appear in the Telegram message"

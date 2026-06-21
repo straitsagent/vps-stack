@@ -11,11 +11,6 @@ schema:
       description: ''
       default: null
       originalType: string
-    portfolio_db:
-      type: object
-      description: ''
-      default: {}
-      properties: {}
     telegram_bot_token:
       type: string
       description: ''
@@ -26,7 +21,18 @@ schema:
       description: ''
       default: null
       originalType: string
+    deepseek_key:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+    portfolio_db:
+      type: object
+      description: ''
+      default: {}
+      properties: {}
   required:
     - md_path
     - telegram_bot_token
     - telegram_owner_id
+    - deepseek_key
