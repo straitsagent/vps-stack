@@ -2599,13 +2599,24 @@ The primary macro writer is now `macro_research` (live, 7:00 AM SGT Mon–Fri). 
 }
 ```
 
-**Yahoo symbols (25):** `^GSPC`, `^DJI`, `^IXIC`, `^HSI`, `^STI`, `^VIX`, `^TNX`, `^TYX`, `DX-Y.NYB`, `EURUSD=X`, `USDJPY=X`, `USDSGD=X`, `USDHKD=X`, `USDCNH=X`, `GC=F`, `SI=F`, `CL=F`, `BZ=F`, `HG=F`, `LQD`, `HYG`, `IGSB`, `SHYG`, `^MOVE`, `BTC-USD`.
+**Yahoo symbols fetched (26, stored under custom name keys):** VIX, SP500, NDX, RUT, Nikkei, DAX, FTSE, HSI, CSI300, UST5Y, UST10Y, UST30Y, HYG, LQD, DXY, EURUSD, GBPUSD, USDJPY, USDCNY, USDSGD, USDHKD, Gold, Brent, Copper, NatGas. (mapped from raw Yahoo tickers internally in `macro_research.py`).
 
-**FRED series (13):** `DFF` (Fed Funds), `DGS2` (2Y), `DGS10` (10Y), `T10Y2Y` (10Y–2Y spread), `T5YIE` (5Y BE inflation), `CPIAUCSL` (CPI YoY%), `PCEPI` (PCE YoY%), `UNRATE` (Unemployment), `PAYEMS` (Nonfarm Payrolls), `INDPRO` (Industrial Production), `UMCSENT` (Consumer Sentiment), `DEXUSEU` (EUR/USD), `DEXSIUS` (SGD/USD).
+**FRED series fetched (13):** `DFF` (Fed Funds), `SOFR`, `DGS2` (2Y yield), `T10Y2Y` (10Y–2Y spread), `T10Y3M` (10Y–3M spread), `T5YIE` (5Y BE inflation), `T10YIE` (10Y BE inflation), `BAMLH0A0HYM2` (HY OAS spread), `BAMLC0A0CM` (IG OAS spread), `NFCI` (Chicago Fed FCI), `CPIAUCSL` (CPI, `units=pc1`), `PCEPI` (PCE, `units=pc1`), `UNRATE` (Unemployment).
 
-**Weekend detection:** if `abs(change_pct) < 0.01` for all Yahoo indicators the formatter adds _"Markets closed — values shown are as of the last trading session."_ **Telegram key-stats block:** shows `DFF`, `DGS2`, `T10Y2Y`, `T5YIE` from FRED. **Fed Watch line:** first `fed_items` entry headline if present. **None value rendering:** `value: null` → `N/A` (never `nan`). **USDHKD:** stored as ~7.84 (not inverted ~0.127).
+**Formatter output (~545 words, single Telegram message):**
+1. Header: `*Macro — <day> <date>, <time> SGT*`
+2. Weekend note if all `abs(change_pct) < 0.01`
+3. Yahoo grid — 13 symbols, 3 per row: SP500, NDX, HSI, CSI300, VIX, 10Y, DXY, EUR/USD, USD/JPY, USD/SGD, USD/HKD, Gold, Brent
+4. FRED grouped block — all available series in 4 lines: `Rates:` (DFF/SOFR/2Y/10Y-2Y/10Y-3M) · `Inflation:` (CPI/PCE/5Y BE/10Y BE) · `Credit:` (HY OAS/IG OAS/FCI) · `Labour:` (Unemp)
+5. Fed Watch: first `fed_items` entry title + date (italic)
+6. Deepseek synthesis: `_synthesise_telegram(narrative, deepseek_key)` — 400-450 word executive synthesis of the 6-section narrative, flowing prose, `deepseek-chat` temp=0.3 max_tokens=700. Falls back to first 600 words of narrative if key absent or call fails.
+7. In focus: top 4 `news_headlines` entries
 
-**Old flat schema (macro_daily_push, now disabled):** `indicators` was a flat dict `{"VIX": {"value", "change_pct"}, ...}` with 8 symbols. Formatter still accepts this for backward compat.
+**Formatter params:** `md_path`, `telegram_bot_token`, `telegram_owner_id`, `deepseek_key` (required), `portfolio_db` (optional, for outbox).
+
+**FRED value formatting:** spreads (`T10Y2Y`, `T10Y3M`) show signed pp (e.g. `+0.27pp`); NFCI shows signed 3dp (e.g. `-0.505`); values >100 (raw index level, CPI/PCE if `units=pc1` not applied) rendered without `%`; all others `X.XX%`. **None value rendering:** `null` → `N/A`. **USDHKD:** ~7.84 (not inverted).
+
+**Old flat schema (macro_daily_push, now disabled):** `indicators` was a flat dict `{"VIX": {"value", "change_pct"}, ...}` with 8 symbols. Formatter still accepts this for backward compat (synthesis still runs on whatever narrative is provided).
 
 ---
 
