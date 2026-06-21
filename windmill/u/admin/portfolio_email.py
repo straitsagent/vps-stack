@@ -86,7 +86,7 @@ def _generate_portfolio_narrative(positions: list, top_up: list, top_down: list,
                 json={"model": "deepseek-chat",
                       "messages": [{"role": "user", "content": prompt}],
                       "temperature": 0.4, "max_tokens": 900},
-                timeout=30,
+                timeout=60,
             )
             r.raise_for_status()
             return r.json()["choices"][0]["message"]["content"].strip()

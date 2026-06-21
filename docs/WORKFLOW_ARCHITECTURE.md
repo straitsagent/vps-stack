@@ -2574,26 +2574,38 @@ Every main script writes a `.md` to `/research/<type>/YYYY-MM-DD[_suffix].md` wi
 
 The formatter reads only the JSON front-matter and the narrative. Any change to the keys listed below **must** update the formatter and the round-trip contract test in `agent/tests/test_windmill_scripts.py` in the same commit (Hard Rule 18).
 
-### 1. `macro_daily_push` → `macro_daily_push_telegram`
+### 1. `macro_research` → `macro_daily_push_telegram`
+
+The primary macro writer is now `macro_research` (live, 7:00 AM SGT Mon–Fri). The formatter is still `macro_daily_push_telegram` and accepts both the new nested schema (below) and the old flat schema for backward compatibility.
 
 ```json
 {
-  "script": "macro_daily_push",
+  "script": "macro_research",
   "timestamp": "<ISO8601 datetime SGT>",
   "indicators": {
-    "VIX":    {"value": <float|null>, "change_pct": <float|null>},
-    "UST10Y": {"value": <float|null>, "change_pct": <float|null>},
-    "DXY":    {"value": <float|null>, "change_pct": <float|null>},
-    "Gold":   {"value": <float|null>, "change_pct": <float|null>},
-    "Brent":  {"value": <float|null>, "change_pct": <float|null>},
-    "SP500":  {"value": <float|null>, "change_pct": <float|null>},
-    "USDSGD": {"value": <float|null>, "change_pct": <float|null>},
-    "USDHKD": {"value": <float|null>, "change_pct": <float|null>}
-  }
+    "yahoo": {
+      "<SYMBOL>": {"value": <float|null>, "change_pct": <float|null>}
+    },
+    "fred": {
+      "<SERIES_ID>": {"value": <float|null>, "date": "<YYYY-MM-DD>", "label": "<str>"}
+    }
+  },
+  "fed_items": [
+    {"title": "<str>", "date": "<YYYY-MM-DD>", "type": "<speech|press>", "speaker": "<str|null>", "url": "<str>"}
+  ],
+  "news_headlines": [
+    {"title": "<str>", "source": "<str>", "date": "<YYYY-MM-DD>", "query": "<str>"}
+  ]
 }
 ```
 
-**Weekend detection:** if all `change_pct` are 0.0 the formatter adds _"Markets closed — values shown are as of the last trading session."_ **None value rendering:** `value: null` → `N/A` (never `nan`). **USDHKD:** stored as ~7.84 (not inverted ~0.127).
+**Yahoo symbols (25):** `^GSPC`, `^DJI`, `^IXIC`, `^HSI`, `^STI`, `^VIX`, `^TNX`, `^TYX`, `DX-Y.NYB`, `EURUSD=X`, `USDJPY=X`, `USDSGD=X`, `USDHKD=X`, `USDCNH=X`, `GC=F`, `SI=F`, `CL=F`, `BZ=F`, `HG=F`, `LQD`, `HYG`, `IGSB`, `SHYG`, `^MOVE`, `BTC-USD`.
+
+**FRED series (13):** `DFF` (Fed Funds), `DGS2` (2Y), `DGS10` (10Y), `T10Y2Y` (10Y–2Y spread), `T5YIE` (5Y BE inflation), `CPIAUCSL` (CPI YoY%), `PCEPI` (PCE YoY%), `UNRATE` (Unemployment), `PAYEMS` (Nonfarm Payrolls), `INDPRO` (Industrial Production), `UMCSENT` (Consumer Sentiment), `DEXUSEU` (EUR/USD), `DEXSIUS` (SGD/USD).
+
+**Weekend detection:** if `abs(change_pct) < 0.01` for all Yahoo indicators the formatter adds _"Markets closed — values shown are as of the last trading session."_ **Telegram key-stats block:** shows `DFF`, `DGS2`, `T10Y2Y`, `T5YIE` from FRED. **Fed Watch line:** first `fed_items` entry headline if present. **None value rendering:** `value: null` → `N/A` (never `nan`). **USDHKD:** stored as ~7.84 (not inverted ~0.127).
+
+**Old flat schema (macro_daily_push, now disabled):** `indicators` was a flat dict `{"VIX": {"value", "change_pct"}, ...}` with 8 symbols. Formatter still accepts this for backward compat.
 
 ---
 

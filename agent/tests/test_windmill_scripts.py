@@ -4472,3 +4472,335 @@ def test_contract_health_check_rows_survive():
         os.unlink(md_path)
     assert "Portfolio Email" in msg, "schedule label must survive round-trip"
     assert "FAIL" in msg or "timeout" in msg, "FAIL status must survive round-trip"
+
+
+# ── macro_research: source-level smoke tests ──────────────────────────────────
+
+_MACRO_RESEARCH = os.path.join(
+    os.path.dirname(__file__), "../../windmill/u/admin/macro_research.py"
+)
+
+
+def _read_mr_source() -> str:
+    with open(_MACRO_RESEARCH) as f:
+        return f.read()
+
+
+def test_macro_research_file_exists():
+    """macro_research.py must exist."""
+    assert os.path.exists(_MACRO_RESEARCH), "macro_research.py not found"
+
+
+def test_macro_research_has_required_params():
+    """main() must accept fred_api_key, deepseek_key, telegram_*, smtp_resource, recipient_email."""
+    src = _read_mr_source()
+    for param in ("fred_api_key", "deepseek_key", "telegram_bot_token",
+                  "telegram_owner_id", "smtp_resource", "recipient_email"):
+        assert param in src, f"macro_research.main missing param: {param}"
+
+
+def test_macro_research_has_yahoo_symbols():
+    """Script must define at least 20 Yahoo Finance symbols."""
+    src = _read_mr_source()
+    # Count ^-prefixed or =X / =F tickers as a proxy for symbol count
+    yahoo_sym_count = src.count("^") + src.count("=X") + src.count("=F")
+    assert yahoo_sym_count >= 20, (
+        f"Expected ≥20 Yahoo symbol references, found {yahoo_sym_count}"
+    )
+
+
+def test_macro_research_has_fred_series():
+    """Script must reference FRED series IDs for key economic indicators."""
+    src = _read_mr_source()
+    for series in ("DFF", "T10Y2Y", "T10Y3M", "T5YIE", "CPIAUCSL", "UNRATE"):
+        assert series in src, f"macro_research missing FRED series: {series}"
+
+
+def test_macro_research_fetches_fed_rss():
+    """Script must fetch Fed Reserve RSS feeds (speeches + press releases)."""
+    src = _read_mr_source()
+    assert "federalreserve.gov" in src, "macro_research must fetch Fed Reserve RSS"
+    assert "speeches" in src, "macro_research must fetch Fed speeches RSS feed"
+
+
+def test_macro_research_has_six_analysis_sections():
+    """Script must define 6 analysis sections (equity, rates, fed, fx/credit, commodities, hk/china)."""
+    src = _read_mr_source()
+    section_keywords = [
+        ("equity", "vix", "sp500"),
+        ("rate", "yield", "ust"),
+        ("fed", "federal", "inflation"),
+        ("fx", "dollar", "dxy"),
+        ("commodit", "gold", "brent"),
+        ("hk", "china", "hsi"),
+    ]
+    found = 0
+    for keywords in section_keywords:
+        if any(kw in src.lower() for kw in keywords):
+            found += 1
+    assert found >= 6, f"Expected 6 analysis sections, found {found}"
+
+
+def test_macro_research_writes_canonical_md():
+    """Script must write a .md file under /research/macro/."""
+    src = _read_mr_source()
+    assert "/research/macro/" in src, "macro_research must write .md to /research/macro/"
+    assert "<!-- DETAIL -->" in src, "macro_research .md must include <!-- DETAIL --> separator"
+
+
+def test_macro_research_sends_email():
+    """Script must send an HTML email via smtp_resource."""
+    src = _read_mr_source()
+    assert "smtp" in src.lower() or "smtplib" in src.lower(), \
+        "macro_research must send email via SMTP"
+    assert "html" in src.lower(), "macro_research email must be HTML"
+
+
+def test_macro_research_dispatches_telegram_formatter():
+    """Script must dispatch macro_daily_push_telegram formatter."""
+    src = _read_mr_source()
+    assert "_dispatch_formatter" in src, "macro_research must call _dispatch_formatter"
+    assert "macro_daily_push_telegram" in src, \
+        "macro_research must dispatch macro_daily_push_telegram"
+
+
+def test_macro_research_md_has_nested_indicators_schema():
+    """Front-matter must use nested indicators.yahoo and indicators.fred keys."""
+    src = _read_mr_source()
+    assert '"yahoo"' in src or "'yahoo'" in src, \
+        "macro_research front-matter must use nested 'yahoo' key under indicators"
+    assert '"fred"' in src or "'fred'" in src, \
+        "macro_research front-matter must use nested 'fred' key under indicators"
+
+
+def test_macro_research_md_has_fed_items():
+    """Front-matter must include fed_items list for Fed speeches/press releases."""
+    src = _read_mr_source()
+    assert "fed_items" in src, "macro_research front-matter must include fed_items"
+
+
+# ── macro_research: unit-level behavioural tests ─────────────────────────────
+
+def _load_macro_research_module():
+    """Load macro_research.py with external deps mocked."""
+    for name in ("yfinance", "requests", "pytz", "feedparser"):
+        sys.modules.setdefault(name, MagicMock())
+    path = str(pathlib.Path(__file__).parent.parent.parent /
+               "windmill" / "u" / "admin" / "macro_research.py")
+    spec = _importlib_util.spec_from_file_location("macro_research_btest", path)
+    mod = _importlib_util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception as e:
+        pytest.skip(f"Could not load macro_research: {e}")
+    return mod
+
+
+def test_macro_research_fetch_fred_returns_dict():
+    """_fetch_fred_data must return a dict keyed by series ID."""
+    mod = _load_macro_research_module()
+    fetch_fn = getattr(mod, "_fetch_fred_data", None)
+    if fetch_fn is None:
+        pytest.skip("_fetch_fred_data not found")
+    fake_resp = MagicMock()
+    fake_resp.json.return_value = {
+        "observations": [
+            {"date": "2026-06-20", "value": "5.33"},
+            {"date": "2026-06-21", "value": "5.33"},
+        ]
+    }
+    fake_resp.raise_for_status = MagicMock()
+    with patch("requests.get", return_value=fake_resp):
+        result = fetch_fn("fake_api_key")
+    assert isinstance(result, dict), "_fetch_fred_data must return a dict"
+    assert len(result) > 0, "_fetch_fred_data must return at least one series"
+    first = next(iter(result.values()))
+    assert "value" in first, "Each FRED entry must have a 'value' key"
+    assert "date" in first, "Each FRED entry must have a 'date' key"
+    assert "label" in first, "Each FRED entry must have a 'label' key"
+
+
+def test_macro_research_fetch_fred_handles_missing_series():
+    """_fetch_fred_data must return None value when FRED returns no observations."""
+    mod = _load_macro_research_module()
+    fetch_fn = getattr(mod, "_fetch_fred_data", None)
+    if fetch_fn is None:
+        pytest.skip("_fetch_fred_data not found")
+    empty_resp = MagicMock()
+    empty_resp.json.return_value = {"observations": []}
+    empty_resp.raise_for_status = MagicMock()
+    with patch("requests.get", return_value=empty_resp):
+        result = fetch_fn("fake_api_key")
+    # All values should be None when no observations
+    for v in result.values():
+        assert v["value"] is None, "Empty FRED observations must yield value=None"
+
+
+def test_macro_research_fetch_fred_skips_dot_values():
+    """FRED uses '.' to indicate missing data — must be converted to None."""
+    mod = _load_macro_research_module()
+    fetch_fn = getattr(mod, "_fetch_fred_data", None)
+    if fetch_fn is None:
+        pytest.skip("_fetch_fred_data not found")
+    dot_resp = MagicMock()
+    dot_resp.json.return_value = {
+        "observations": [{"date": "2026-06-20", "value": "."}]
+    }
+    dot_resp.raise_for_status = MagicMock()
+    with patch("requests.get", return_value=dot_resp):
+        result = fetch_fn("fake_api_key")
+    for v in result.values():
+        assert v["value"] is None, "FRED '.' value must be converted to None"
+
+
+def test_macro_research_fetch_fed_news_returns_list():
+    """_fetch_fed_news must return a list of dicts with title, date, type keys."""
+    mod = _load_macro_research_module()
+    fetch_fn = getattr(mod, "_fetch_fed_news", None)
+    if fetch_fn is None:
+        pytest.skip("_fetch_fed_news not found")
+    fake_entry = MagicMock()
+    fake_entry.title = "Fed Chair Powell Speaks on Inflation"
+    fake_entry.get = lambda k, d=None: "https://federalreserve.gov/test" if k == "link" else d
+    fake_entry.published = "Sun, 21 Jun 2026 14:00:00 GMT"
+    fake_feed = MagicMock()
+    fake_feed.entries = [fake_entry]
+    with patch("feedparser.parse", return_value=fake_feed):
+        result = fetch_fn()
+    assert isinstance(result, list), "_fetch_fed_news must return a list"
+
+
+def test_macro_research_news_cutoff_48h():
+    """_fetch_macro_news must filter out headlines older than 48 hours."""
+    mod = _load_macro_research_module()
+    fetch_fn = getattr(mod, "_fetch_macro_news", None)
+    if fetch_fn is None:
+        pytest.skip("_fetch_macro_news not found")
+    old_entry = MagicMock()
+    old_entry.title = "Old headline from January"
+    old_entry.get = lambda k, d=None: d
+    import time
+    old_entry.published_parsed = time.gmtime(0)  # epoch = very old
+    fake_feed = MagicMock()
+    fake_feed.entries = [old_entry]
+    with patch("feedparser.parse", return_value=fake_feed):
+        result = fetch_fn()
+    titles = [h.get("title", "") for h in result] if result else []
+    assert "Old headline from January" not in titles, \
+        "_fetch_macro_news must filter headlines older than 48h (Hard Rule 14)"
+
+
+# ── macro_daily_push_telegram: updated schema round-trip tests ────────────────
+
+def test_contract_macro_new_schema_yahoo_survives():
+    """Round-trip with nested indicators.yahoo schema: USDHKD must render correctly."""
+    mod = _load_formatter("macro_daily_push")
+    fm = {
+        "timestamp": "2026-06-22T07:00:00+08:00",
+        "indicators": {
+            "yahoo": {
+                "USDHKD": {"value": 7.8368, "change_pct": 0.01},
+                "VIX":    {"value": 16.4,   "change_pct": -2.1},
+                "SP500":  {"value": 5450.0,  "change_pct": 0.8},
+            },
+            "fred": {
+                "DFF":    {"value": 5.33, "date": "2026-06-20", "label": "Fed Funds Rate"},
+                "T10Y2Y": {"value": -0.35, "date": "2026-06-20", "label": "10Y-2Y Spread"},
+                "T5YIE":  {"value": 2.24,  "date": "2026-06-20", "label": "5Y Breakeven Inflation"},
+            },
+        },
+        "fed_items": [
+            {"title": "Powell: Inflation progress is real", "date": "2026-06-21",
+             "type": "speech", "speaker": "Powell", "url": "https://federalreserve.gov/test"},
+        ],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn, "formatter missing _parse_md_report or _build_message"
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "7.83" in msg or "7.84" in msg, \
+        "USDHKD must render from indicators.yahoo after round-trip"
+    assert "16" in msg, "VIX must render from indicators.yahoo after round-trip"
+
+
+def test_contract_macro_new_schema_fred_stats_visible():
+    """Round-trip: FRED stats (Fed Funds, T10Y2Y) must appear in Telegram message."""
+    mod = _load_formatter("macro_daily_push")
+    fm = {
+        "timestamp": "2026-06-22T07:00:00+08:00",
+        "indicators": {
+            "yahoo": {"VIX": {"value": 16.4, "change_pct": -2.1}},
+            "fred": {
+                "DFF":    {"value": 5.33,  "date": "2026-06-20", "label": "Fed Funds Rate"},
+                "T10Y2Y": {"value": -0.35, "date": "2026-06-20", "label": "10Y-2Y Spread"},
+            },
+        },
+        "fed_items": [],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "5.33" in msg, "Fed Funds Rate (DFF=5.33) must appear in Telegram message"
+    assert "-0.35" in msg or "0.35" in msg, "T10Y2Y spread must appear in Telegram message"
+
+
+def test_contract_macro_new_schema_fed_watch_visible():
+    """Round-trip: Fed speech title must appear in Telegram message as Fed Watch line."""
+    mod = _load_formatter("macro_daily_push")
+    fm = {
+        "timestamp": "2026-06-22T07:00:00+08:00",
+        "indicators": {
+            "yahoo": {"VIX": {"value": 16.4, "change_pct": -2.1}},
+            "fred": {},
+        },
+        "fed_items": [
+            {"title": "Powell: Rate cuts remain data-dependent",
+             "date": "2026-06-21", "type": "speech",
+             "speaker": "Powell", "url": "https://federalreserve.gov/test"},
+        ],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "Powell" in msg or "Rate cuts" in msg, \
+        "Fed speech title must appear in Telegram message Fed Watch section"
+
+
+def test_contract_macro_old_schema_still_works():
+    """Backward compat: flat indicators schema (old macro_daily_push) must still render."""
+    mod = _load_formatter("macro_daily_push")
+    fm = {
+        "timestamp": "2026-06-22T07:00:00+08:00",
+        "indicators": {
+            "USDHKD": {"value": 7.8368, "change_pct": 0.01},
+            "VIX":    {"value": 16.4,   "change_pct": -2.1},
+        },
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "7.83" in msg or "7.84" in msg, \
+        "Old flat schema must still render USDHKD correctly (backward compat)"

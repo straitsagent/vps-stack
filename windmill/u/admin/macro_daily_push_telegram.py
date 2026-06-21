@@ -1,6 +1,7 @@
 # Requirements:
 # requests>=2.31
 # psycopg2-binary>=2.9
+# pytz>=2024.1
 
 """
 Macro Daily Push — Telegram Formatter
@@ -149,15 +150,23 @@ def _fmt_indicator(name: str, ind: dict) -> str:
         return f"{display}: {v:.4g}{chg_str}{arrow}"
 
 
+_FRED_DISPLAY_IN_TG = [
+    ("DFF",    "Fed Funds"),
+    ("DGS2",   "UST 2Y"),
+    ("T10Y2Y", "10Y-2Y"),
+    ("T5YIE",  "5Y BE Infl"),
+]
+
+
 def _build_message(front_matter: dict, narrative: str) -> str:
     """
     Build the self-contained Telegram macro report.
-    front_matter: dict with 'indicators' mapping name→{value, change_pct}, 'timestamp'
-    narrative: ≥500-word macro brief from Deepseek
+    Handles both schemas:
+      - New (macro_research): indicators.yahoo + indicators.fred + fed_items
+      - Old (macro_daily_push): flat indicators dict
     Returns a self-contained Telegram-ready Markdown string.
     """
     ts = front_matter.get("timestamp", "")
-    # Time label from timestamp or fall back to raw
     time_label = ts
     if ts:
         try:
@@ -170,35 +179,68 @@ def _build_message(front_matter: dict, narrative: str) -> str:
         except Exception:
             time_label = ts
 
-    indicators = front_matter.get("indicators", {})
+    # Detect schema: new nested vs. old flat
+    raw_indicators = front_matter.get("indicators", {})
+    if "yahoo" in raw_indicators:
+        yahoo_indicators = raw_indicators.get("yahoo", {})
+        fred_indicators  = raw_indicators.get("fred", {})
+    else:
+        yahoo_indicators = raw_indicators
+        fred_indicators  = {}
+
     _ORDER = ["VIX", "UST10Y", "DXY", "Brent", "Gold", "SP500", "USDSGD", "USDHKD"]
 
     lines = []
     row = []
     for name in _ORDER:
-        if name in indicators:
-            row.append(_fmt_indicator(name, indicators[name]))
+        if name in yahoo_indicators:
+            row.append(_fmt_indicator(name, yahoo_indicators[name]))
             if len(row) == 3:
                 lines.append("  ".join(row))
                 row = []
     if row:
         lines.append("  ".join(row))
 
-    # Detect weekend/holiday: all change_pct are zero when markets were closed
+    # Weekend/holiday detection: all change_pct near-zero
     all_changes = [
-        indicators[n].get("change_pct") or 0
-        for n in _ORDER if n in indicators
+        yahoo_indicators[n].get("change_pct") or 0
+        for n in _ORDER if n in yahoo_indicators
     ]
-    markets_closed = bool(all_changes) and all(abs(c) == 0.0 for c in all_changes)
+    markets_closed = bool(all_changes) and all(abs(c) < 0.01 for c in all_changes)
 
     header = f"*Macro — {time_label}*"
     if markets_closed:
         header += "\n\n_Markets closed — values shown are as of the last trading session._"
     header += "\n\n" + "\n".join(lines)
 
-    body = narrative.strip() if narrative.strip() else ""
+    # FRED key stats block (new schema only)
+    fred_block = ""
+    if fred_indicators:
+        fred_parts = []
+        for sid, label in _FRED_DISPLAY_IN_TG:
+            d = fred_indicators.get(sid, {})
+            v = d.get("value") if isinstance(d, dict) else None
+            if v is not None:
+                fred_parts.append(f"{label}: {v:.2f}%")
+        if fred_parts:
+            fred_block = "\n" + "  ".join(fred_parts)
 
-    return f"{header}\n\n{body}"
+    # Fed Watch line (new schema only)
+    fed_watch = ""
+    fed_items = front_matter.get("fed_items", [])
+    if fed_items:
+        latest  = fed_items[0]
+        speaker = latest.get("speaker", "")
+        title   = latest.get("title", "")[:80]
+        date    = latest.get("date", "")
+        by      = f"{speaker}: " if speaker else ""
+        fed_watch = f"\n\n_Fed Watch: {by}{title}{(' ('+date+')') if date else ''}_"
+
+    # Clean narrative: strip ### section headers for Telegram
+    clean_narrative = re.sub(r"^###\s+", "", narrative.strip(), flags=re.MULTILINE)
+    body = clean_narrative if clean_narrative else ""
+
+    return f"{header}{fred_block}{fed_watch}\n\n{body}"
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────

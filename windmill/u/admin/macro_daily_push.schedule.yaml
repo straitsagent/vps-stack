@@ -1,6 +1,6 @@
 schedule: '0 30 7 * * 1-5'
 timezone: Asia/Singapore
-enabled: true
+enabled: false
 script_path: u/admin/macro_daily_push
 is_flow: false
 summary: 'Macro Daily Push — 7:30 AM SGT (Mon–Fri)'

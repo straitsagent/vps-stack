@@ -129,7 +129,7 @@ def _synthesise(macro: dict, deepseek_key: str) -> str:
                 "temperature": 0.3,
                 "max_tokens": 1400,
             },
-            timeout=20,
+            timeout=60,
         )
         r.raise_for_status()
         return r.json()["choices"][0]["message"]["content"].strip()
