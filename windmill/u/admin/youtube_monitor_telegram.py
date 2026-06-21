@@ -170,10 +170,38 @@ def main(
     message = _build_message(front_matter, narrative)
     word_count = len(message.split())
     log.info(f"[YouTubeTelegram] Message built: {word_count} words")
-    if word_count < 500:
-        log.warning(f"[YouTubeTelegram] Under 500 words ({word_count})")
-    _send_telegram(
+    below_min = word_count < 500
+    if below_min:
+        log.warning(
+            f"[YouTubeTelegram] Under 500 words ({word_count}) — synthesis likely failed; "
+            "sending anyway and flagging BELOW_MIN_WORDS in outbox"
+        )
+
+    # Send telegram. Skip auto-outbox write (db=None) so we can control the error field.
+    delivered = _send_telegram(
         telegram_bot_token, telegram_owner_id, message,
-        db=portfolio_db, script_name="youtube_monitor",
+        db=None,  # outbox handled manually below to allow BELOW_MIN_WORDS flag
+        script_name="youtube_monitor",
     )
+
+    # Write outbox row — include BELOW_MIN_WORDS flag when synthesis fell back to short text
+    if portfolio_db:
+        try:
+            import psycopg2 as _pg
+            conn = _pg.connect(**{k: v for k, v in portfolio_db.items()
+                                   if k in ("host", "port", "dbname", "user", "password")})
+            cur = conn.cursor()
+            chars = len(message)
+            outbox_error = f"BELOW_MIN_WORDS:{word_count}" if below_min else None
+            cur.execute(
+                "INSERT INTO telegram_outbox "
+                "(script_name,message_text,char_count,word_count,delivered,error)"
+                " VALUES (%s,%s,%s,%s,%s,%s)",
+                ("youtube_monitor", message, chars, word_count, delivered, outbox_error),
+            )
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            log.warning(f"[YouTubeTelegram] Outbox write failed (non-fatal): {e}")
+
     return {"status": "sent", "word_count": word_count}

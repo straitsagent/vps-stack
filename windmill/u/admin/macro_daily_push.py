@@ -127,7 +127,7 @@ def _synthesise(macro: dict, deepseek_key: str) -> str:
                 "model": "deepseek-chat",
                 "messages": [{"role": "user", "content": prompt}],
                 "temperature": 0.3,
-                "max_tokens": 900,
+                "max_tokens": 1400,
             },
             timeout=20,
         )

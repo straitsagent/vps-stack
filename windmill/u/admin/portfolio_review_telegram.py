@@ -142,7 +142,7 @@ def _build_message(front_matter: dict, narrative: str) -> str:
     """
     Build the self-contained Telegram weekly review report.
     front_matter must contain: we_str, total_value, week_pnl, week_pct_total,
-                                gainers (list of {ticker, week_pct, week_impact}),
+                                gainers (list of {label, week_pct, week_impact}),
                                 losers (same)
     narrative: full Deepseek weekly commentary (≥500 words)
     """
@@ -155,7 +155,8 @@ def _build_message(front_matter: dict, narrative: str) -> str:
 
     val_str  = f"${total_val:,.0f}" if total_val else "N/A"
     week_k   = week_pnl / 1000 if week_pnl else 0
-    sign_pnl = "+" if week_pnl >= 0 else ""
+    # Dollar sign includes its own +/- so it's unambiguous for both positive and negative
+    week_dollar_str = f"+${abs(week_k):.1f}k" if week_pnl >= 0 else f"-${abs(week_k):.1f}k"
     sign_pct = "+" if week_pct >= 0 else ""
 
     def _mover(p):
@@ -169,7 +170,7 @@ def _build_message(front_matter: dict, narrative: str) -> str:
 
     header = (
         f"*Weekly Review — w/e {we_str}*\n"
-        f"{val_str} | Week: {sign_pnl}${abs(week_k):.1f}k ({sign_pct}{week_pct:.2f}%)\n\n"
+        f"{val_str} | Week: {week_dollar_str} ({sign_pct}{week_pct:.2f}%)\n\n"
         f"📈 {g_str}\n"
         f"📉 {l_str}"
     )

@@ -184,7 +184,18 @@ def _build_message(front_matter: dict, narrative: str) -> str:
     if row:
         lines.append("  ".join(row))
 
-    header = f"*Macro — {time_label}*\n\n" + "\n".join(lines)
+    # Detect weekend/holiday: all change_pct are zero when markets were closed
+    all_changes = [
+        indicators[n].get("change_pct") or 0
+        for n in _ORDER if n in indicators
+    ]
+    markets_closed = bool(all_changes) and all(abs(c) == 0.0 for c in all_changes)
+
+    header = f"*Macro — {time_label}*"
+    if markets_closed:
+        header += "\n\n_Markets closed — values shown are as of the last trading session._"
+    header += "\n\n" + "\n".join(lines)
+
     body = narrative.strip() if narrative.strip() else ""
 
     return f"{header}\n\n{body}"

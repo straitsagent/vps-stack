@@ -1,6 +1,6 @@
 # Workflow Architecture
 
-**Last updated:** 2026-06-18 (added 3.3 Portfolio Rationalization + 3.4 Portfolio Candidate Eval specs; both scripts live)  
+**Last updated:** 2026-06-21 (added Canonical .md Front-Matter Schema section for all 8 Telegram formatter scripts; this is the contract referenced by Hard Rule 18 and the round-trip contract tests in `test_windmill_scripts.py`)  
 **Owner:** the owner  
 **Purpose:** Human-readable / pseudocode spec for every workflow in the stack. Claude Code reads this before building or modifying any workflow. Each built workflow is documented in full. Planned workflows have a brief stub — fill in the full spec before coding.
 
@@ -2553,3 +2553,177 @@ Falls back to single-tool dispatch if planner raises.
 ### W-Business Agent 🔲 NOT PLANNED
 
 Second instance of W1 codebase — same Python code, different env file and bot token. For external contacts to interact with. Scope TBD.
+
+---
+
+## Canonical .md Front-Matter Schema (Hard Rule 18 Contract)
+
+Every main script writes a `.md` to `/research/<type>/YYYY-MM-DD[_suffix].md` with this structure:
+
+````
+```json
+{ <front-matter keys — see per-script schema below> }
+```
+
+<≥500-word LLM narrative>
+
+<!-- DETAIL -->
+
+<optional wide tables / per-item detail — formatter ignores everything below this marker>
+````
+
+The formatter reads only the JSON front-matter and the narrative. Any change to the keys listed below **must** update the formatter and the round-trip contract test in `agent/tests/test_windmill_scripts.py` in the same commit (Hard Rule 18).
+
+### 1. `macro_daily_push` → `macro_daily_push_telegram`
+
+```json
+{
+  "script": "macro_daily_push",
+  "timestamp": "<ISO8601 datetime SGT>",
+  "indicators": {
+    "VIX":    {"value": <float|null>, "change_pct": <float|null>},
+    "UST10Y": {"value": <float|null>, "change_pct": <float|null>},
+    "DXY":    {"value": <float|null>, "change_pct": <float|null>},
+    "Gold":   {"value": <float|null>, "change_pct": <float|null>},
+    "Brent":  {"value": <float|null>, "change_pct": <float|null>},
+    "SP500":  {"value": <float|null>, "change_pct": <float|null>},
+    "USDSGD": {"value": <float|null>, "change_pct": <float|null>},
+    "USDHKD": {"value": <float|null>, "change_pct": <float|null>}
+  }
+}
+```
+
+**Weekend detection:** if all `change_pct` are 0.0 the formatter adds _"Markets closed — values shown are as of the last trading session."_ **None value rendering:** `value: null` → `N/A` (never `nan`). **USDHKD:** stored as ~7.84 (not inverted ~0.127).
+
+---
+
+### 2. `portfolio_email` → `portfolio_email_telegram`
+
+```json
+{
+  "script": "portfolio_email",
+  "date_str": "<e.g. Sat 20 Jun>",
+  "time_label": "<e.g. 11pm SGT>",
+  "session": "<US Close|Asia Close>",
+  "total_value": <float>,
+  "total_pnl": <float>,
+  "total_pnl_pct": <float>,
+  "gainers": [{"label": "<ticker>", "pnl_pct": <float>, "pnl": <float>}],
+  "losers":  [{"label": "<ticker>", "pnl_pct": <float>, "pnl": <float>}]
+}
+```
+
+**Key note:** gainer/loser items use `"label"` (not `"ticker"`). `time_label` must be uppercase SGT.
+
+---
+
+### 3. `portfolio_review` → `portfolio_review_telegram`
+
+```json
+{
+  "script": "portfolio_review",
+  "we_str": "<e.g. 19 Jun>",
+  "total_value": <float>,
+  "week_pnl": <float>,
+  "week_pct_total": <float>,
+  "gainers": [{"label": "<ticker>", "week_pct": <float>, "week_impact": <float>}],
+  "losers":  [{"label": "<ticker>", "week_pct": <float>, "week_impact": <float>}]
+}
+```
+
+**Key note:** mover items use `"label"` (not `"ticker"`). **Sign rule:** `week_pnl < 0` renders as `-$N.Nk` (not `$N.Nk` without the minus).
+
+---
+
+### 4. `portfolio_rationalization` → `portfolio_rationalization_telegram`
+
+```json
+{
+  "script": "portfolio_rationalization",
+  "today_str": "<e.g. 20 Jun>",
+  "n_positions": <int>,
+  "top3": [{"ticker": "<str>", "score": <float — composite balanced score>, "verdict": "<KEEP|TRIM|EXIT>"}],
+  "bot3": [{"ticker": "<str>", "score": <float — composite balanced score>, "verdict": "<KEEP|TRIM|EXIT>"}]
+}
+```
+
+**Key notes:** `score` is the composite balanced score (e.g. 55.5) — **not** the rank integer. `verdict` comes from `call1_structured[t].get("verdict")` — **not** `"recommendation"`.
+
+---
+
+### 5. `portfolio_move_monitor` → `portfolio_move_monitor_telegram`
+
+Only written when a breach fires (portfolio ±1.5% or position ±5%).
+
+```json
+{
+  "script": "portfolio_move_monitor",
+  "time_str": "<e.g. 10:30 AM SGT>",
+  "portfolio_move": <float — signed %>,
+  "total_impact": <float — signed $ impact>,
+  "pct_threshold": <float — e.g. 1.5>,
+  "position_alerts": [{"ticker": "<str>", "intraday_pct": <float>, "dollar_impact": <float>}],
+  "pos_threshold": <float — e.g. 5.0>
+}
+```
+
+---
+
+### 6. `portfolio_analyst_alert` → `portfolio_analyst_alert_telegram`
+
+Only written when a rating change fires.
+
+```json
+{
+  "script": "portfolio_analyst_alert",
+  "today_str": "<e.g. 20 Jun>",
+  "alerts": [
+    {"ticker": "<str>", "action": "<Upgrade|Downgrade|Initiation>",
+     "old_rating": "<str>", "new_rating": "<str>", "period": "<e.g. last 7 days>"}
+  ]
+}
+```
+
+---
+
+### 7. `health_check` → `health_check_telegram`
+
+```json
+{
+  "script": "health_check",
+  "tg_date": "<e.g. 20 Jun>",
+  "ok_count": <int>,
+  "total": <int>,
+  "rows": [
+    {"label": "<schedule label>", "status": "<OK|STALE|FAILED>",
+     "age_str": "<e.g. 2h ago>", "error": "<str|null>"}
+  ],
+  "token_usage": [
+    {"job": "<label>", "model": "<str>", "tokens": <int>, "cost_usd": <float>}
+  ],
+  "outbox_rows": [
+    {"script_name": "<str>", "delivered": <bool>, "word_count": <int>,
+     "error": "<str|null — BELOW_MIN_WORDS:N if synthesis failed>", "sent_at": "<str>"}
+  ]
+}
+```
+
+**`outbox_rows`** is populated by `_query_telegram_outbox_24h()` — surfaces formatter delivery failures and word-count violations to the health report.
+
+---
+
+### 8. `youtube_monitor` → `youtube_monitor_telegram`
+
+```json
+{
+  "script": "youtube_monitor",
+  "date_str": "<e.g. 20 Jun>",
+  "n_summarised": <int>,
+  "videos": [
+    {"title": "<str>", "watch_url": "<https://youtu.be/...>",
+     "channel_name": "<str>", "summary": "<str|null>"}
+  ]
+}
+```
+
+**Narrative:** the `≥500-word 24h synthesis` generated by `_synthesise_24h()`. If synthesis fails (empty string) the formatter sends the shorter fallback but flags `BELOW_MIN_WORDS:N` in `telegram_outbox.error` so `health_check` surfaces the violation.

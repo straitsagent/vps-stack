@@ -4004,3 +4004,471 @@ def test_rationalization_score_is_composite_not_rank():
     has_rank_only = ("ranks.get" in context and "composites" not in context)
     assert has_composite_ref and not has_rank_only, \
         "portfolio_rationalization _make_entry must use composite score, not rank integer"
+
+
+# =============================================================================
+# FLAW-REMEDIATION TESTS (added 2026-06-21)
+# Covers: sign bug, markets-closed, YouTube fallback flagging, sender identity,
+#         dead telegram_utils.py, health_check outbox audit, round-trip contracts.
+# =============================================================================
+
+import tempfile as _tempfile
+
+
+def _make_md(front_matter: dict, narrative: str) -> str:
+    """Write a canonical .md to a temp file and return its path."""
+    import json as _j
+    content = (
+        f"```json\n{_j.dumps(front_matter, indent=2)}\n```\n\n"
+        f"{narrative}\n\n<!-- DETAIL -->\n"
+    )
+    f = _tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False)
+    f.write(content)
+    f.close()
+    return f.name
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flaw 2 — portfolio_review week_pnl sign bug
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_portfolio_review_negative_week_dollar_shows_minus():
+    """Negative week_pnl must render as -$N.Nk (not $N.Nk without a minus sign)."""
+    mod = _load_formatter("portfolio_review")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {
+        "we_str": "21 Jun", "total_value": 1_038_998.0,
+        "week_pnl": -7966.22, "week_pct_total": -0.76,
+        "gainers": [], "losers": [],
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "-$7" in msg or "-$8" in msg, (
+        f"Negative week_pnl must render as -$N.Nk (not $N.Nk without minus). "
+        f"Got first 300 chars: {msg[:300]}"
+    )
+    # Must NOT render without the minus in the dollar amount (the existing bug)
+    assert "| Week: $7" not in msg and "| Week: $8" not in msg, (
+        "Must not render 'Week: $8.0k' without a minus sign when week_pnl is negative"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flaw 6 — macro "Markets closed" weekend note
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_macro_formatter_all_zero_change_shows_markets_closed():
+    """When all change_pct are zero (weekend/holiday), macro must note markets closed."""
+    mod = _load_formatter("macro_daily_push")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {
+        "timestamp": "2026-06-21T07:30:00+08:00",
+        "indicators": {
+            "VIX":    {"value": 16.4,   "change_pct": 0.0},
+            "UST10Y": {"value": 4.45,   "change_pct": 0.0},
+            "SP500":  {"value": 7500.0, "change_pct": 0.0},
+            "USDHKD": {"value": 7.8368, "change_pct": 0.0},
+        },
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "markets closed" in msg.lower() or "market closed" in msg.lower(), (
+        "All-zero change_pct must show 'Markets closed' note in macro Telegram message"
+    )
+
+
+def test_macro_formatter_nonzero_change_no_markets_closed():
+    """When at least one indicator has non-zero change_pct, no markets-closed note."""
+    mod = _load_formatter("macro_daily_push")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    fm = {
+        "timestamp": "2026-06-20T07:30:00+08:00",
+        "indicators": {
+            "VIX":   {"value": 16.4,   "change_pct": -2.1},
+            "SP500": {"value": 7500.0, "change_pct":  0.9},
+        },
+    }
+    msg = fn(fm, _TEST_NARRATIVE)
+    assert "markets closed" not in msg.lower(), (
+        "Non-zero change_pct must not trigger 'Markets closed' note"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flaw 5 — YouTube sub-500 fallback flags BELOW_MIN_WORDS in outbox
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_youtube_formatter_below_min_words_flags_in_source():
+    """youtube_monitor_telegram.py must contain BELOW_MIN_WORDS error-flag string."""
+    src = (_SCRIPTS_DIR / "youtube_monitor_telegram.py").read_text()
+    assert "BELOW_MIN_WORDS" in src, (
+        "youtube_monitor_telegram must flag BELOW_MIN_WORDS in telegram_outbox "
+        "when word_count < 500 (so health_check outbox audit can surface the violation)"
+    )
+
+
+def test_youtube_formatter_below_min_words_inserts_error():
+    """When word_count < 500, youtube_monitor_telegram must write BELOW_MIN_WORDS error to outbox."""
+    import unittest.mock as _mock
+    import json as _j2
+    mod = _load_formatter("youtube_monitor")
+    fm = {
+        "date_str": "21 Jun", "n_summarised": 1,
+        "videos": [{"title": "T", "watch_url": "https://youtu.be/x", "channel_name": "C"}],
+    }
+    short_narrative = "Minimal synthesis only."
+    with _tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tf:
+        tf.write(f"```json\n{_j2.dumps(fm)}\n```\n\n{short_narrative}\n\n<!-- DETAIL -->\n")
+        md_path = tf.name
+    inserts = []
+
+    class _FakeCur:
+        def execute(self, sql, params):
+            inserts.append(params)
+
+    class _FakeConn:
+        def cursor(self): return _FakeCur()
+        def commit(self): pass
+        def close(self): pass
+
+    main_fn = getattr(mod, "main", None)
+    assert main_fn is not None, "youtube_monitor_telegram must have main()"
+    try:
+        with _mock.patch("psycopg2.connect", return_value=_FakeConn()):
+            with _mock.patch("requests.post") as _mp:
+                _mp.return_value.json.return_value = {"ok": True}
+                main_fn(
+                    md_path=md_path,
+                    telegram_bot_token="fake_token",
+                    telegram_owner_id="fake_id",
+                    portfolio_db={"host": "h", "dbname": "d", "user": "u", "password": "p"},
+                )
+    finally:
+        os.unlink(md_path)
+    errors = [str(p[5]) if len(p) > 5 else "" for p in inserts]
+    assert any("BELOW_MIN_WORDS" in e for e in errors), (
+        f"Expected BELOW_MIN_WORDS in telegram_outbox error field. "
+        f"INSERT params captured: {inserts}"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flaw 1 — all 8 formatter _send_telegram / _split_telegram_message copies
+# must be byte-identical, and telegram_utils.py must be deleted (dead code)
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _extract_sender_block(src: str) -> str:
+    """Extract _split_telegram_message + _send_telegram block from formatter source."""
+    start = src.find("def _split_telegram_message(")
+    end = src.find("\n\n# ── Markdown", start)
+    if end == -1:
+        end = src.find("\ndef _parse_md_report", start)
+    if end == -1:
+        end = len(src)
+    return src[start:end].strip()
+
+
+def test_all_formatter_senders_identical():
+    """All 8 formatter _send_telegram/_split_telegram_message blocks must be byte-identical.
+    Any edit to one copy must be mirrored to all 8 — this test enforces it."""
+    reference_name = "youtube_monitor"
+    ref_src = (_SCRIPTS_DIR / f"{reference_name}_telegram.py").read_text()
+    ref_block = _extract_sender_block(ref_src)
+    assert ref_block, f"Could not extract sender block from {reference_name}_telegram.py"
+    mismatches = []
+    for name in _FORMATTER_NAMES:
+        if name == reference_name:
+            continue
+        src = (_SCRIPTS_DIR / f"{name}_telegram.py").read_text()
+        block = _extract_sender_block(src)
+        if block != ref_block:
+            mismatches.append(name)
+    assert not mismatches, (
+        f"Sender blocks differ from reference ({reference_name}_telegram.py) in: {mismatches}. "
+        "Any edit to _send_telegram/_split_telegram_message must be applied to ALL 8 formatters."
+    )
+
+
+def test_telegram_utils_file_deleted():
+    """telegram_utils.py must be deleted — it is dead code; no formatter imports it."""
+    utils_path = _SCRIPTS_DIR / "telegram_utils.py"
+    assert not utils_path.exists(), (
+        "telegram_utils.py must be deleted (dead code — no formatter imports it). "
+        "Formatters maintain their own identical _send_telegram copies per "
+        "Flaw 1 remediation plan."
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flaw 3 — health_check must audit telegram_outbox and surface formatter status
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_health_check_queries_telegram_outbox():
+    """health_check.py must query telegram_outbox to audit formatter delivery."""
+    src = (_SCRIPTS_DIR / "health_check.py").read_text()
+    assert "telegram_outbox" in src, (
+        "health_check.py must query telegram_outbox to monitor formatter sends. "
+        "Formatter failures (crash, < 500 words, undelivered) are currently invisible "
+        "to health_check — adding an outbox audit closes that gap."
+    )
+
+
+def test_health_check_telegram_formatter_shows_outbox_status():
+    """health_check_telegram _build_message must surface outbox audit results including
+    BELOW_MIN_WORDS violations — these must come from the outbox_rows data, not coincidentally
+    from the narrative text."""
+    mod = _load_formatter("health_check")
+    fn = getattr(mod, "_build_message", None)
+    assert fn is not None
+    # Use a blank narrative to guarantee any match comes from outbox_rows logic
+    blank_narrative = ""
+    fm = {
+        "tg_date": "21 Jun", "ok_count": 5, "total": 6,
+        "rows": [],
+        "token_usage": [],
+        "outbox_rows": [
+            {"script_name": "portfolio_email", "delivered": True,
+             "word_count": 701, "error": None, "sent_at": "2026-06-21T06:05:00"},
+            {"script_name": "youtube_monitor", "delivered": True,
+             "word_count": 198, "error": "BELOW_MIN_WORDS:198",
+             "sent_at": "2026-06-21T00:05:00"},
+        ],
+    }
+    msg = fn(fm, blank_narrative)
+    assert "portfolio_email" in msg or "youtube_monitor" in msg, (
+        "health_check Telegram must show outbox script names (e.g. 'portfolio_email', 'youtube_monitor')"
+    )
+    assert "BELOW_MIN_WORDS" in msg or "BELOW_MIN_WORDS:198" in msg, (
+        "health_check Telegram must surface BELOW_MIN_WORDS outbox violations — "
+        "this must come from the outbox_rows data, not coincidentally from the narrative"
+    )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Flaw 7 — Round-trip .md → formatter contract tests (one per formatter)
+# These write a canonical .md from exact production front-matter keys, parse it,
+# build the message, and assert field values survive end-to-end.
+# This is the class of test that would have caught all 3 shipped bugs.
+# ─────────────────────────────────────────────────────────────────────────────
+
+def test_contract_portfolio_review_label_key_survives():
+    """Round-trip: front-matter written with 'label' key must render the ticker (not '?')."""
+    mod = _load_formatter("portfolio_review")
+    fm = {
+        "we_str": "21 Jun", "total_value": 1_038_998.0,
+        "week_pnl": 12100.0, "week_pct_total": 1.16,
+        "gainers": [{"label": "NVDA", "week_pct": 4.2, "week_impact": 16100.0}],
+        "losers":  [{"label": "BIDU", "week_pct": -3.8, "week_impact": -3800.0}],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "NVDA" in msg, f"Ticker 'NVDA' must survive round-trip (not render as '?'): {msg[:300]}"
+    assert "BIDU" in msg, f"Ticker 'BIDU' must survive round-trip"
+
+
+def test_contract_portfolio_review_negative_sign_survives():
+    """Round-trip: negative week_pnl must render with a minus sign after parsing the .md."""
+    mod = _load_formatter("portfolio_review")
+    fm = {
+        "we_str": "21 Jun", "total_value": 1_038_998.0,
+        "week_pnl": -7966.22, "week_pct_total": -0.76,
+        "gainers": [], "losers": [],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "-$7" in msg or "-$8" in msg, (
+        f"Negative week_pnl must render as -$N.Nk after round-trip. Got: {msg[:300]}"
+    )
+
+
+def test_contract_rationalization_verdict_and_score_survive():
+    """Round-trip: verdict + composite score must survive from front-matter to message."""
+    mod = _load_formatter("portfolio_rationalization")
+    fm = {
+        "today_str": "21 Jun", "n_positions": 31,
+        "top3": [{"ticker": "NVDA", "score": 55.5, "verdict": "KEEP"}],
+        "bot3": [{"ticker": "XLV",  "score": 2.9,  "verdict": "EXIT"}],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "EXIT" in msg, "verdict 'EXIT' must survive round-trip"
+    assert "2.9" in msg, "composite score 2.9 must survive round-trip (not rank 31)"
+    assert "XLV 31" not in msg, "Rank integer 31 must not appear as XLV's score"
+
+
+def test_contract_macro_usdhkd_not_inverted():
+    """Round-trip: USDHKD 7.8368 must render as ~7.84, not inverted ~0.127."""
+    mod = _load_formatter("macro_daily_push")
+    fm = {
+        "timestamp": "2026-06-20T23:41:00+08:00",
+        "indicators": {
+            "USDHKD": {"value": 7.8368, "change_pct": 0.0},
+            "VIX":    {"value": 16.4,   "change_pct": -2.1},
+        },
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "7.83" in msg or "7.84" in msg, (
+        "USDHKD 7.8368 must appear as ~7.84 after round-trip, not inverted"
+    )
+    assert "0.127" not in msg, "USDHKD must not appear inverted as 0.127"
+
+
+def test_contract_macro_none_renders_na_after_roundtrip():
+    """Round-trip: None indicator value must render as N/A (not 'None' or 'nan')."""
+    mod = _load_formatter("macro_daily_push")
+    fm = {
+        "timestamp": "2026-06-20T23:41:00+08:00",
+        "indicators": {"VIX": {"value": None, "change_pct": None}},
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "N/A" in msg, "None value must render as N/A after round-trip parse"
+    assert "None" not in msg, "Python None must not appear literally"
+
+
+def test_contract_youtube_watch_url_survives():
+    """Round-trip: watch_url must appear in the rendered Telegram message."""
+    mod = _load_formatter("youtube_monitor")
+    fm = {
+        "date_str": "21 Jun", "n_summarised": 1,
+        "videos": [{"title": "Test Video", "watch_url": "https://youtu.be/testxyz",
+                    "channel_name": "TestChan"}],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "youtu.be/testxyz" in msg, (
+        "watch_url must survive round-trip from front-matter to Telegram message"
+    )
+
+
+def test_contract_portfolio_email_time_label_survives():
+    """Round-trip: time_label must appear in the portfolio_email Telegram message."""
+    mod = _load_formatter("portfolio_email")
+    fm = {
+        "date_str": "21 Jun", "time_label": "11pm SGT", "session": "Asia Close",
+        "total_value": 1_038_998.0, "total_pnl": 13439.0, "total_pnl_pct": 1.31,
+        "gainers": [{"label": "NVDA", "pnl_pct": 2.9, "pnl": 3790.0}],
+        "losers": [],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "SGT" in msg, "time_label 'SGT' must survive round-trip"
+    assert "NVDA" in msg, "gainer ticker must survive round-trip"
+
+
+def test_contract_move_monitor_alert_details_survive():
+    """Round-trip: position alerts survive from front-matter to rendered message."""
+    mod = _load_formatter("portfolio_move_monitor")
+    fm = {
+        "time_str": "10:30 AM SGT", "portfolio_move": -2.1, "total_impact": -21800.0,
+        "pct_threshold": 1.5,
+        "position_alerts": [{"ticker": "NVDA", "intraday_pct": -5.8, "dollar_impact": -3660.0}],
+        "pos_threshold": 5.0,
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "NVDA" in msg, "alert ticker must survive round-trip"
+    assert "2.1" in msg or "-2.1" in msg, "portfolio move must survive round-trip"
+
+
+def test_contract_analyst_alert_rating_survives():
+    """Round-trip: old→new rating change must survive from front-matter to message."""
+    mod = _load_formatter("portfolio_analyst_alert")
+    fm = {
+        "today_str": "21 Jun",
+        "alerts": [{"ticker": "NVDA", "action": "Upgrade",
+                    "old_rating": "Neutral", "new_rating": "Buy", "period": "7 days"}],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "NVDA" in msg, "ticker must survive round-trip"
+    assert "Neutral" in msg and "Buy" in msg, "old and new ratings must survive round-trip"
+
+
+def test_contract_health_check_rows_survive():
+    """Round-trip: status rows must survive from front-matter to health_check message."""
+    mod = _load_formatter("health_check")
+    fm = {
+        "tg_date": "21 Jun", "ok_count": 5, "total": 6,
+        "rows": [
+            {"label": "Portfolio Email", "status": "OK",   "age_str": "2h ago",  "error": None},
+            {"label": "Move Monitor",    "status": "FAIL", "age_str": "26h ago", "error": "timeout"},
+        ],
+        "token_usage": [],
+    }
+    md_path = _make_md(fm, _TEST_NARRATIVE)
+    try:
+        parse_fn = getattr(mod, "_parse_md_report", None)
+        build_fn = getattr(mod, "_build_message", None)
+        assert parse_fn and build_fn
+        parsed_fm, parsed_narrative = parse_fn(md_path)
+        msg = build_fn(parsed_fm, parsed_narrative)
+    finally:
+        os.unlink(md_path)
+    assert "Portfolio Email" in msg, "schedule label must survive round-trip"
+    assert "FAIL" in msg or "timeout" in msg, "FAIL status must survive round-trip"

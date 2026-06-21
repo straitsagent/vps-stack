@@ -130,6 +130,7 @@ def _build_message(front_matter: dict, narrative: str) -> str:
       tg_date, ok_count, total,
       rows: [{label, status, age_str, error}],
       token_usage: [{job, model, tokens, cost_usd}]  (may be empty)
+      outbox_rows: [{script_name, delivered, word_count, error, sent_at}]  (may be absent/empty)
     narrative: additional system notes or templated commentary (≥500 words when combined)
     """
     tg_date     = front_matter.get("tg_date", "")
@@ -137,6 +138,7 @@ def _build_message(front_matter: dict, narrative: str) -> str:
     total       = front_matter.get("total", 0)
     rows        = front_matter.get("rows", [])
     token_usage = front_matter.get("token_usage", [])
+    outbox_rows = front_matter.get("outbox_rows", [])
 
     icon = "✅" if ok_count == total else "⚠️"
     header = f"*Health Check — {tg_date} | {ok_count}/{total} OK {icon}*"
@@ -165,6 +167,21 @@ def _build_message(front_matter: dict, narrative: str) -> str:
             total_cost += cost
             token_lines.append(f"• {job} ({model}): {toks:,} tokens — ${cost:.4f}")
         token_lines.append(f"Total estimated cost: ${total_cost:.4f}")
+
+    # Telegram formatter outbox audit — surfaces delivery failures and BELOW_MIN_WORDS violations
+    outbox_lines = []
+    if outbox_rows:
+        outbox_lines.append("\n*Telegram Formatter Audit (24h):*")
+        for row in outbox_rows:
+            name      = row.get("script_name", "?")
+            words     = row.get("word_count", 0)
+            delivered = row.get("delivered", False)
+            error     = row.get("error") or ""
+            ot_icon   = "✅" if delivered and not error else "❌"
+            detail    = f" — {error}" if error else f" — {words}w"
+            outbox_lines.append(f"{ot_icon} {name}{detail}")
+    else:
+        outbox_lines.append("\n*Telegram Formatter Audit:* No sends recorded in last 24h")
 
     # System observations — explain what OK/FAIL means in context
     observations = []
@@ -196,6 +213,7 @@ def _build_message(front_matter: dict, narrative: str) -> str:
         [header, ""]
         + status_lines
         + token_lines
+        + outbox_lines
         + observations
     )
 

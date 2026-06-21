@@ -139,6 +139,33 @@ def _build_health_narrative(rows: list, ok_count: int, total: int,
     return "\n\n".join(paras)
 
 
+def _query_telegram_outbox_24h(portfolio_db: dict) -> list:
+    """Query telegram_outbox for sends in the last 24 hours.
+    Returns list of dicts: {script_name, delivered, word_count, error, sent_at}.
+    Returns [] if portfolio_db is empty or query fails."""
+    try:
+        import psycopg2
+        conn = psycopg2.connect(**{k: v for k, v in portfolio_db.items()
+                                    if k in ("host", "port", "dbname", "user", "password")})
+        cur = conn.cursor()
+        cur.execute(
+            "SELECT script_name, delivered, word_count, error, sent_at::text "
+            "FROM telegram_outbox "
+            "WHERE sent_at >= now() - interval '24 hours' "
+            "ORDER BY sent_at DESC"
+        )
+        rows = [
+            {"script_name": r[0], "delivered": r[1], "word_count": r[2],
+             "error": r[3], "sent_at": r[4]}
+            for r in cur.fetchall()
+        ]
+        conn.close()
+        return rows
+    except Exception as e:
+        log.info(f"[OutboxAudit] Could not query telegram_outbox: {e}")
+        return []
+
+
 WORKSPACE   = "admins"
 WM_BASE_URL = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
 IMAP_HOST   = "imap.gmail.com"
@@ -572,12 +599,23 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
              "age_str": r.get("age_str", ""), "error": r.get("error", "") or ""}
             for r in rows
         ]
+        # Query telegram_outbox for last 24h formatter sends — surfaces delivery failures,
+        # word-count violations, and BELOW_MIN_WORDS flags from the youtube formatter.
+        outbox_rows = _query_telegram_outbox_24h(portfolio_db) if portfolio_db else []
+        if outbox_rows:
+            log.info(f"[OutboxAudit] {len(outbox_rows)} telegram_outbox rows in last 24h")
+            failures = [r for r in outbox_rows if not r.get("delivered") or r.get("error")]
+            if failures:
+                log.warning(f"[OutboxAudit] {len(failures)} formatter issue(s): "
+                             + "; ".join(f"{r['script_name']}:{r.get('error','undelivered')}"
+                                         for r in failures))
         front_matter = {
             "tg_date":     tg_date,
             "ok_count":    ok_count,
             "total":       total,
             "rows":        fm_rows,
             "token_usage": token_usage,
+            "outbox_rows": outbox_rows,
         }
         narrative = _build_health_narrative(rows, ok_count, total, llm_rows, total_cost, now_sgt)
         import os as _os2
