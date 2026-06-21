@@ -225,6 +225,80 @@ def build_email_html(videos: list, prompt_tokens: int, completion_tokens: int) -
     return S
 
 
+# ── 24h synthesis ────────────────────────────────────────────────────────────
+
+_SYNTHESIS_PROMPT = (
+    "You are a financial media analyst. Below are YouTube video summaries published in the last "
+    "24 hours across investment-focused channels. Write a comprehensive 600-700 word digest covering: "
+    "(1) the main investment themes and market narratives discussed, (2) specific stocks, sectors, "
+    "or macro trends highlighted across videos, (3) key takeaways and what is most actionable for "
+    "an equity portfolio weighted heavily to US and Hong Kong tech. Be specific — name the stocks, "
+    "quote the arguments, and assess whether the collective signal is bullish, bearish, or mixed. "
+    "No preamble, no bullet points, no headers — continuous analytical prose only.\n\nVideos:\n{videos}"
+)
+
+
+def _collect_24h_videos(md_dir: str, current_videos: list) -> list:
+    """Return deduplicated list of all videos from .md files in md_dir modified in last 24h,
+    merged with current_videos (the just-processed batch not yet written to disk)."""
+    import re as _re
+    cutoff = datetime.now(SGT).timestamp() - 86400
+    seen_urls: set = set()
+    all_videos: list = []
+    for v in current_videos:
+        url = v.get("watch_url", "")
+        if url and url not in seen_urls:
+            seen_urls.add(url)
+            all_videos.append(v)
+    if os.path.isdir(md_dir):
+        for fname in sorted(os.listdir(md_dir)):
+            if not fname.endswith(".md"):
+                continue
+            fpath = os.path.join(md_dir, fname)
+            try:
+                if os.path.getmtime(fpath) < cutoff:
+                    continue
+                content = open(fpath).read()
+                fm_match = _re.search(r"```json\s*\n([\s\S]*?)\n```", content)
+                if not fm_match:
+                    continue
+                fm = json.loads(fm_match.group(1))
+                for v in fm.get("videos", []):
+                    url = v.get("watch_url", "")
+                    if url and url not in seen_urls:
+                        seen_urls.add(url)
+                        all_videos.append(v)
+            except Exception:
+                continue
+    return all_videos
+
+
+def _synthesise_24h(videos: list, deepseek_key: str) -> str:
+    """Generate ≥500-word 24h YouTube digest via Deepseek. Returns empty string on failure."""
+    summarised = [v for v in videos if v.get("summary") and "[No transcript" not in v.get("summary", "")]
+    if not summarised:
+        return ""
+    video_lines = []
+    for v in summarised:
+        title   = v.get("title", "Untitled")
+        channel = v.get("channel_name", "")
+        summary = v.get("summary", "").strip()
+        video_lines.append(f"**{title}** ({channel})\n{summary}")
+    prompt = _SYNTHESIS_PROMPT.format(videos="\n\n".join(video_lines))
+    try:
+        client = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com")
+        r = client.chat.completions.create(
+            model="deepseek-chat",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.3,
+            max_tokens=1400,
+        )
+        return r.choices[0].message.content.strip()
+    except Exception as e:
+        log.warning(f"[Synthesise24h] Deepseek synthesis failed: {e}")
+        return ""
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def _dispatch_formatter(formatter_name: str, md_path: str,
@@ -361,19 +435,31 @@ def main(
         "n_summarised": n_summarised,
         "videos":      fm_videos,
     }
-    # Build detailed per-video sections for the narrative area
+    # Build per-video detail sections (go below <!-- DETAIL --> in archive)
     detail_sections = []
     for v in results:
         detail_sections.append(
             f"**[{v['title']}]({v['watch_url']})** — {v['channel_name']}\n\n"
             + (v.get("summary") or "_No transcript available_")
         )
-    narrative = "\n\n---\n\n".join(detail_sections)
+    detail_block = "\n\n---\n\n".join(detail_sections)
+
+    # Collect all 24h videos and synthesise into ≥500-word narrative
+    log.info("[Synthesise24h] Collecting last-24h YouTube .md reports...")
+    all_24h_videos = _collect_24h_videos("/research/youtube", fm_videos)
+    log.info(f"[Synthesise24h] {len(all_24h_videos)} unique videos in last 24h")
+    synthesis = _synthesise_24h(all_24h_videos, deepseek_key)
+    if synthesis:
+        log.info(f"[Synthesise24h] Synthesis generated ({len(synthesis.split())} words)")
+    else:
+        log.warning("[Synthesise24h] No synthesis generated — falling back to per-video summaries")
+        synthesis = detail_block
 
     md_content = (
         f"```json\n{json.dumps(front_matter, indent=2)}\n```\n\n"
-        f"{narrative}\n\n"
-        "<!-- DETAIL -->\n"
+        f"{synthesis}\n\n"
+        "<!-- DETAIL -->\n\n"
+        f"{detail_block}\n"
     )
     with open(md_path, "w") as f:
         f.write(md_content)

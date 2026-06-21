@@ -3788,22 +3788,22 @@ def test_health_check_formatter_shows_all_schedule_statuses():
 # ─────────────────────────────────────────────────────────────────────────────
 
 def test_youtube_formatter_min_words():
-    """youtube_monitor_telegram._build_message must produce >= 500 words."""
+    """youtube_monitor_telegram._build_message must produce >= 500 words from synthesis narrative."""
     mod = _load_formatter("youtube_monitor")
     fn = getattr(mod, "_build_message", None)
     assert fn is not None, "_build_message not found in youtube_monitor_telegram.py"
     fm = {
         "script": "youtube_monitor",
         "date_str": "20 Jun",
-        "n_summarised": 5,
+        "n_summarised": 2,
         "videos": [
             {"title": "Fed Chair Powell Speaks on Rates", "watch_url": "https://youtu.be/aaa",
-             "channel_name": "Bloomberg", "summary": _TEST_NARRATIVE},
+             "channel_name": "Bloomberg", "summary": "Short summary."},
             {"title": "China GDP Data Deep Dive", "watch_url": "https://youtu.be/bbb",
-             "channel_name": "CNBC", "summary": "China GDP grew faster than expected this quarter."},
+             "channel_name": "CNBC", "summary": "China GDP grew faster than expected."},
         ],
     }
-    msg = fn(fm, "")  # youtube formatter builds body from per-video summaries, not a single narrative
+    msg = fn(fm, _TEST_NARRATIVE)  # synthesis narrative is the body
     assert _word_count(msg) >= _MIN_WORDS, \
         f"youtube Telegram too short: {_word_count(msg)} words"
 
@@ -3814,23 +3814,23 @@ def test_youtube_formatter_no_email_pointer():
     assert fn is not None
     fm = {"script": "youtube_monitor", "date_str": "20 Jun", "n_summarised": 1,
           "videos": [{"title": "Test", "watch_url": "https://youtu.be/x",
-                      "channel_name": "Test Channel", "summary": _TEST_NARRATIVE}]}
-    msg = fn(fm, "")
+                      "channel_name": "Test Channel", "summary": "Short."}]}
+    msg = fn(fm, _TEST_NARRATIVE)
     assert not _has_email_pointer(msg), "youtube Telegram must not say '→ email' or 'full digest in email'"
 
 
-def test_youtube_formatter_includes_per_video_summaries():
-    """youtube_monitor Telegram must include per-video AI summaries, not just titles."""
+def test_youtube_formatter_uses_synthesis_narrative():
+    """youtube_monitor_telegram._build_message must use the synthesis narrative as the body."""
     mod = _load_formatter("youtube_monitor")
     fn = getattr(mod, "_build_message", None)
     assert fn is not None
-    summary_text = "This video explains the Federal Reserve policy in detail covering rate decisions."
+    synthesis = "This synthesis covers AI semiconductor themes extensively. " + _TEST_NARRATIVE
     fm = {"script": "youtube_monitor", "date_str": "20 Jun", "n_summarised": 1,
-          "videos": [{"title": "Fed Policy Explained", "watch_url": "https://youtu.be/x",
-                      "channel_name": "Bloomberg", "summary": summary_text}]}
-    msg = fn(fm, "")
-    assert "Federal Reserve policy" in msg or "rate decisions" in msg, \
-        "youtube Telegram must include the per-video summary text, not just the title/link"
+          "videos": [{"title": "Test", "watch_url": "https://youtu.be/x",
+                      "channel_name": "Chan", "summary": "Unrelated per-video summary text."}]}
+    msg = fn(fm, synthesis)
+    assert "AI semiconductor themes extensively" in msg, \
+        "youtube Telegram body must come from the synthesis narrative, not per-video summaries"
 
 
 def test_youtube_formatter_includes_clickable_links():
@@ -3840,10 +3840,32 @@ def test_youtube_formatter_includes_clickable_links():
     assert fn is not None
     fm = {"script": "youtube_monitor", "date_str": "20 Jun", "n_summarised": 1,
           "videos": [{"title": "Test Video", "watch_url": "https://youtu.be/testxyz",
-                      "channel_name": "TestChan", "summary": _TEST_NARRATIVE}]}
-    msg = fn(fm, "")
+                      "channel_name": "TestChan", "summary": "Short."}]}
+    msg = fn(fm, _TEST_NARRATIVE)
     assert "youtu.be/testxyz" in msg or "https://youtu.be/testxyz" in msg, \
         "youtube Telegram must include clickable watch URLs"
+
+
+def test_youtube_monitor_collect_24h_fn_exists():
+    """youtube_monitor.py must have _collect_24h_videos function for 24h digest aggregation."""
+    src_path = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/youtube_monitor.py")
+    with open(src_path) as f:
+        src = f.read()
+    assert "_collect_24h_videos" in src, \
+        "youtube_monitor.py must define _collect_24h_videos to aggregate last-24h .md reports"
+
+
+def test_youtube_monitor_synthesise_24h_fn_exists():
+    """youtube_monitor.py must have _synthesise_24h function that calls Deepseek."""
+    src_path = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/youtube_monitor.py")
+    with open(src_path) as f:
+        src = f.read()
+    assert "_synthesise_24h" in src, \
+        "youtube_monitor.py must define _synthesise_24h to generate the 24h synthesis narrative"
+    fn_idx = src.find("def _synthesise_24h")
+    context = src[fn_idx: fn_idx + 400]
+    assert "deepseek" in context.lower() or "deepseek-chat" in context.lower() or "OpenAI" in context, \
+        "_synthesise_24h must call Deepseek"
 
 
 # ─────────────────────────────────────────────────────────────────────────────

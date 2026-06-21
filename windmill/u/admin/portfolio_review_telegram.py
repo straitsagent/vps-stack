@@ -159,7 +159,7 @@ def _build_message(front_matter: dict, narrative: str) -> str:
     sign_pct = "+" if week_pct >= 0 else ""
 
     def _mover(p):
-        ticker = p.get("ticker", "?")
+        ticker = p.get("label", p.get("ticker", "?"))
         pct = p.get("week_pct", 0)
         impact = p.get("week_impact", 0)
         return f"{ticker} {_fmt_pct(pct)}{_fmt_k(impact)}"
