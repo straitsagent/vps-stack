@@ -470,6 +470,61 @@ def count_matching(subjects, keywords):
     return sum(1 for s in subjects if all(kw.lower() in s.lower() for kw in keywords))
 
 
+# ── Factored I/O seams (enable artifact-level testing of main()) ─────────────
+
+def _send_email(gmail_smtp: dict, recipient_email: str, subject: str, html: str) -> None:
+    """Send an HTML email via SMTP. Factored from main() to allow test interception."""
+    if not gmail_smtp:
+        return
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = gmail_smtp["username"]
+    msg["To"] = recipient_email
+    msg.attach(MIMEText(html, "html"))
+    with smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"]) as server:
+        server.starttls()
+        server.login(gmail_smtp["username"], gmail_smtp["password"])
+        server.send_message(msg)
+    log.info(f"Sent: {subject}")
+
+
+def _build_front_matter(tg_date: str, ok_count: int, total: int, fm_rows: list,
+                        token_usage: list, outbox_rows: list, diagnoses: list,
+                        spec_checks: list, content_inventory: list, digest: str) -> dict:
+    """Assemble the canonical front-matter dict (single source for email + Telegram)."""
+    return {
+        "tg_date":           tg_date,
+        "ok_count":          ok_count,
+        "total":             total,
+        "rows":              fm_rows,
+        "token_usage":       token_usage,
+        "outbox_rows":       outbox_rows,
+        "diagnoses":         diagnoses,
+        "spec_checks":       spec_checks,
+        "content_inventory": content_inventory,
+        "digest":            digest,
+    }
+
+
+def _build_md_content(front_matter: dict, narrative: str) -> str:
+    """Render the canonical .md string from front_matter + narrative (pure function)."""
+    return (
+        f"```json\n{json.dumps(front_matter, indent=2)}\n```\n\n"
+        f"{narrative}\n\n"
+        "<!-- DETAIL -->\n"
+    )
+
+
+def _write_canonical_md(md_content: str, path: str) -> None:
+    """Write the canonical .md to disk. Factored from main() to allow test interception."""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w") as f:
+        f.write(md_content)
+    log.info(f"[md] Written {path}")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+
 def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_completion,
                total_cost, sent_subjects, extra_categories,
                digest="", spec_checks=None, diagnoses=None):
@@ -845,85 +900,63 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
         except Exception as exc:
             log.warning(f"[Digest] Synthesis failed: {exc}")
 
+    # ── Build token_usage + shared front-matter (single source for email + Telegram) ─
+    token_usage = [
+        {
+            "job": row_llm.get("label", "?"),
+            "model": "deepseek-chat",
+            "tokens": row_llm.get("prompt", 0) + row_llm.get("completion", 0),
+            "cost_usd": row_llm.get("cost", 0.0),
+        }
+        for row_llm in llm_rows
+    ]
+    fm_rows = [
+        {"label": r["label"], "status": r["status"],
+         "age_str": r.get("age_str", ""), "error": r.get("error", "") or ""}
+        for r in rows
+    ]
+    # Query telegram_outbox for last 24h formatter sends — surfaces delivery failures,
+    # word-count violations, and BELOW_MIN_WORDS flags from the youtube formatter.
+    outbox_rows = _query_telegram_outbox_24h(portfolio_db) if portfolio_db else []
+    if outbox_rows:
+        log.info(f"[OutboxAudit] {len(outbox_rows)} telegram_outbox rows in last 24h")
+        failures = [r for r in outbox_rows if not r.get("delivered") or r.get("error")]
+        if failures:
+            log.warning(f"[OutboxAudit] {len(failures)} formatter issue(s): "
+                         + "; ".join(f"{r['script_name']}:{r.get('error','undelivered')}"
+                                     for r in failures))
+
+    front_matter = _build_front_matter(
+        tg_date=now_sgt.strftime("%-d %b"),
+        ok_count=ok_count, total=total,
+        fm_rows=fm_rows, token_usage=token_usage,
+        outbox_rows=outbox_rows, diagnoses=diagnoses,
+        spec_checks=spec_checks, content_inventory=content_inventory,
+        digest=digest,
+    )
+
+    # ── Build HTML email from single source (front_matter drives shared fields) ─
     subject = f"Health Check — {now_sgt.strftime('%-d %b %Y')} | {ok_count}/{total} OK"
     html = build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_completion,
                       total_cost, sent_subjects, EXTRA_CATEGORIES,
-                      digest=digest, spec_checks=spec_checks, diagnoses=diagnoses)
+                      digest=front_matter["digest"],
+                      spec_checks=front_matter["spec_checks"],
+                      diagnoses=front_matter["diagnoses"])
 
-    if gmail_smtp:
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"] = gmail_smtp["username"]
-        msg["To"] = recipient_email
-        msg.attach(MIMEText(html, "html"))
-
-        with smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"]) as server:
-            server.starttls()
-            server.login(gmail_smtp["username"], gmail_smtp["password"])
-            server.send_message(msg)
-
-        log.info(f"Sent: {subject}")
+    _send_email(gmail_smtp, recipient_email, subject, html)
 
     log.info(f"Status: {ok_count}/{total} OK")
     log.info(f"Sent emails found in outbox: {len(sent_subjects)}")
     if total_prompt or total_completion:
         log.info(f"Tokens: {total_prompt:,} prompt + {total_completion:,} completion · est. ${total_cost:.4f}")
 
-    # ── Build token_usage list for front-matter ──────────────────────────────
-    token_usage = []
-    for row_llm in llm_rows:
-        token_usage.append({
-            "job": row_llm.get("label", "?"),
-            "model": "deepseek-chat",
-            "tokens": row_llm.get("prompt", 0) + row_llm.get("completion", 0),
-            "cost_usd": row_llm.get("cost", 0.0),
-        })
-
-    # ── Write canonical .md ──────────────────────────────────────────────────
+    # ── Write canonical .md and dispatch Telegram formatter ─────────────────
     if telegram_bot_token and telegram_owner_id:
-        tg_date = now_sgt.strftime("%-d %b")
-        # Build front-matter rows (strip email internals, keep only tg-relevant fields)
-        fm_rows = [
-            {"label": r["label"], "status": r["status"],
-             "age_str": r.get("age_str", ""), "error": r.get("error", "") or ""}
-            for r in rows
-        ]
-        # Query telegram_outbox for last 24h formatter sends — surfaces delivery failures,
-        # word-count violations, and BELOW_MIN_WORDS flags from the youtube formatter.
-        outbox_rows = _query_telegram_outbox_24h(portfolio_db) if portfolio_db else []
-        if outbox_rows:
-            log.info(f"[OutboxAudit] {len(outbox_rows)} telegram_outbox rows in last 24h")
-            failures = [r for r in outbox_rows if not r.get("delivered") or r.get("error")]
-            if failures:
-                log.warning(f"[OutboxAudit] {len(failures)} formatter issue(s): "
-                             + "; ".join(f"{r['script_name']}:{r.get('error','undelivered')}"
-                                         for r in failures))
-        front_matter = {
-            "tg_date":           tg_date,
-            "ok_count":          ok_count,
-            "total":             total,
-            "rows":              fm_rows,
-            "token_usage":       token_usage,
-            "outbox_rows":       outbox_rows,
-            "diagnoses":         diagnoses,
-            "spec_checks":       spec_checks,
-            "content_inventory": content_inventory,
-            "digest":            digest,
-        }
         narrative = _build_health_narrative(rows, ok_count, total, llm_rows, total_cost, now_sgt)
-        import os as _os2
-        _os2.makedirs("/research/health", exist_ok=True)
         md_path = f"/research/health/{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"
-        md_content = (
-            f"```json\n{json.dumps(front_matter, indent=2)}\n```\n\n"
-            f"{narrative}\n\n"
-            "<!-- DETAIL -->\n"
-        )
-        with open(md_path, "w") as f:
-            f.write(md_content)
-        log.info(f"[md] Written {md_path}")
+        md_content = _build_md_content(front_matter, narrative)
+        _write_canonical_md(md_content, md_path)
 
-        # ── Dispatch Telegram formatter ──────────────────────────────────────
         _dispatch_formatter(
             "health_check_telegram", md_path,
             telegram_bot_token, telegram_owner_id,

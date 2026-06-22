@@ -1,8 +1,28 @@
 # Workflow Architecture
 
-**Last updated:** 2026-06-21 (added Canonical .md Front-Matter Schema section for all 8 Telegram formatter scripts; this is the contract referenced by Hard Rule 18 and the round-trip contract tests in `test_windmill_scripts.py`)  
+**Last updated:** 2026-06-22 (artifact-driven testing philosophy added; Workflow 6.1 health_check seams factored and artifact-render harness added — see docs/TESTING.md)  
 **Owner:** the owner  
 **Purpose:** Human-readable / pseudocode spec for every workflow in the stack. Claude Code reads this before building or modifying any workflow. Each built workflow is documented in full. Planned workflows have a brief stub — fill in the full spec before coding.
+
+---
+
+## Testing Contract (read before building or modifying any workflow)
+
+Every sending workflow (email or Telegram) must have an artifact-render test in `agent/tests/test_windmill_scripts.py`. See `docs/TESTING.md` for the full pattern and rationale.
+
+**The required test shape for each sending script:**
+- `_render_<script>_artifacts(world)` — runs real `main()` with I/O seams mocked; returns `(email_html, md_content, telegram_message)`
+- `test_<script>_email_contains_*` — assert each user-visible field in the email HTML
+- `test_<script>_telegram_contains_*` — same fields in the Telegram message
+- `test_<script>_email_and_telegram_agree` — **the cross-check**: shared fields (digest, diagnoses, spec violations, schedule rows) must appear in BOTH artifacts; this single test catches the class of bug where email and Telegram read from diverged code paths
+
+**Seam factoring (required for main() to be test-drivable):**
+- `_send_email(gmail_smtp, recipient, subject, html)` — SMTP send, interceptable in tests
+- `_build_front_matter(...) -> dict` — assembles the shared source dict (one source for email + Telegram)
+- `_build_md_content(front_matter, narrative) -> str` — pure; produces the `.md` string
+- `_write_canonical_md(md_content, path)` — file write, interceptable in tests
+
+Scripts with seams factored: `health_check` ✅. Rollout: `portfolio_email`, `macro_research`, `portfolio_review` (pending).
 
 ---
 
@@ -383,6 +403,8 @@ Key pairs the LLM is guided to distinguish:
 **Schedule:** `u/admin/health_check_daily` — **8:00 AM SGT** daily  
 **Send to:** `<YOUR_RECIPIENT_EMAIL>` (email + Telegram)  
 **Canonical output:** `/research/health/YYYY-MM-DD_HHMM.md`
+
+**Artifact-render test:** `_render_health_check_artifacts(world)` in `agent/tests/test_windmill_scripts.py` — runs real `main()` with 10 seams mocked, asserts digest + diagnoses + spec violations + schedule labels appear in both email HTML and Telegram message. `test_hc_email_and_telegram_agree` is the cross-check. See `docs/TESTING.md` for pattern.
 
 **Inputs:**
 - `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`

@@ -57,6 +57,7 @@ After any SSH login, run `cr` to re-enter the persistent session.
 - **PostgreSQL is the data layer for the Portfolio Intelligence System.** Windmill scripts connect to it as an internal service — not exposed externally.
 - **Claude Code writes all scripts.** Scripts live in Windmill's script editor (Python or TypeScript). No manual coding.
 - **Keep it simple.** Each workflow should be buildable in a single Claude Code session and run unattended.
+- **Test the artifact the human receives.** A test earns its place only if its failure means the human gets a broken or missing artifact. The authoritative test renders the actual email HTML + Telegram message from one real `main()` run (I/O faked only at the edges) and asserts every user-visible field appears in both. Logs, `success: True`, and subject lines are not verification. See `docs/TESTING.md`.
 - **Telegram notifications use the markdown-driven formatter architecture.** Each main script writes a canonical `.md` file (JSON front-matter block + ≥500-word LLM narrative + `<!-- DETAIL -->` separator). A dedicated `<name>_telegram.py` formatter script reads that `.md` and builds the self-contained ≥500-word Telegram message. The 8 formatters are: `macro_daily_push_telegram`, `portfolio_email_telegram`, `portfolio_review_telegram`, `portfolio_rationalization_telegram`, `portfolio_move_monitor_telegram`, `portfolio_analyst_alert_telegram`, `health_check_telegram`, `youtube_monitor_telegram`. Every Telegram send is logged to `telegram_outbox` (Postgres) and to the formatter job logs (`[Telegram] Sending ...`).
 
 ---
@@ -72,6 +73,7 @@ After any SSH login, run `cr` to re-enter the persistent session.
 | `/root/shared/windmill-sa-key.json` | GCP service account JSON for Sheets/Drive (**never commit**) |
 | `/root/shared/override_log.md` | Manual intervention log |
 | `/root/docs/ROADMAP.md` | Full workflow roadmap and build status |
+| `/root/docs/TESTING.md` | Artifact-driven testing philosophy, test hierarchy, harness pattern, live verify procedure |
 | `/root/docs/WORKFLOW_ARCHITECTURE.md` | Per-workflow architecture specs in pseudocode |
 | `/root/portfolio/` | Portfolio Intelligence System — DB schema and seed data. Postgres runs in `/root/docker-compose.yml`. |
 | `/root/portfolio/schema.sql` | DB schema for `price_history`, `portfolio_positions`, `fx_rates` |
@@ -196,21 +198,21 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
 12. **Before modifying any existing working workflow, describe the proposed change and get explicit approval.** Do not rebuild, restructure, or redesign a working script on your own judgment — this has caused regressions and a botched revert that wiped Windmill scripts. Rule 7 covers new workflows; this rule covers changes to existing ones.
 13. **Google OAuth always requires a browser action — state this upfront before attempting any workaround.** gcloud auth, rclone, FIFO tricks, and service account flows all have this limitation in some form. If a task depends on browser-based auth and a browser is not available, say so immediately and propose an alternative rather than silently burning time on doomed workarounds.
 14. **When fetching news or time-series data, always apply a recency date cutoff.** Never return articles older than 48 hours unless explicitly requested. Validate the actual date values of returned articles before declaring a news fetch successful — stale January articles have shipped through tests that only checked for non-empty results.
-15. **TDD is mandatory for ALL code — agent, Windmill scripts, utilities, schema, anything. No exceptions.**
-    - Write tests FIRST. Confirm they FAIL (red) before writing any implementation.
-    - Implement. Confirm tests PASS (green).
-    - Run a live end-to-end test and verify ALL output fields — not just absence of error.
-    - Never declare implementation complete until all three steps are done.
+15. **Artifact-driven TDD is mandatory for ALL code. No exceptions. See `docs/TESTING.md` for the full philosophy.**
+    - **The RED/GREEN target is the rendered artifact** — not source-code substrings or `success: True`. A test earns its place only if its failure means the human gets a broken or missing artifact.
+    - **Every sending script must have** an `_render_<script>_artifacts(world)` harness that runs the real `main()` (I/O faked only at the edges) and returns `(email_html, md_content, telegram_message)`. Assert every user-visible field appears in **both** email and Telegram. The `test_<script>_email_and_telegram_agree` test is the single highest-authority correctness check.
+    - **Write artifact tests FIRST (RED).** Confirm they fail. Implement. Confirm GREEN. Live-verify (see Rule 17).
+    - **Tautology ban:** tests must use minimum-viable realistic inputs with distinct strings, never a pre-sized fixture passed into a size assertion. A test that feeds a 500-word fixture into `_build_message` and asserts ≥500 words proves nothing.
+    - **Source-substring tests** (`assert "smtp" in src`) are the lowest-value tier — allowed only where no artifact path exists, and must have a comment explaining why. Never use them to verify rendered content.
+    - **Round-trip contract tests** use the real `_build_md_content` (not a test-local copy) so the formatter is tested against exactly what `main()` writes.
     - The PostToolUse hook prints a TDD reminder after every Python file edit. Do not suppress or skip it.
     - For agent code: tests in `agent/tests/`, run `docker exec root-straitsagent-1 python -m pytest tests/ -v`, rebuild container.
-    - For Windmill scripts: tests in `agent/tests/test_windmill_scripts.py`, then run a live Windmill job and verify the output file/email matches all expected fields.
-    - **Min-words / behavioural tests must use minimum-viable realistic inputs, never a pre-sized fixture passed directly into a size assertion (tautology ban).** A test that feeds a 500-word fixture into `_build_message` and asserts ≥500 words proves nothing — the formatter could silently ignore the narrative and the test still passes. Tests must assert the *output the user actually receives*, not source-code substrings (`assert "_dispatch_formatter" in src` cannot catch a key-name mismatch). Round-trip contract tests (`_make_md` → `_parse_md_report` → `_build_message` → assert field values survive) are the authoritative correctness check for each formatter.
+    - For Windmill scripts: tests in `agent/tests/test_windmill_scripts.py`, then run a live Windmill job and verify per Rule 17.
 16. **Every Telegram/notification message must be a self-contained ≥500-word report. Never tell the user to "refer to email" or "see the full report in email".** Each notification is the complete report, not a pointer to one. The formatter script architecture enforces this: each main script writes a canonical `.md`, and a dedicated `<name>_telegram.py` formatter reads that `.md` and builds the full ≥500-word Telegram message.
-17. **Never claim a Telegram notification works without reading the actual logged message text and comparing it to the canonical `.md`/email/DB source.** `success: True` only means the job didn't crash — it does not verify content. Full verification requires ALL of:
-    - Read `[Telegram] Sending (N chars, M words)` in the formatter job logs — confirm M ≥ 500.
-    - Query `telegram_outbox`: confirm `delivered = true`, `word_count ≥ 500`, `error IS NULL`.
-    - Compare header values in the Telegram text to the front-matter values in the canonical `.md` (e.g. ticker labels, week P&L sign, composite scores, verdicts).
-    - Confirm no "→ email" / "full report in email" pointer in the sent text.
+17. **Never claim a workflow output works without reading the actual rendered artifact — email body AND Telegram text — and comparing both to the canonical `.md`/DB source.** `success: True` and subject lines are not verification. Full verification requires ALL of:
+    - **Email body (IMAP):** fetch the actual email body (not just the subject) from Gmail Sent folder via IMAP. Assert each section present (digest, spec failures, diagnoses, status rows). This is how the health-check digest-missing bug (2026-06-22) would have been caught.
+    - **Telegram:** read `[Telegram] Sending (N chars, M words)` in formatter job logs — confirm M ≥ 500. Query `telegram_outbox`: confirm `delivered = true`, `word_count ≥ 500`, `error IS NULL`. Compare header values to front-matter in the `.md`. Confirm no "→ email" pointer.
+    - **Agreement check:** the shared field set (digest, diagnoses, spec violations, schedule rows) must appear in **both** email and Telegram. `test_<script>_email_and_telegram_agree` encodes this as an automated test.
     Any report of "it works" without this evidence is invalid. For event-driven formatters (move_monitor, analyst_alert) that haven't fired live, the round-trip contract test (Hard Rule 18) substitutes until a real event occurs.
 18. **Front-matter schema is a contract.** Any change to a main script's front-matter keys (adding, renaming, or removing keys) must be accompanied in the same commit by: (a) updating the matching formatter's `_build_message` to use the new keys, and (b) updating the round-trip contract test in `agent/tests/test_windmill_scripts.py` (`test_contract_<name>_*`) to exercise the changed keys. The front-matter schema for all 8 scripts is documented in `docs/WORKFLOW_ARCHITECTURE.md`.
 19. **Lock-file deploy rule.** After pushing a `.py` script with `wmill script push`, confirm its `*.script.lock` carries resolved package versions (not bare `# py: 3.12`, which means "no packages" and causes `ModuleNotFoundError` if the script imports third-party libraries). Relative cross-script imports (`from u.admin.other_script import ...`) are disallowed for formatter scripts — the 8 formatters each carry their own identical `_send_telegram`/`_split_telegram_message` copy to avoid single-file-push staleness. The `test_all_formatter_senders_identical` test enforces that all 8 copies stay byte-identical.
@@ -234,7 +236,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-22 (Self-notifying, self-diagnosing health check + holistic daily brief — three-layer notification model: Layer A (Deepseek per-schedule diagnosis → front-matter `diagnoses`), Layer B (error_alert.py → Telegram + Deepseek 1-line diagnosis on any crash), Layer C (host deadman switch `/root/scripts/healthcheck-deadman.py` + systemd timer at 08:30 SGT — direct Telegram, Windmill-independent). Content engine added to health_check: 24h .md collector, per-type spec validators (macro/portfolio/youtube), Grok-4 holistic daily digest (700-1000w, fallback Deepseek), holistic brief as `.md` `digest` key. health_check_telegram.py rewritten to render digest → ops status → spec failures → AI diagnoses → outbox audit. Rescheduled 7:00→8:00 AM SGT. workspace error handler extra_args updated (now passes telegram_bot_token, telegram_owner_id, deepseek_key). 420 tests passing. Repo: `vps-stack`.)
+**Last updated:** 2026-06-22 (Artifact-driven testing philosophy adopted — health_check is the proven example: seams factored (`_send_email`, `_build_front_matter`, `_build_md_content`, `_write_canonical_md`), `_render_health_check_artifacts(world)` harness + 9 artifact assertion tests added (incl. `test_hc_email_and_telegram_agree` — the cross-check that would have caught the shipped missing-digest bug), contract test updated to use real `_build_md_content`, 2 misleading substring tests pruned. `docs/TESTING.md` written as canonical testing philosophy. CLAUDE.md Hard Rules 15/17 rewritten around the artifact principle. 624 tests passing in container. Prior: health_check email was missing digest/spec/diagnoses sections (content engine ran after email build). Fixed + triple-layer notification model: Layer A (Deepseek diagnosis), Layer B (error_alert), Layer C (deadman). Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`
@@ -286,7 +288,7 @@ See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/res
 ### Telegram Agent — Build Status
 See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full component inventory.
 
-**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 8 Windmill scripts (all via md-driven formatter architecture), macro_research at 7:00 AM SGT (25 Yahoo + 13 FRED + Fed RSS + 6-section analysis), Telegram push via Deepseek synthesis (~545 words), 420 tests passing (windmill_scripts suite). Pending: Agent Drafts Telegram group (manual owner task).
+**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 8 Windmill scripts (all via md-driven formatter architecture), macro_research at 7:00 AM SGT (25 Yahoo + 13 FRED + Fed RSS + 6-section analysis), Telegram push via Deepseek synthesis (~545 words), 624 tests passing in container (windmill_scripts suite). Pending: Agent Drafts Telegram group (manual owner task).
 
 ### Next Up
 1. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`
@@ -296,7 +298,7 @@ See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full com
 ## Documentation Workflow
 
 ### What to read at session start
-Always read this file (`CLAUDE.md`) and `docs/ROADMAP.md`. Read `docs/WORKFLOW_ARCHITECTURE.md` when building or modifying a specific workflow — it has the full pseudocode spec for every workflow in the stack.
+Always read this file (`CLAUDE.md`) and `docs/ROADMAP.md`. Read `docs/TESTING.md` before writing any test or modifying a sending script — it is the canonical testing philosophy and harness pattern. Read `docs/WORKFLOW_ARCHITECTURE.md` when building or modifying a specific workflow — it has the full pseudocode spec for every workflow in the stack.
 
 ### When to update docs
 Update docs at logical stopping points, not just at end of session:
@@ -307,6 +309,7 @@ Update docs at logical stopping points, not just at end of session:
 | Workflow scheduled | `ROADMAP.md` — add schedule confirmed note |
 | Workflow design approved | `WORKFLOW_ARCHITECTURE.md` — fill in full pseudocode spec for that workflow |
 | Workflow logic changed | `WORKFLOW_ARCHITECTURE.md` — keep the spec in sync with the code |
+| Artifact-render harness added to a script | `docs/TESTING.md` — update rollout table |
 | Phase completed | `CLAUDE.md` — update Current Status section |
 | New credential added to Windmill | `CLAUDE.md` — update Current Status Phase 0 checklist |
 | New VPS service deployed (e.g. Postgres) | `CLAUDE.md` — update Running Services table and Phase 0 checklist |
@@ -330,3 +333,4 @@ Read CLAUDE.md and docs/ROADMAP.md in /root/. We are working on [Phase X / speci
 ```
 
 If working on a specific workflow, also read `docs/WORKFLOW_ARCHITECTURE.md` for the full pseudocode spec.
+If writing or modifying tests, also read `docs/TESTING.md` for the artifact-driven testing philosophy.

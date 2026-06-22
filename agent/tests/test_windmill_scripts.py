@@ -2233,20 +2233,12 @@ def test_health_count_matching_case_insensitive():
     assert fn(["PORTFOLIO US CLOSE"], ["portfolio"]) == 1
 
 
-def test_health_build_html_all_ok_text():
-    """build_html must produce 'All N OK' summary when all schedules pass."""
-    src = _read_hc_source()
-    assert "All " in src and " OK" in src, (
-        "build_html must show 'All N OK' when every schedule passes"
-    )
-
-
-def test_health_build_html_issue_count():
-    """build_html must show a failure count when any schedule is FAILED or STALE."""
-    src = _read_hc_source()
-    assert "issue" in src.lower(), (
-        "build_html must show issue count for failed/stale schedules"
-    )
+# PRUNED: test_health_build_html_all_ok_text — was `assert "All " in src and " OK" in src`
+#   (source substring, not a rendered-artifact check). Superseded by
+#   test_hc_email_contains_all_status_rows which renders the actual email.
+#
+# PRUNED: test_health_build_html_issue_count — was `assert "issue" in src.lower()`
+#   (source substring). Superseded by test_hc_email_contains_all_status_rows.
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -4451,8 +4443,16 @@ def test_contract_analyst_alert_rating_survives():
 
 
 def test_contract_health_check_rows_survive():
-    """Round-trip: status rows must survive from front-matter to health_check message."""
+    """Round-trip: status rows must survive from front-matter to health_check message.
+    Uses the REAL _build_md_content writer (not a test-local fake) so the formatter is
+    tested against exactly what main() writes — closing the stale-copy gap (Part 4).
+    """
     mod = _load_formatter("health_check")
+    hc = _load_hc_module()
+    build_md_fn = getattr(hc, "_build_md_content", None)
+    assert build_md_fn is not None, (
+        "_build_md_content must exist on health_check module (Part 1 seam factoring)"
+    )
     fm = {
         "tg_date": "21 Jun", "ok_count": 5, "total": 6,
         "rows": [
@@ -4460,8 +4460,18 @@ def test_contract_health_check_rows_survive():
             {"label": "Move Monitor",    "status": "FAIL", "age_str": "26h ago", "error": "timeout"},
         ],
         "token_usage": [],
+        "diagnoses": [],
+        "spec_checks": [],
+        "outbox_rows": [],
+        "content_inventory": [],
+        "digest": "",
     }
-    md_path = _make_md(fm, _TEST_NARRATIVE)
+    # Use the production writer — not a test-local copy
+    md_content = build_md_fn(fm, _TEST_NARRATIVE)
+    md_file = _tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False)
+    md_file.write(md_content)
+    md_file.close()
+    md_path = md_file.name
     try:
         parse_fn = getattr(mod, "_parse_md_report", None)
         build_fn = getattr(mod, "_build_message", None)
@@ -5908,3 +5918,318 @@ def test_build_html_no_new_content_unchanged():
     assert "Daily Brief" not in html, "Digest section must not appear when digest is empty"
     assert "Spec Check" not in html, "Spec section must not appear when no failures"
     assert "AI Diagnosis" not in html, "Diagnoses section must not appear when diagnoses is empty"
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# ARTIFACT TESTS — Test the artifact the human receives
+#
+# The authoritative tests: render the ACTUAL email HTML and the ACTUAL Telegram
+# message from ONE real main() run (I/O faked only at the edges) and assert
+# every user-visible field appears in BOTH.  A test earns its place only if its
+# failure means the human gets a broken or missing artifact.
+#
+# These tests go RED until Part 1 of the seam-factoring refactor lands
+# (_send_email and _write_canonical_md added to health_check.py).
+# test_hc_email_and_telegram_agree would have caught the shipped bug where the
+# email was missing the entire digest/spec/diagnoses sections.
+# ─────────────────────────────────────────────────────────────────────────────
+
+# Minimum-viable-realistic world fixture (Hard Rule 15 tautology ban).
+# Contains distinct strings that must appear in BOTH email and Telegram to
+# verify the shared-source plumbing works end-to-end.
+_HC_WORLD = {
+    "sent_subjects": [
+        "Morning Digest 22 Jun",
+        "Portfolio US Close 22 Jun 2026",
+        "Portfolio Asia Close 22 Jun 2026",
+    ],
+    "content_reports": [
+        {
+            "type": "macro",
+            "path": "/tmp/fake_macro_test.md",
+            "word_count": 2500,
+            "front_matter": {"timestamp": "2026-06-22T07:00:00+08:00"},
+        }
+    ],
+    "spec_violations": ["narrative.word_count must be ge2400 but got 1850"],
+    "digest": (
+        "Executive brief 22 Jun 2026: equity markets posted modest gains led by technology. "
+        "US 10Y yields ticked up 4bp on firmer-than-expected PMI data. VIX compressed "
+        "below 16.0, signalling reduced near-term volatility concern. Portfolio performing "
+        "broadly in line with benchmarks. Macro backdrop remains constructive for equities."
+    ),
+    "diagnosis": {
+        "root_cause": "SMTP rate limit exceeded on Gmail relay.",
+        "remediation": "Add exponential backoff and retry logic.",
+    },
+    "outbox_rows": [
+        {"script_name": "macro_daily_push_telegram", "delivered": True,
+         "word_count": 558, "error": None},
+    ],
+}
+
+
+def _render_health_check_artifacts(world=None):
+    """
+    Run the real health_check.main() with all I/O seams mocked at the edges,
+    then render the Telegram message from the captured .md via the real formatter.
+
+    Patches applied (all edge I/O only):
+      - fetch_sent_subjects  → canned sent_subjects
+      - wmill_get            → first per_page=1 call returns FAILED job; rest OK
+      - _diagnose_failure    → canned diagnosis dict (called once for the FAILED schedule)
+      - _collect_24h_reports → canned content_reports
+      - _spec_check          → canned spec_check result
+      - _synthesise_daily_digest → canned digest string
+      - _query_telegram_outbox_24h → canned outbox_rows
+      - _dispatch_formatter  → no-op (we render Telegram manually below)
+      - _send_email          → captures email HTML   [RED until Part 1 refactor]
+      - _write_canonical_md  → captures .md content  [RED until Part 1 refactor]
+
+    Returns (email_html: str, md_content: str, telegram_message: str).
+    """
+    import tempfile as _tf
+    import datetime as _dt
+    from datetime import timezone as _tz, timedelta as _td
+
+    if world is None:
+        world = _HC_WORLD
+
+    hc = _load_hc_module()
+    tg_mod = _load_formatter("health_check")
+
+    # Ensure pytz.timezone works on the stub module that hc loaded
+    # (_load_hc_module installs a bare module stub; add a working timezone() to it)
+    import datetime as _dtt
+    _pytz_stub = getattr(hc, "pytz", None)
+    if _pytz_stub is not None and not callable(getattr(_pytz_stub, "timezone", None)):
+        _pytz_stub.timezone = lambda name: _dtt.timezone(_dtt.timedelta(hours=8))
+
+    # Build a recent started_at so jobs always appear within max_age_h
+    recent = (_dt.datetime.now(_tz.utc) - _td(hours=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    call_counter = [0]
+
+    def mock_wmill_get(path, token):
+        call_counter[0] += 1
+        if "per_page=1" in path:
+            if call_counter[0] == 1:
+                # First schedule (Morning News Digest): FAILED
+                return [{
+                    "id": "job-fail-001",
+                    "success": False,
+                    "started_at": recent,
+                    "duration_ms": 1200,
+                    "result": {"error": {"message": "SMTP connection refused"}},
+                }]
+            # All other schedules: recent OK
+            return [{
+                "id": f"job-ok-{call_counter[0]}",
+                "success": True,
+                "started_at": recent,
+                "duration_ms": 4000,
+            }]
+        if "per_page=30" in path:
+            # YouTube aggregate: no runs in window
+            return []
+        if "jobs_u/get/" in path:
+            return {"result": {}}
+        return []
+
+    captured_email_html = [None]
+    captured_md_content = [None]
+
+    def mock_send_email(gmail_smtp, recipient, subject, html):
+        captured_email_html[0] = html
+
+    def mock_write_canonical_md(md_content, path):
+        captured_md_content[0] = md_content
+
+    with (
+        patch.object(hc, "fetch_sent_subjects", return_value=world["sent_subjects"]),
+        patch.object(hc, "wmill_get", side_effect=mock_wmill_get),
+        patch.object(hc, "_diagnose_failure", return_value=world["diagnosis"]),
+        patch.object(hc, "_collect_24h_reports", return_value=world["content_reports"]),
+        patch.object(hc, "_spec_check", side_effect=lambda r: {
+            "output": r.get("type", "?"),
+            "pass": False,
+            "violations": list(world["spec_violations"]),
+        }),
+        patch.object(hc, "_synthesise_daily_digest", return_value=world["digest"]),
+        patch.object(hc, "_query_telegram_outbox_24h", return_value=world["outbox_rows"]),
+        patch.object(hc, "_dispatch_formatter"),
+        patch.object(hc, "_send_email", side_effect=mock_send_email),
+        patch.object(hc, "_write_canonical_md", side_effect=mock_write_canonical_md),
+    ):
+        hc.main(
+            gmail_smtp={"host": "smtp.gmail.com", "port": 587,
+                        "username": "test@example.com", "password": "testpass"},
+            recipient_email="test@example.com",
+            telegram_bot_token="fake-bot-token",
+            telegram_owner_id="12345678",
+            # Pass a fake key so the xai_key/deepseek_key gate opens and
+            # _synthesise_daily_digest (mocked above) is called.
+            deepseek_key="fake-deepseek-key-for-test",
+        )
+
+    email_html = captured_email_html[0]
+    md_content = captured_md_content[0]
+
+    # Render the real Telegram message from the captured .md via the real formatter
+    telegram_message = None
+    if md_content:
+        with _tf.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp:
+            tmp.write(md_content)
+            tmp_path = tmp.name
+        try:
+            parse_fn = getattr(tg_mod, "_parse_md_report", None)
+            build_fn = getattr(tg_mod, "_build_message", None)
+            if parse_fn and build_fn:
+                parsed_fm, parsed_narrative = parse_fn(tmp_path)
+                telegram_message = build_fn(parsed_fm, parsed_narrative)
+        finally:
+            os.unlink(tmp_path)
+
+    return email_html, md_content, telegram_message
+
+
+# Module-level cache: render once, assert many times
+_HC_ARTIFACTS_CACHE = {}
+
+
+def _get_hc_artifacts(force_refresh=False):
+    """Return cached (email_html, md_content, telegram_message) from one main() run."""
+    if "v" not in _HC_ARTIFACTS_CACHE or force_refresh:
+        _HC_ARTIFACTS_CACHE.clear()
+        _HC_ARTIFACTS_CACHE["v"] = _render_health_check_artifacts()
+    return _HC_ARTIFACTS_CACHE["v"]
+
+
+def test_hc_email_contains_digest():
+    """The digest text must appear in the rendered email HTML."""
+    email_html, _, _ = _get_hc_artifacts()
+    assert email_html is not None, (
+        "_send_email was never called — _send_email seam must exist on health_check module"
+    )
+    expected = _HC_WORLD["digest"][:50]
+    assert expected in email_html, (
+        f"Digest text missing from email HTML.\n"
+        f"Expected to find: {expected!r}\n"
+        f"Email HTML snippet: {email_html[:600]}"
+    )
+
+
+def test_hc_email_contains_each_diagnosis():
+    """Each diagnosis root_cause and remediation must appear in the email HTML."""
+    email_html, _, _ = _get_hc_artifacts()
+    assert email_html is not None
+    d = _HC_WORLD["diagnosis"]
+    assert d["root_cause"] in email_html, (
+        f"Diagnosis root_cause {d['root_cause']!r} missing from email HTML"
+    )
+    assert d["remediation"] in email_html, (
+        f"Diagnosis remediation {d['remediation']!r} missing from email HTML"
+    )
+
+
+def test_hc_email_contains_spec_failures():
+    """Each spec violation string must appear in the email HTML."""
+    email_html, _, _ = _get_hc_artifacts()
+    assert email_html is not None
+    for violation in _HC_WORLD["spec_violations"]:
+        assert violation in email_html, (
+            f"Spec violation {violation!r} missing from email HTML"
+        )
+
+
+def test_hc_email_contains_all_status_rows():
+    """Every schedule label must appear in the email HTML status table."""
+    email_html, _, _ = _get_hc_artifacts()
+    assert email_html is not None
+    hc = _load_hc_module()
+    schedules = getattr(hc, "SCHEDULES", [])
+    for sched in schedules:
+        assert sched["label"] in email_html, (
+            f"Schedule label {sched['label']!r} missing from email HTML"
+        )
+
+
+def test_hc_telegram_contains_digest():
+    """The digest text must appear in the rendered Telegram message."""
+    _, _, tg_msg = _get_hc_artifacts()
+    assert tg_msg is not None, "_build_message returned None — check .md was captured"
+    expected = _HC_WORLD["digest"][:50]
+    assert expected in tg_msg, (
+        f"Digest text missing from Telegram message.\n"
+        f"Expected to find: {expected!r}\n"
+        f"Telegram snippet: {tg_msg[:600]}"
+    )
+
+
+def test_hc_telegram_contains_diagnoses():
+    """Diagnosis root_cause and remediation must appear in the Telegram message."""
+    _, _, tg_msg = _get_hc_artifacts()
+    assert tg_msg is not None
+    d = _HC_WORLD["diagnosis"]
+    assert d["root_cause"] in tg_msg, (
+        f"Diagnosis root_cause {d['root_cause']!r} missing from Telegram message"
+    )
+    assert d["remediation"] in tg_msg, (
+        f"Diagnosis remediation {d['remediation']!r} missing from Telegram message"
+    )
+
+
+def test_hc_telegram_contains_spec():
+    """Each spec violation must appear in the Telegram message."""
+    _, _, tg_msg = _get_hc_artifacts()
+    assert tg_msg is not None
+    for violation in _HC_WORLD["spec_violations"]:
+        assert violation in tg_msg, (
+            f"Spec violation {violation!r} missing from Telegram message"
+        )
+
+
+def test_hc_telegram_contains_rows():
+    """Every schedule label must appear in the Telegram message."""
+    _, _, tg_msg = _get_hc_artifacts()
+    assert tg_msg is not None
+    hc = _load_hc_module()
+    schedules = getattr(hc, "SCHEDULES", [])
+    for sched in schedules:
+        assert sched["label"] in tg_msg, (
+            f"Schedule label {sched['label']!r} missing from Telegram message"
+        )
+
+
+def test_hc_email_and_telegram_agree():
+    """
+    The shared fields (digest, each diagnosis, each spec violation) must appear
+    in BOTH the email HTML and the Telegram message.
+
+    This single test would have caught the shipped bug where the email was sent
+    before the content engine ran — the email had none of the digest/spec/diagnoses
+    sections while Telegram (reading the .md) had all of them.
+    """
+    email_html, _, tg_msg = _get_hc_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert tg_msg is not None, "_build_message returned None"
+
+    shared_fields = [
+        ("digest[:50]", _HC_WORLD["digest"][:50]),
+        ("diagnosis root_cause", _HC_WORLD["diagnosis"]["root_cause"]),
+        ("diagnosis remediation", _HC_WORLD["diagnosis"]["remediation"]),
+    ] + [("spec violation", v) for v in _HC_WORLD["spec_violations"]]
+
+    failures = []
+    for field_name, value in shared_fields:
+        in_email = value in email_html
+        in_tg = value in tg_msg
+        if not in_email:
+            failures.append(f"  MISSING from email:    {field_name} = {value!r}")
+        if not in_tg:
+            failures.append(f"  MISSING from Telegram: {field_name} = {value!r}")
+
+    assert not failures, (
+        "Shared fields must appear in BOTH email HTML and Telegram message:\n"
+        + "\n".join(failures)
+    )
