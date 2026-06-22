@@ -378,15 +378,25 @@ Key pairs the LLM is guided to distinguish:
 
 ### Workflow 6.1 — Daily Health Check ✅ LIVE
 
-**Script:** `u/admin/health_check`
-**Schedule:** `u/admin/health_check_daily` — 7:00 AM SGT daily
-**Send to:** `<YOUR_RECIPIENT_EMAIL>`
+**Script:** `u/admin/health_check`  
+**Formatter:** `u/admin/health_check_telegram`  
+**Schedule:** `u/admin/health_check_daily` — **8:00 AM SGT** daily  
+**Send to:** `<YOUR_RECIPIENT_EMAIL>` (email + Telegram)  
+**Canonical output:** `/research/health/YYYY-MM-DD_HHMM.md`
 
 **Inputs:**
-- Gmail SMTP (`$res:u/admin/gmail_smtp`) — optional. When omitted, skips IMAP sent-mail check and email send, returns structured dict instead. Used by Telegram agent for on-demand health queries.
-- Windmill jobs API (internal — `WM_TOKEN` env var, `http://<YOUR_VPS_IP>:8080`)
+- `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`
+- `$var:u/admin/telegram_bot_token`, `$var:u/admin/telegram_owner_id`
+- `$res:u/admin/portfolio_db`, `$var:u/admin/wm_token`
+- `$var:u/admin/deepseek_key` (failure diagnosis), `$var:u/admin/xai_key` (Grok-4 digest)
 
-**Returns (always):** `{ ok_count, total, rows: [{label, status, error, ...}], llm_rows, total_cost }`
+**Three notification layers:**
+
+| Layer | Mechanism | Catches |
+|---|---|---|
+| A — In-script diagnosis | Deepseek called for each STALE/FAILED schedule → `diagnoses` front-matter key | Per-schedule failures with root cause + remediation |
+| B — Global crash (error_alert.py) | Windmill workspace error hook → email + Telegram + Deepseek 1-line diagnosis | health_check itself crashing, any other job crash |
+| C — Host deadman | `/root/scripts/healthcheck-deadman.py` + systemd timer at 08:30 SGT → direct Telegram API | health_check never ran, scheduler wedged, Windmill down |
 
 **Schedules monitored (6 total):**
 
@@ -405,91 +415,153 @@ Key pairs the LLM is guided to distinguish:
 
 ```
 sgt_now = current time in Asia/Singapore
-is_weekend_or_monday = weekday in (Sat, Sun, Mon)
 
+# Layer A — schedule loop
+diagnoses = []
 for each schedule:
     GET /api/w/admins/jobs/completed/list?schedule_path=<path>&per_page=1
-    if no jobs → status = STALE ("No runs found")
+    if no jobs → status = STALE
     else:
         job = most recent completed job
-        age_h = (now_utc - job.started_at).total_seconds / 3600
-        if not job.success → status = FAILED (include error message)
+        age_h = (now_utc - job.started_at) / 3600
+        if not job.success → status = FAILED
         elif age_h > max_age_h → status = STALE
         else → status = OK
+    if status in (STALE, FAILED):
+        diagnoses.append(_diagnose_failure(label, path, status, error, age_str, deepseek_key))
+        # → {label, root_cause, remediation} via Deepseek deepseek-chat
 
-    if has_llm and status == OK:
-        if llm_aggregate (YouTube):
-            GET all runs in last 24h (per_page=30), filter by started_at >= now-24h
-            sum prompt_tokens + completion_tokens + est_cost_usd from each result
-            (jobs that exited early with no videos return null result — skipped)
-        else (single daily run):
-            GET /api/w/admins/jobs_u/get/{job_id}
-            read prompt_tokens, completion_tokens, est_cost_usd from result
+# Content engine
+content_reports = _collect_24h_reports(now_sgt)
+    # scans /research/{macro,portfolio,youtube,news,health}/*.md, mtime < 26h
+    # parses JSON front-matter block + narrative
+    # returns [{type, path, mtime, front_matter, narrative, word_count}]
 
-total_tokens = sum across all LLM runs
-total_cost = sum of est_cost_usd
+spec_checks = [_spec_check(r) for r in content_reports]
+    # per-type validators:
+    #   macro:     indicators.yahoo ≥ 12 symbols, indicators.fred ≥ 13 series, news_headlines present
+    #   portfolio: total_value / total_pnl / total_pnl_pct present
+    #   youtube:   videos or video_count present
+    # returns {output, pass, violations[]}
 
-build HTML email:
-    - date/time header
-    - summary line ("All 6 OK" or "2 issues")
-    - status table: icon | schedule label | last run (SGT) | status | age
-    - token usage table: per-script breakdown + TOTAL row
-send via Gmail SMTP
+digest = _synthesise_daily_digest(content_reports, xai_key, deepseek_key)
+    # primary:  OpenAI(api_key=xai_key, base_url="https://api.x.ai/v1"), model="grok-4", max_tokens=1500
+    # fallback: OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com"), model="deepseek-chat"
+    # prompt: executive daily brief 700-1000w, numbered sections + bullets + exec summary + conclusion
+
+# Token usage + outbox audit (unchanged)
+token_usage = _query_llm_token_usage_24h(wm_token)
+outbox_rows = _query_telegram_outbox_24h(portfolio_db)
+
+# Write canonical .md
+front_matter = {
+    tg_date, ok_count, total, rows,
+    token_usage, outbox_rows,
+    diagnoses,       # Layer A results
+    spec_checks,     # per-output pass/fail + violations
+    content_inventory,  # [{type, path, word_count}]
+    digest           # Grok-4 holistic brief text
+}
+write /research/health/YYYY-MM-DD_HHMM.md
+
+# Dispatch formatter (unchanged)
+dispatch health_check_telegram with md_path → Telegram delivery
+send HTML email (digest at top, ops table, spec failures, diagnoses)
 ```
 
-**Output email:**
+**Front-matter schema:**
+```json
+{
+  "tg_date": "22 Jun",
+  "ok_count": 4,
+  "total": 6,
+  "rows": [{"label": "...", "status": "OK|STALE|FAILED", "age_str": "...", "error": ""}],
+  "token_usage": [{"job": "...", "model": "...", "tokens": 0, "cost_usd": 0.0}],
+  "outbox_rows": [{"script_name": "...", "delivered": true, "word_count": 0, "error": null, "sent_at": "..."}],
+  "diagnoses": [{"label": "...", "root_cause": "...", "remediation": "..."}],
+  "spec_checks": [{"output": "macro|portfolio|youtube|news|health", "pass": true, "violations": []}],
+  "content_inventory": [{"type": "...", "path": "...", "word_count": 0}],
+  "digest": "700-1000w holistic executive brief text"
+}
 ```
-Subject: Health Check — 5 Jun 2026 | 6/6 OK   ← or "ALERT: 2 issues"
 
-Automation Health — Friday, 5 June 2026  ·  7:00 AM SGT
-All 6 OK
-
-  ✅  Morning News Digest           6:30 AM    OK      30m ago
-  ✅  Portfolio Price Fetcher (AM)  5:45 AM    OK      1h 15m ago
-  ✅  Portfolio Email (AM)          6:00 AM    OK      1h ago
-  ✅  Portfolio Price Fetcher (PM)  5:45 PM†   OK      13h ago
-  ✅  Portfolio Email (PM)          6:00 PM†   OK      13h ago
-  ✅  YouTube Monitor (hourly)      6:00 AM    OK      1h ago
-  † previous day
-
-  Token Usage — Last 24h
-  Morning News Digest      1,234 prompt + 456 completion    est. $0.0008
-  YouTube Monitor          5,678 prompt + 2,345 completion  est. $0.0037
-
-  TOTAL                    6,912 prompt + 2,801 completion  est. $0.0045
+**Telegram message structure (health_check_telegram.py):**
 ```
+Header: 🏥 Daily Brief — {date} · {ok_count}/{total} OK
+
+[Digest section — Grok-4 brief, or narrative fallback]
+
+Ops Status
+  ✅ Morning News Digest          4h 24m ago
+  ✅ Portfolio Price Fetcher (AM)  5h 9m ago
+  ...
+  ❌ Portfolio Email (PM)          FAILED · 40h 54m ago
+
+⚠️ Spec Failures (N of M outputs)
+  macro  indicators.yahoo must have ≥12 symbols
+
+🔍 AI Diagnoses
+  Portfolio Email (PM)
+  Cause: SMTP configuration failure
+  Fix:   Check credentials and restart
+
+📊 24h Token Usage
+  Morning News Digest  deepseek-chat  8,011 tokens  $0.0014
+
+📬 Telegram Formatter Audit (last 24h)
+  health_check  ✅  866w  22 Jun 02:52
+  ...
+```
+
+**Layer C — Host deadman switch:**
+- Script: `/root/scripts/healthcheck-deadman.py`
+- Systemd: `~/.config/systemd/user/healthcheck-deadman.{service,timer}`
+- `OnCalendar=*-*-* 00:30:00 UTC` (= 08:30 SGT), fires 30 min after the brief
+- Pure `_should_alert(api_ok, jobs, now) → (bool, str)`:
+  - API unreachable → alert "Windmill API unreachable from host"
+  - No jobs, or newest job not `success`, or newest job age > 90 min → alert
+  - Otherwise silent (exit 0)
+- POST directly to `https://api.telegram.org/bot{token}/sendMessage` — no Windmill dependency
 
 **Design decisions:**
-- Runs at 7:00 AM SGT — after all morning scripts have had time to complete (last one is Morning Digest at 6:30 AM)
-- weekday_only flag: extends max_age to 72h on Sat/Sun/Mon for portfolio scripts that intentionally skip weekends — prevents false STALE alerts
-- YouTube token aggregation: per-run results summed; runs with no videos return null result and are skipped
-- Token costs read from job result dict (`est_cost_usd`) — consistent with what each script computes using its own Deepseek model pricing
-- Status email sent every day regardless — silence is more alarming than a green email
-- Error alert (5.2) left out of health check — it's event-driven, not schedulable, and historically missed failures (e.g. did not alert on the $res bug because scripts failed silently)
+- Rescheduled 7:00 → 8:00 AM SGT so all morning outputs are written before the brief reads them
+- Deadman fires 30 min after the brief — catches silent failures, scheduler wedges, full outage
+- Layer B (error_alert) catches crashes; Layer C catches "it never ran" — complementary, not redundant
+- Spec failures on old flat-schema macro `.md` files are expected until the next macro run produces the new nested `indicators.yahoo/fred` schema
+- weekday_only flag: extends max_age to 72h on Sat/Sun/Mon for portfolio scripts — prevents false STALE alerts
 
 ---
 
 ### Workflow 6.2 — Windmill Error Alert ✅ LIVE
 
 **Script:** `u/admin/error_alert`  
-**Trigger:** Windmill error hook — fires on any job failure  
-**Send to:** `<YOUR_RECIPIENT_EMAIL>`
+**Trigger:** Windmill workspace error hook — fires on any job failure  
+**Send to:** `<YOUR_RECIPIENT_EMAIL>` (email) + owner Telegram (direct)
 
 **Inputs:**
-- Gmail SMTP credentials (`$res:u/admin/gmail_smtp`)
-- Job metadata passed by Windmill error hook: job ID, script path, error message, workspace
+- `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`
+- Job metadata from Windmill hook: `job_id`, `path`, `error`, `workspace_id`, `schedule_path`, `started_at`
+- `$var:u/admin/telegram_bot_token`, `$var:u/admin/telegram_owner_id` (Telegram alert)
+- `$var:u/admin/deepseek_key` (1-line diagnosis)
 
 **Logic:**
 
 ```
 receive from Windmill hook:
-    job_id, job_path, error_message, workspace
+    job_id, path, error, workspace_id, schedule_path, started_at
 
-format HTML alert email:
-    subject: "Windmill Error — [script path]"
-    body: job details + full error message
-
+# Email (existing, best-effort)
+format HTML alert email: subject "Windmill Error — [path]", job details + stack trace
 send via Gmail SMTP
+
+# Deepseek 1-line diagnosis (best-effort, never blocks email)
+diagnosis = _deepseek_diagnose(path, error, deepseek_key)
+    → single sentence root-cause from deepseek-chat, '' on failure
+
+# Telegram alert (best-effort, never raises)
+_send_telegram(bot_token, owner_id, path, job_id, error, diagnosis)
+    → POST https://api.telegram.org/bot{token}/sendMessage
+    → message: "⚠️ Windmill Error\nJob: {path}\nID: {job_id}\nError: {error[:300]}\nDiagnosis: {diagnosis}"
 ```
 
 **Output email:**

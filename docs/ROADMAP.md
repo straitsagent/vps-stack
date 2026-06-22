@@ -63,8 +63,8 @@ Everything below is live and running unattended.
 ### System
 | Component | Notes |
 |---|---|
-| 6.1 Daily Health Check | 7:00 AM SGT — all schedule pass/fail + 24h LLM token cost |
-| 6.2 Windmill Error Alert | On failure — immediate email |
+| 6.1 Daily Health Check | **8:00 AM SGT** — 3-layer notifications: (A) Deepseek per-schedule diagnosis on STALE/FAILED, (B) error_alert Telegram+Deepseek on any crash, (C) host deadman (08:30 SGT, systemd, direct Telegram). Content engine: 24h .md collector, per-type spec validators (macro/portfolio/youtube), Grok-4 holistic daily digest (700-1000w, Deepseek fallback). |
+| 6.2 Windmill Error Alert | On failure — email + **Telegram** + Deepseek 1-line diagnosis |
 
 ### Telegram Agent W1
 | Component | Status |
