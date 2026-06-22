@@ -234,7 +234,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-21 (Flaw-remediation: Flaw 2 — portfolio_review negative week P&L sign bug fixed. Flaw 3 — health_check now audits telegram_outbox 24h sends (delivery, word count, BELOW_MIN_WORDS flag). Flaw 5 — YouTube sub-500 fallback sends + flags BELOW_MIN_WORDS in outbox. Flaw 6 — macro formatter detects all-zero change_pct and adds "Markets closed" note. Flaw 1 — telegram_utils.py deleted (dead code); test_all_formatter_senders_identical guard added. Flaw 7 — round-trip .md→formatter contract tests added for all 8 formatters. Hard Rules 15 updated (tautology ban), 17 updated (operational verification checklist), 18 added (front-matter schema contract), 19 added (lock-file deploy rule). front-matter schema documented in WORKFLOW_ARCHITECTURE.md. macro_research live — 25 Yahoo + 13 FRED + Fed RSS + Google News, 6-section Deepseek analysis, HTML email + Telegram push; old macro_daily_push schedule disabled. macro_daily_push_telegram redesigned: Deepseek synthesis (400-450w) replaces full narrative dump; 13-symbol Yahoo grid + all-13-FRED grouped block + top-4 headlines; ~545 words total. 383 tests passing. Repo: `vps-stack`.)
+**Last updated:** 2026-06-22 (Self-notifying, self-diagnosing health check + holistic daily brief — three-layer notification model: Layer A (Deepseek per-schedule diagnosis → front-matter `diagnoses`), Layer B (error_alert.py → Telegram + Deepseek 1-line diagnosis on any crash), Layer C (host deadman switch `/root/scripts/healthcheck-deadman.py` + systemd timer at 08:30 SGT — direct Telegram, Windmill-independent). Content engine added to health_check: 24h .md collector, per-type spec validators (macro/portfolio/youtube), Grok-4 holistic daily digest (700-1000w, fallback Deepseek), holistic brief as `.md` `digest` key. health_check_telegram.py rewritten to render digest → ops status → spec failures → AI diagnoses → outbox audit. Rescheduled 7:00→8:00 AM SGT. workspace error handler extra_args updated (now passes telegram_bot_token, telegram_owner_id, deepseek_key). 420 tests passing. Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`
@@ -254,8 +254,8 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 | 1.2 — YouTube Channel Monitor | ✅ Live | Every 6 hours (`0 0 */6 * * *` SGT) — 37 channels, RapidAPI transcripts, Deepseek summaries. Recipient: <YOUR_RECIPIENT_EMAIL> |
 | Email Summary | ✅ Live | Manual — uses Deepseek |
 | **Macro Research** | ✅ Live | **7:00 AM SGT daily (Mon–Fri)** — 25 Yahoo indicators + 13 FRED series + Fed RSS + Google News. 6-section Deepseek analysis (~2,400+ words). HTML email + Telegram push. Script: `u/admin/macro_research`. Old `macro_daily_push` schedule disabled. |
-| 6.1 — Daily Health Check | ✅ Live | 7:00 AM SGT daily — checks all 6 schedules, reports pass/fail + 24h token usage + estimated API cost. Recipient: <YOUR_RECIPIENT_EMAIL> |
-| 6.2 — Windmill Error Alert | ✅ Live | On failure |
+| 6.1 — Daily Health Check | ✅ Live | **8:00 AM SGT daily** — 3-layer notifications: (A) Deepseek per-schedule diagnosis, (B) error_alert Telegram+diagnosis on crash, (C) host deadman at 08:30 SGT. Content engine: 24h .md collector, spec-check per output type, Grok-4 holistic daily digest. Recipient: <YOUR_RECIPIENT_EMAIL> |
+| 6.2 — Windmill Error Alert | ✅ Live | On failure — email + **Telegram** + Deepseek 1-line diagnosis |
 
 ### Windmill Variables Added
 See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/resource inventory.
@@ -286,7 +286,7 @@ See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/res
 ### Telegram Agent — Build Status
 See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full component inventory.
 
-**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 8 Windmill scripts (all via md-driven formatter architecture), macro_research at 7:00 AM SGT (25 Yahoo + 13 FRED + Fed RSS + 6-section analysis), Telegram push via Deepseek synthesis (~545 words), 521 tests passing. Pending: Agent Drafts Telegram group (manual owner task).
+**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 8 Windmill scripts (all via md-driven formatter architecture), macro_research at 7:00 AM SGT (25 Yahoo + 13 FRED + Fed RSS + 6-section analysis), Telegram push via Deepseek synthesis (~545 words), 420 tests passing (windmill_scripts suite). Pending: Agent Drafts Telegram group (manual owner task).
 
 ### Next Up
 1. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`

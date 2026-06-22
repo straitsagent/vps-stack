@@ -1,16 +1,50 @@
 summary: Daily automation health check
-description: Checks all 6 scheduled workflows ran within expected windows. Reports pass/fail status per schedule and 24h LLM token usage + estimated cost. Runs at 7:00 AM SGT daily.
+description: Checks all 6 scheduled workflows, synthesises 24h content digest
+  (Grok-4), spec-checks each output, diagnoses failures (Deepseek), sends
+  holistic Telegram brief. Runs at 8:00 AM SGT daily.
+lock: '!inline u/admin/health_check.script.lock'
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
   properties:
+    deepseek_key:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
     gmail_smtp:
-      description: Gmail SMTP credentials
-      format: resource-smtp
       type: object
+      description: Gmail SMTP credentials
+      default: {}
+      properties: {}
+    portfolio_db:
+      type: object
+      description: ''
+      default: {}
+      properties: {}
     recipient_email:
       type: string
       description: Email address to send health check report to
-      default: "$var:u/admin/recipient_email"
-  required:
-    - gmail_smtp
-  type: object
+      default: ''
+      originalType: string
+    telegram_bot_token:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+    telegram_owner_id:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+    wm_token:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+    xai_key:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+  required: []

@@ -1,9 +1,9 @@
-schedule: '0 0 7 * * *'
+schedule: '0 0 8 * * *'
 timezone: Asia/Singapore
 enabled: true
 script_path: u/admin/health_check
 is_flow: false
-summary: 'Daily Health Check — 7:00 AM SGT'
+summary: 'Daily Health Check — 8:00 AM SGT'
 permissioned_as: u/admin
 no_flow_overlap: true
 args:
@@ -11,3 +11,7 @@ args:
   recipient_email: "$var:u/admin/recipient_email"
   telegram_bot_token: "$var:u/admin/telegram_bot_token"
   telegram_owner_id: "$var:u/admin/telegram_owner_id"
+  portfolio_db: "$res:u/admin/portfolio_db"
+  wm_token: "$var:u/admin/wm_token"
+  deepseek_key: "$var:u/admin/deepseek_key"
+  xai_key: "$var:u/admin/xai_key"

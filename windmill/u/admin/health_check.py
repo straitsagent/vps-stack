@@ -1,5 +1,8 @@
 # Requirements:
 # pytz>=2024.1
+# requests>=2.31
+# openai>=1.0
+# psycopg2-binary>=2.9
 
 import os, json, smtplib, imaplib, urllib.request, urllib.parse
 from datetime import datetime, timezone, timedelta
@@ -137,6 +140,202 @@ def _build_health_narrative(rows: list, ok_count: int, total: int,
         )
 
     return "\n\n".join(paras)
+
+
+def _diagnose_failure(label: str, path: str, status: str, error: str,
+                      age_str: str, deepseek_key: str) -> dict:
+    """Call Deepseek to diagnose a STALE/FAILED schedule. Returns {root_cause, remediation}."""
+    import requests as _req, re as _re
+    if not deepseek_key:
+        return {
+            "root_cause": error or f"Schedule is {status}",
+            "remediation": "Check Windmill job logs for details",
+        }
+    system_msg = (
+        "You are a DevOps engineer diagnosing a failed automation system. "
+        "Respond ONLY with a JSON object with exactly two keys: "
+        '"root_cause" (one sentence, ≤20 words) and "remediation" (one sentence, ≤25 words). '
+        "No preamble, no markdown."
+    )
+    user_msg = (
+        f"Script: {label} ({path})\n"
+        f"Status: {status}\n"
+        f"Error: {error}\n"
+        f"Last successful run: {age_str}\n"
+        "Diagnose the most likely root cause and the single most important fix."
+    )
+    try:
+        r = _req.post(
+            "https://api.deepseek.com/chat/completions",
+            headers={"Authorization": f"Bearer {deepseek_key}",
+                     "Content-Type": "application/json"},
+            json={"model": "deepseek-chat",
+                  "messages": [{"role": "system", "content": system_msg},
+                                {"role": "user",   "content": user_msg}],
+                  "temperature": 0.1, "max_tokens": 100},
+            timeout=15,
+        )
+        r.raise_for_status()
+        raw = r.json()["choices"][0]["message"]["content"].strip()
+        m = _re.search(r"\{.*\}", raw, _re.DOTALL)
+        if m:
+            return json.loads(m.group())
+        return {"root_cause": raw[:120], "remediation": "See Windmill job logs"}
+    except Exception as exc:
+        log.warning(f"[Diagnose] {label}: Deepseek call failed ({exc}) — using raw error")
+        return {
+            "root_cause": error or f"Schedule is {status}",
+            "remediation": "Check Windmill job logs for stack trace",
+        }
+
+
+def _collect_24h_reports(now: datetime, research_root: str = "/research") -> list:
+    """Scan /research subdirs for .md files written in the last 26h.
+    Returns [{type, path, mtime, front_matter, narrative, word_count}]."""
+    import os as _os
+    cutoff = now - timedelta(hours=26)
+    subdir_types = {
+        "macro": "macro", "portfolio": "portfolio", "youtube": "youtube",
+        "news": "news", "health": "health",
+    }
+    reports = []
+    for subdir, type_name in subdir_types.items():
+        dir_path = _os.path.join(research_root, subdir)
+        if not _os.path.isdir(dir_path):
+            continue
+        for fname in sorted(_os.listdir(dir_path)):
+            if not fname.endswith(".md"):
+                continue
+            fpath = _os.path.join(dir_path, fname)
+            mtime_ts = _os.path.getmtime(fpath)
+            mtime = datetime.fromtimestamp(mtime_ts, tz=timezone.utc)
+            if mtime < cutoff:
+                continue
+            front_matter = {}
+            narrative = ""
+            try:
+                with open(fpath) as f:
+                    raw = f.read()
+                if raw.startswith("```json\n"):
+                    end = raw.index("\n```\n", 8)
+                    front_matter = json.loads(raw[8:end])
+                    rest = raw[end + 5:]
+                    if "<!-- DETAIL -->" in rest:
+                        narrative = rest[:rest.index("<!-- DETAIL -->")].strip()
+                    else:
+                        narrative = rest.strip()
+            except Exception as ex:
+                log.warning(f"[Collect] Failed to parse {fpath}: {ex}")
+            reports.append({
+                "type": type_name,
+                "path": fpath,
+                "mtime": mtime_ts,
+                "front_matter": front_matter,
+                "narrative": narrative,
+                "word_count": len(narrative.split()),
+            })
+    return reports
+
+
+SPEC_RULES = {
+    "macro": [
+        lambda fm: (bool(fm.get("indicators")), "indicators missing from front-matter"),
+        lambda fm: (
+            isinstance(fm.get("indicators", {}).get("yahoo"), dict) and
+            len(fm.get("indicators", {}).get("yahoo", {})) >= 12,
+            "indicators.yahoo must have ≥12 symbols"
+        ),
+        lambda fm: (
+            isinstance(fm.get("indicators", {}).get("fred"), dict) and
+            len(fm.get("indicators", {}).get("fred", {})) >= 13,
+            "indicators.fred must have 13 series"
+        ),
+        lambda fm: (bool(fm.get("news_headlines")), "news_headlines missing or empty"),
+    ],
+    "portfolio": [
+        lambda fm: (fm.get("total_value") is not None, "total_value missing"),
+        lambda fm: (fm.get("total_pnl") is not None, "total_pnl missing"),
+        lambda fm: (fm.get("total_pnl_pct") is not None, "total_pnl_pct missing"),
+    ],
+    "youtube": [
+        lambda fm: (
+            bool(fm.get("videos") or fm.get("video_count")),
+            "videos/video_count missing or empty"
+        ),
+    ],
+}
+
+
+def _spec_check(report: dict) -> dict:
+    """Validate a report dict against its per-type front-matter schema contract."""
+    type_name = report.get("type", "")
+    fm = report.get("front_matter", {})
+    rules = SPEC_RULES.get(type_name, [])
+    violations = []
+    for rule in rules:
+        try:
+            ok, msg = rule(fm)
+            if not ok:
+                violations.append(msg)
+        except Exception as ex:
+            violations.append(f"Rule error: {ex}")
+    return {
+        "output": type_name,
+        "pass": len(violations) == 0,
+        "violations": violations,
+    }
+
+
+def _synthesise_daily_digest(reports: list, xai_key: str, deepseek_key: str) -> str:
+    """Call Grok-4 (fallback Deepseek) to produce a holistic 700-1000 word daily brief."""
+    import openai as _oai
+    sections = []
+    for r in reports:
+        narrative = r.get("narrative", "")[:2000]
+        if narrative:
+            sections.append(f"=== {r.get('type', 'unknown').upper()} ===\n{narrative}")
+    if not sections:
+        return ""
+    context = "\n\n".join(sections)
+    system_msg = (
+        "You are the chief of staff for an investor. Below is everything the personal "
+        "intelligence system produced in the last 24 hours — macro research, portfolio "
+        "AM/PM updates, weekly review and rationalization (if present), YouTube channel "
+        "summaries, and the news digest.\n\n"
+        "Write a single coherent executive daily brief of 700–1000 words divided into "
+        "numbered sections with clear headings. Use bullet points within sections for "
+        "conciseness. Include an executive summary paragraph at the start and a conclusion "
+        "paragraph at the end. Synthesise the cross-cutting themes: what changed, what "
+        "matters most today, where sources agree or conflict, and what warrants attention. "
+        "End with a complete sentence."
+    )
+    user_msg = f"Content produced in the last 24 hours:\n\n{context}"
+    msgs = [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}]
+    if xai_key:
+        try:
+            client = _oai.OpenAI(api_key=xai_key, base_url="https://api.x.ai/v1")
+            resp = client.chat.completions.create(
+                model="grok-4",
+                messages=msgs,
+                temperature=0.3,
+                max_tokens=1500,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as exc:
+            log.warning(f"[Digest] Grok-4 failed ({exc}), falling back to Deepseek")
+    if deepseek_key:
+        try:
+            client = _oai.OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com")
+            resp = client.chat.completions.create(
+                model="deepseek-chat",
+                messages=msgs,
+                temperature=0.3,
+                max_tokens=1500,
+            )
+            return resp.choices[0].message.content.strip()
+        except Exception as exc:
+            log.warning(f"[Digest] Deepseek fallback also failed: {exc}")
+    return ""
 
 
 def _query_telegram_outbox_24h(portfolio_db: dict) -> list:
@@ -416,7 +615,7 @@ def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_com
 </body></html>"""
 
 
-def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = "", portfolio_db: dict = {}, wm_token: str = ""):
+def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = "", portfolio_db: dict = {}, wm_token: str = "", deepseek_key: str = "", xai_key: str = ""):
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
     now_utc = datetime.now(timezone.utc)
@@ -440,6 +639,7 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
     llm_rows = []
     total_prompt = total_completion = 0
     total_cost = 0.0
+    diagnoses = []
 
     for sched in SCHEDULES:
         spath = sched["path"]
@@ -462,12 +662,16 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
             rows.append({"label": label, "status": "STALE", "error": f"API error: {e}",
                          "email_match": sched["email_match"], "email_count": email_count,
                          "email_expect": sched["email_expect"]})
+            d = _diagnose_failure(label, spath, "STALE", f"API error: {e}", "unknown", deepseek_key)
+            diagnoses.append({"label": label, **d})
             continue
 
         if not jobs:
             rows.append({"label": label, "status": "STALE", "error": "No runs found",
                          "email_match": sched["email_match"], "email_count": email_count,
                          "email_expect": sched["email_expect"]})
+            d = _diagnose_failure(label, spath, "STALE", "No runs found", "never", deepseek_key)
+            diagnoses.append({"label": label, **d})
             continue
 
         job = jobs[0]
@@ -494,10 +698,14 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
             except Exception as _exc:
                 log.warning("Suppressed: %s", _exc)
             rows.append({**base_row, "status": "FAILED", "error": error_msg})
+            d = _diagnose_failure(label, spath, "FAILED", error_msg, age_str, deepseek_key)
+            diagnoses.append({"label": label, **d})
             continue
 
         if age_h > max_age_h:
             rows.append({**base_row, "status": "STALE", "error": f"No run in last {max_age_h}h"})
+            d = _diagnose_failure(label, spath, "STALE", f"No run in last {max_age_h}h", age_str, deepseek_key)
+            diagnoses.append({"label": label, **d})
             continue
 
         ok_count += 1
@@ -609,13 +817,40 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
                 log.warning(f"[OutboxAudit] {len(failures)} formatter issue(s): "
                              + "; ".join(f"{r['script_name']}:{r.get('error','undelivered')}"
                                          for r in failures))
+        # ── Content collector + spec checks ─────────────────────────────────────
+        content_reports = _collect_24h_reports(now_sgt)
+        spec_checks = [_spec_check(r) for r in content_reports]
+        failing_specs = [s for s in spec_checks if not s["pass"]]
+        if failing_specs:
+            log.warning(f"[SpecCheck] {len(failing_specs)} spec failure(s): "
+                         + "; ".join(f"{s['output']}:{s['violations']}" for s in failing_specs))
+        content_inventory = [
+            {"type": r["type"], "path": r["path"],
+             "word_count": r["word_count"]}
+            for r in content_reports
+        ]
+
+        # ── Holistic daily digest (Grok-4 → Deepseek fallback) ───────────────
+        digest = ""
+        if xai_key or deepseek_key:
+            try:
+                digest = _synthesise_daily_digest(content_reports, xai_key, deepseek_key)
+                if digest:
+                    log.info(f"[Digest] {len(digest.split())} words synthesised")
+            except Exception as exc:
+                log.warning(f"[Digest] Synthesis failed: {exc}")
+
         front_matter = {
-            "tg_date":     tg_date,
-            "ok_count":    ok_count,
-            "total":       total,
-            "rows":        fm_rows,
-            "token_usage": token_usage,
-            "outbox_rows": outbox_rows,
+            "tg_date":           tg_date,
+            "ok_count":          ok_count,
+            "total":             total,
+            "rows":              fm_rows,
+            "token_usage":       token_usage,
+            "outbox_rows":       outbox_rows,
+            "diagnoses":         diagnoses,
+            "spec_checks":       spec_checks,
+            "content_inventory": content_inventory,
+            "digest":            digest,
         }
         narrative = _build_health_narrative(rows, ok_count, total, llm_rows, total_cost, now_sgt)
         import os as _os2

@@ -27,6 +27,15 @@ schema:
       type: string
     workspace_id:
       type: string
+    telegram_bot_token:
+      type: string
+      default: "$var:u/admin/telegram_bot_token"
+    telegram_owner_id:
+      type: string
+      default: "$var:u/admin/telegram_owner_id"
+    deepseek_key:
+      type: string
+      default: "$var:u/admin/deepseek_key"
   required:
     - smtp_resource
     - path

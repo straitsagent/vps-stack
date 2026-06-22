@@ -225,6 +225,7 @@ services:
     volumes:
       - /root/research:/research:ro
       - /root/windmill:/windmill:ro
+      - /root/scripts:/scripts:ro
     logging: *default-logging
 
   portfolio_postgres:

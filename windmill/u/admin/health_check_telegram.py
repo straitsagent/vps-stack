@@ -123,15 +123,13 @@ def _parse_md_report(md_path: str) -> tuple:
 
 # ── Message builder (pure function — unit-testable) ─────────────────────────
 
-def _build_message(front_matter: dict, narrative: str) -> str:
+def _build_message(front_matter: dict, narrative: str = "") -> str:
     """
     Build the self-contained Telegram health check report.
-    front_matter must contain:
-      tg_date, ok_count, total,
-      rows: [{label, status, age_str, error}],
-      token_usage: [{job, model, tokens, cost_usd}]  (may be empty)
-      outbox_rows: [{script_name, delivered, word_count, error, sent_at}]  (may be absent/empty)
-    narrative: additional system notes or templated commentary (≥500 words when combined)
+    Renders: header → digest (or narrative fallback) → ops status → spec checks →
+    AI diagnoses → token usage → outbox audit.
+    All new front-matter keys (digest, spec_checks, diagnoses, content_inventory)
+    are optional for backward compatibility.
     """
     tg_date     = front_matter.get("tg_date", "")
     ok_count    = front_matter.get("ok_count", 0)
@@ -139,25 +137,57 @@ def _build_message(front_matter: dict, narrative: str) -> str:
     rows        = front_matter.get("rows", [])
     token_usage = front_matter.get("token_usage", [])
     outbox_rows = front_matter.get("outbox_rows", [])
+    diagnoses   = front_matter.get("diagnoses", [])
+    spec_checks = front_matter.get("spec_checks", [])
+    digest      = front_matter.get("digest", "")
 
     icon = "✅" if ok_count == total else "⚠️"
-    header = f"*Health Check — {tg_date} | {ok_count}/{total} OK {icon}*"
+    lines = [f"*Health Check — {tg_date} | {ok_count}/{total} OK {icon}*", ""]
 
-    # Per-schedule status lines — detailed
-    status_lines = []
+    # ── Daily digest (main analytical body) ───────────────────────────────────
+    if digest:
+        lines += ["", digest, ""]
+    elif narrative.strip():
+        lines += ["", narrative.strip(), ""]
+
+    # ── Ops status table ───────────────────────────────────────────────────────
+    lines.append("*Ops Status:*")
     for row in rows:
-        label     = row.get("label", "Unknown")
-        status    = row.get("status", "?")
-        age_str   = row.get("age_str", "")
-        error     = row.get("error", "")
-        st_icon   = "✅" if status == "OK" else "❌"
-        detail    = f" — {error}" if error else (f" — {age_str}" if age_str else "")
-        status_lines.append(f"{st_icon} *{label}*{detail}")
+        label   = row.get("label", "Unknown")
+        status  = row.get("status", "?")
+        age_str = row.get("age_str", "")
+        error   = row.get("error", "")
+        st_icon = "✅" if status == "OK" else "❌"
+        detail  = f" — {error}" if error else (f" — {age_str}" if age_str else "")
+        lines.append(f"{st_icon} *{label}*{detail}")
 
-    # Token usage section
-    token_lines = []
+    # ── Spec check results (failures only) ────────────────────────────────────
+    spec_failures = [s for s in spec_checks if not s.get("pass")]
+    if spec_failures:
+        lines.append("\n*Output Spec Failures:*")
+        for sf in spec_failures:
+            output = sf.get("output", "?")
+            for v in sf.get("violations", []):
+                lines.append(f"⚠️ *{output}*: {v}")
+    elif spec_checks:
+        lines.append(f"\n*Output Spec Checks:* All {len(spec_checks)} outputs passed ✅")
+
+    # ── AI diagnoses ──────────────────────────────────────────────────────────
+    if diagnoses:
+        lines.append("\n*AI Diagnoses:*")
+        for d in diagnoses:
+            label      = d.get("label", "?")
+            root_cause = d.get("root_cause", "")
+            remediation = d.get("remediation", "")
+            lines.append(f"🔍 *{label}*")
+            if root_cause:
+                lines.append(f"   Cause: {root_cause}")
+            if remediation:
+                lines.append(f"   Fix: {remediation}")
+
+    # ── Token usage ────────────────────────────────────────────────────────────
     if token_usage:
-        token_lines.append("\n*24h Token Usage:*")
+        lines.append("\n*24h Token Usage:*")
         total_cost = 0.0
         for entry in token_usage:
             job   = entry.get("job", "?")
@@ -165,13 +195,12 @@ def _build_message(front_matter: dict, narrative: str) -> str:
             toks  = entry.get("tokens", 0)
             cost  = entry.get("cost_usd", 0.0)
             total_cost += cost
-            token_lines.append(f"• {job} ({model}): {toks:,} tokens — ${cost:.4f}")
-        token_lines.append(f"Total estimated cost: ${total_cost:.4f}")
+            lines.append(f"• {job} ({model}): {toks:,} tokens — ${cost:.4f}")
+        lines.append(f"Total estimated cost: ${total_cost:.4f}")
 
-    # Telegram formatter outbox audit — surfaces delivery failures and BELOW_MIN_WORDS violations
-    outbox_lines = []
+    # ── Telegram formatter outbox audit ───────────────────────────────────────
     if outbox_rows:
-        outbox_lines.append("\n*Telegram Formatter Audit (24h):*")
+        lines.append("\n*Telegram Formatter Audit (24h):*")
         for row in outbox_rows:
             name      = row.get("script_name", "?")
             words     = row.get("word_count", 0)
@@ -179,47 +208,33 @@ def _build_message(front_matter: dict, narrative: str) -> str:
             error     = row.get("error") or ""
             ot_icon   = "✅" if delivered and not error else "❌"
             detail    = f" — {error}" if error else f" — {words}w"
-            outbox_lines.append(f"{ot_icon} {name}{detail}")
+            lines.append(f"{ot_icon} {name}{detail}")
     else:
-        outbox_lines.append("\n*Telegram Formatter Audit:* No sends recorded in last 24h")
+        lines.append("\n*Telegram Formatter Audit:* No sends recorded in last 24h")
 
-    # System observations — explain what OK/FAIL means in context
-    observations = []
+    # ── Closing observations ───────────────────────────────────────────────────
     failed_schedules = [r for r in rows if r.get("status") != "OK"]
-    if failed_schedules:
-        observations.append(
+    if failed_schedules and not diagnoses:
+        lines.append(
             f"\n*Attention required:* {len(failed_schedules)} schedule(s) are in FAIL state. "
-            "A FAIL typically means the last job ran more than the expected interval ago, "
-            "the job returned an error result, or no completed job was found within the lookback window. "
-            "Check the Windmill job logs for the affected schedules to diagnose root cause."
+            "Check the Windmill job logs for stack traces or dependency errors."
         )
         for row in failed_schedules:
             label = row.get("label", "?")
             error = row.get("error", "unknown")
             age   = row.get("age_str", "unknown age")
-            observations.append(
+            lines.append(
                 f"• *{label}*: {error} (last seen: {age}). "
                 "Recommended action: open Windmill, navigate to this schedule, inspect the most "
                 "recent completed and failed jobs for stack traces or dependency errors."
             )
-    else:
-        observations.append(
+    elif not failed_schedules:
+        lines.append(
             "\n*All systems nominal.* All scheduled jobs completed within their expected intervals "
             "and returned successful results. No manual intervention required."
         )
 
-    # Combine all sections into a single cohesive report
-    all_sections = (
-        [header, ""]
-        + status_lines
-        + token_lines
-        + outbox_lines
-        + observations
-    )
-
-    body = narrative.strip() if narrative.strip() else ""
-    base = "\n".join(all_sections)
-    return f"{base}\n\n{body}" if body else base
+    return "\n".join(lines)
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
