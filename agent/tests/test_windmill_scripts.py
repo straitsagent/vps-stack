@@ -5842,3 +5842,69 @@ def test_health_check_daily_schedule_is_8am():
         "health_check_daily.schedule.yaml must use cron '0 0 8 * * *' (08:00 SGT). "
         "Current schedule must be updated from 7:00 AM to 8:00 AM."
     )
+
+
+# ── Email HTML rendering — digest / spec / diagnoses (Part 2F) ───────────────
+
+def test_build_html_renders_digest():
+    """build_html must include the digest text when digest arg is non-empty."""
+    hc = _load_hc_module()
+    import datetime
+    sgt = datetime.timezone(datetime.timedelta(hours=8))
+    now = datetime.datetime(2026, 6, 22, 8, 0, tzinfo=sgt)
+    rows = [{"label": "Morning News Digest", "status": "OK", "age_str": "30m ago",
+             "error": "", "last_run": "6:30 AM", "email_count": 1, "email_match": ["Morning Digest"],
+             "email_expect": 1}]
+    digest_text = "This is the holistic executive brief synthesised by Grok-4 for the day."
+    html = hc.build_html(rows, now, 1, 1, [], 0, 0, 0.0, [], [],
+                         digest=digest_text)
+    assert digest_text[:40] in html, "Digest text must appear in email HTML"
+
+
+def test_build_html_renders_spec_failures():
+    """build_html must surface spec violations when spec_checks contains failures."""
+    hc = _load_hc_module()
+    import datetime
+    sgt = datetime.timezone(datetime.timedelta(hours=8))
+    now = datetime.datetime(2026, 6, 22, 8, 0, tzinfo=sgt)
+    rows = [{"label": "Morning News Digest", "status": "OK", "age_str": "30m ago",
+             "error": "", "last_run": "6:30 AM", "email_count": 1, "email_match": ["Morning Digest"],
+             "email_expect": 1}]
+    spec_checks = [{"output": "macro", "pass": False,
+                    "violations": ["indicators.yahoo must have ≥12 symbols"]}]
+    html = hc.build_html(rows, now, 1, 1, [], 0, 0, 0.0, [], [],
+                         spec_checks=spec_checks)
+    assert "indicators.yahoo" in html, "Spec violation text must appear in email HTML"
+
+
+def test_build_html_renders_diagnoses():
+    """build_html must render AI diagnoses when diagnoses list is non-empty."""
+    hc = _load_hc_module()
+    import datetime
+    sgt = datetime.timezone(datetime.timedelta(hours=8))
+    now = datetime.datetime(2026, 6, 22, 8, 0, tzinfo=sgt)
+    rows = [{"label": "Portfolio Email (PM)", "status": "FAILED", "age_str": "40h ago",
+             "error": "", "last_run": "6:00 PM†", "email_count": 0,
+             "email_match": ["Portfolio", "Asia Close"], "email_expect": 1}]
+    diagnoses = [{"label": "Portfolio Email (PM)",
+                  "root_cause": "SMTP authentication failure.",
+                  "remediation": "Rotate Gmail app password."}]
+    html = hc.build_html(rows, now, 0, 1, [], 0, 0, 0.0, [], [],
+                         diagnoses=diagnoses)
+    assert "SMTP authentication failure" in html, "Diagnosis root_cause must appear in email HTML"
+    assert "Rotate Gmail app password" in html, "Diagnosis remediation must appear in email HTML"
+
+
+def test_build_html_no_new_content_unchanged():
+    """build_html with empty digest/spec/diagnoses must not include those section headers."""
+    hc = _load_hc_module()
+    import datetime
+    sgt = datetime.timezone(datetime.timedelta(hours=8))
+    now = datetime.datetime(2026, 6, 22, 8, 0, tzinfo=sgt)
+    rows = [{"label": "Morning News Digest", "status": "OK", "age_str": "30m ago",
+             "error": "", "last_run": "6:30 AM", "email_count": 1, "email_match": ["Morning Digest"],
+             "email_expect": 1}]
+    html = hc.build_html(rows, now, 1, 1, [], 0, 0, 0.0, [], [])
+    assert "Daily Brief" not in html, "Digest section must not appear when digest is empty"
+    assert "Spec Check" not in html, "Spec section must not appear when no failures"
+    assert "AI Diagnosis" not in html, "Diagnoses section must not appear when diagnoses is empty"

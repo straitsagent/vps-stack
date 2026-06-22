@@ -471,7 +471,8 @@ def count_matching(subjects, keywords):
 
 
 def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_completion,
-               total_cost, sent_subjects, extra_categories):
+               total_cost, sent_subjects, extra_categories,
+               digest="", spec_checks=None, diagnoses=None):
     date_str = now_sgt.strftime("%A, %-d %B %Y")
     time_str = now_sgt.strftime("%-I:%M %p SGT")
     all_ok = ok_count == total
@@ -589,11 +590,63 @@ def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_com
         </tr>
       </table>"""
 
+    # ── Daily Brief (digest) ─────────────────────────────────────────────────
+    digest_section = ""
+    if digest:
+        digest_html = digest.replace("\n\n", "</p><p style='margin:8px 0'>").replace("\n", "<br>")
+        digest_section = f"""
+      <h3 style="margin:28px 0 8px;font-size:12px;color:{GRAY};letter-spacing:0.08em;text-transform:uppercase">
+        Daily Brief
+      </h3>
+      <div style="font-size:14px;line-height:1.6;color:#1c2024;background:#f9f9f9;padding:14px 16px;border-left:3px solid #4a90d9;border-radius:3px">
+        <p style="margin:0">{digest_html}</p>
+      </div>"""
+
+    # ── Spec Check Failures ──────────────────────────────────────────────────
+    spec_section = ""
+    failing = [s for s in (spec_checks or []) if not s.get("pass")]
+    if failing:
+        spec_rows_html = ""
+        for s in failing:
+            for v in s.get("violations", []):
+                spec_rows_html += f"""
+          <tr style="border-bottom:1px solid #fff3cd">
+            <td style="padding:4px 12px 4px 0;font-size:13px;color:{ORANGE}">⚠️</td>
+            <td style="padding:4px 12px;font-size:13px;color:{GRAY}">{s['output']}</td>
+            <td style="padding:4px 0;font-size:13px">{v}</td>
+          </tr>"""
+        spec_section = f"""
+      <h3 style="margin:28px 0 8px;font-size:12px;color:{GRAY};letter-spacing:0.08em;text-transform:uppercase">
+        Spec Check Failures ({len(failing)} output{'s' if len(failing) > 1 else ''})
+      </h3>
+      <table style="border-collapse:collapse">{spec_rows_html}
+      </table>"""
+
+    # ── AI Diagnoses ─────────────────────────────────────────────────────────
+    diag_section = ""
+    if diagnoses:
+        diag_html = ""
+        for d in diagnoses:
+            diag_html += f"""
+        <div style="margin-bottom:12px">
+          <span style="font-size:13px;font-weight:bold">{d['label']}</span><br>
+          <span style="font-size:13px;color:{GRAY}">Cause:</span>
+          <span style="font-size:13px"> {d.get('root_cause','')}</span><br>
+          <span style="font-size:13px;color:{GRAY}">Fix:</span>
+          <span style="font-size:13px"> {d.get('remediation','')}</span>
+        </div>"""
+        diag_section = f"""
+      <h3 style="margin:28px 0 8px;font-size:12px;color:{GRAY};letter-spacing:0.08em;text-transform:uppercase">
+        AI Diagnoses
+      </h3>
+      <div style="font-size:14px">{diag_html}</div>"""
+
     return f"""
 <html><body style="font-family:Arial,sans-serif;max-width:760px;margin:0 auto;color:#1c2024;padding:16px">
   <h2 style="margin-bottom:2px">Automation Health — {date_str}</h2>
   <p style="color:{GRAY};margin:0 0 4px;font-size:14px">{time_str}</p>
   <p style="font-size:16px;font-weight:bold;color:{summary_color};margin:0 0 20px">{summary_text}</p>
+  {digest_section}
 
   <table style="border-collapse:collapse;width:100%">
     <thead>
@@ -610,6 +663,8 @@ def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_com
       <tr><td colspan="6" style="padding:4px 12px;font-size:11px;color:{GRAY}">† previous day</td></tr>
     </tbody>
   </table>
+  {spec_section}
+  {diag_section}
   {sent_section}
   {llm_section}
 </body></html>"""
@@ -765,9 +820,35 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
                 log.info(f"Token fetch failed for {label}: {e}")
 
     total = len(SCHEDULES)
+
+    # ── Content engine (runs unconditionally — used by email + .md + Telegram) ─
+    content_reports = []
+    spec_checks = []
+    content_inventory = []
+    digest = ""
+    try:
+        content_reports = _collect_24h_reports(now_sgt)
+        spec_checks = [_spec_check(r) for r in content_reports]
+        failing_specs = [s for s in spec_checks if not s["pass"]]
+        if failing_specs:
+            log.warning(f"[SpecCheck] {len(failing_specs)} spec failure(s): "
+                         + "; ".join(f"{s['output']}:{s['violations']}" for s in failing_specs))
+        content_inventory = [{"type": r["type"], "path": r["path"],
+                               "word_count": r["word_count"]} for r in content_reports]
+    except Exception as exc:
+        log.warning(f"[ContentEngine] Collect/spec failed: {exc}")
+    if xai_key or deepseek_key:
+        try:
+            digest = _synthesise_daily_digest(content_reports, xai_key, deepseek_key)
+            if digest:
+                log.info(f"[Digest] {len(digest.split())} words synthesised")
+        except Exception as exc:
+            log.warning(f"[Digest] Synthesis failed: {exc}")
+
     subject = f"Health Check — {now_sgt.strftime('%-d %b %Y')} | {ok_count}/{total} OK"
     html = build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_completion,
-                      total_cost, sent_subjects, EXTRA_CATEGORIES)
+                      total_cost, sent_subjects, EXTRA_CATEGORIES,
+                      digest=digest, spec_checks=spec_checks, diagnoses=diagnoses)
 
     if gmail_smtp:
         msg = MIMEMultipart("alternative")
@@ -817,29 +898,6 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
                 log.warning(f"[OutboxAudit] {len(failures)} formatter issue(s): "
                              + "; ".join(f"{r['script_name']}:{r.get('error','undelivered')}"
                                          for r in failures))
-        # ── Content collector + spec checks ─────────────────────────────────────
-        content_reports = _collect_24h_reports(now_sgt)
-        spec_checks = [_spec_check(r) for r in content_reports]
-        failing_specs = [s for s in spec_checks if not s["pass"]]
-        if failing_specs:
-            log.warning(f"[SpecCheck] {len(failing_specs)} spec failure(s): "
-                         + "; ".join(f"{s['output']}:{s['violations']}" for s in failing_specs))
-        content_inventory = [
-            {"type": r["type"], "path": r["path"],
-             "word_count": r["word_count"]}
-            for r in content_reports
-        ]
-
-        # ── Holistic daily digest (Grok-4 → Deepseek fallback) ───────────────
-        digest = ""
-        if xai_key or deepseek_key:
-            try:
-                digest = _synthesise_daily_digest(content_reports, xai_key, deepseek_key)
-                if digest:
-                    log.info(f"[Digest] {len(digest.split())} words synthesised")
-            except Exception as exc:
-                log.warning(f"[Digest] Synthesis failed: {exc}")
-
         front_matter = {
             "tg_date":           tg_date,
             "ok_count":          ok_count,
