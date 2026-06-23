@@ -6433,25 +6433,35 @@ def test_affection_ping_caption_one_sentence(monkeypatch):
 
 
 def test_affection_ping_send_sticker_payload(monkeypatch):
-    """_send_sticker must POST to /sendSticker with chat_id, sticker, caption."""
+    """_send_sticker must send caption via sendMessage, then sticker via sendSticker.
+    sendSticker's caption parameter is silently dropped by Telegram — verified live.
+    So the caption goes as a separate sendMessage before the sticker.
+    """
     mod = _load_affection_mod()
-    captured = {}
+    calls = []
     class _FakeResp:
         def json(self):
             return {"ok": True}
     import requests as _real_req
     def _fake_post(url, json=None, **kw):
-        captured["url"] = url
-        captured["payload"] = json
+        calls.append({"url": url, "payload": json})
         return _FakeResp()
     monkeypatch.setattr(_real_req, "post", _fake_post)
     delivered, err = mod._send_sticker("tok", "-4830227987", "FILE123", "hello there")
     assert delivered is True, f"Should deliver, got err: {err}"
     assert err is None
-    assert "/sendSticker" in captured["url"], f"URL must end with /sendSticker: {captured['url']}"
-    assert captured["payload"]["chat_id"] == "-4830227987"
-    assert captured["payload"]["sticker"] == "FILE123"
-    assert captured["payload"]["caption"] == "hello there"
+    # Two calls: sendMessage (caption) + sendSticker (sticker)
+    assert len(calls) == 2, f"Expected 2 API calls, got {len(calls)}"
+    # Call 1: sendMessage with caption text
+    assert "/sendMessage" in calls[0]["url"], f"First call must be sendMessage: {calls[0]['url']}"
+    assert calls[0]["payload"]["chat_id"] == "-4830227987"
+    assert calls[0]["payload"]["text"] == "hello there"
+    # Call 2: sendSticker with file_id (no caption — it doesn't work)
+    assert "/sendSticker" in calls[1]["url"], f"Second call must be sendSticker: {calls[1]['url']}"
+    assert calls[1]["payload"]["chat_id"] == "-4830227987"
+    assert calls[1]["payload"]["sticker"] == "FILE123"
+    assert "caption" not in calls[1]["payload"], \
+        "sendSticker must NOT include caption — Telegram silently drops it"
 
 
 def test_affection_ping_outbox_row_written(monkeypatch):

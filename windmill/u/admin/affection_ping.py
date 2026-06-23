@@ -115,11 +115,36 @@ def _generate_caption(deepseek_key: str) -> str:
 
 
 def _send_sticker(bot_token: str, chat_id: str, file_id: str, caption: str) -> tuple:
-    """Send a sticker with caption via sendSticker. Returns (delivered: bool, error: str|None)."""
+    """Send caption as sendMessage, then sticker as sendSticker (separate messages).
+    sendSticker's caption parameter is silently dropped by Telegram — verified live.
+    Returns (delivered: bool, error: str|None). Both must succeed for delivered=True.
+    """
+    # 1. Send caption as a text message
+    msg_ok, msg_err = _send_message(bot_token, chat_id, caption)
+    if not msg_ok:
+        return False, f"caption sendMessage failed: {msg_err}"
+
+    # 2. Send the sticker (no caption — it doesn't work)
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendSticker",
-            json={"chat_id": chat_id, "sticker": file_id, "caption": caption},
+            json={"chat_id": chat_id, "sticker": file_id},
+            timeout=15,
+        )
+        body = r.json()
+        if body.get("ok"):
+            return True, None
+        return False, f"sendSticker failed: {body.get('description', f'HTTP {r.status_code}')}"
+    except Exception as e:
+        return False, str(e)
+
+
+def _send_message(bot_token: str, chat_id: str, text: str) -> tuple:
+    """Send a plain text message via sendMessage. Returns (delivered: bool, error: str|None)."""
+    try:
+        r = requests.post(
+            f"https://api.telegram.org/bot{bot_token}/sendMessage",
+            json={"chat_id": chat_id, "text": text},
             timeout=15,
         )
         body = r.json()
