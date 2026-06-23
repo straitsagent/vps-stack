@@ -47,9 +47,19 @@ _FALLBACK_CAPTIONS = [
 
 _CAPTION_MAX_CHARS = 1024  # Telegram sendSticker caption limit
 
+# Only pick stickers whose emoji marker is affectionate/positive.
+# BubuDudu has 77 stickers — many are angry (😡), sad (😢), crying (😭),
+# anxious (😰), devil (😈), etc. Filter to warm/cute emojis only.
+_AFFECTIONATE_EMOJIS = {
+    "🥰", "😍", "🥺", "😇", "😊", "☺️", "🤗", "😘", "😚", "❤️",
+    "😋", "😌", "😄", "😁", "😃", "😆", "😎", "🙂", "😉", "😛",
+    "😅", "😂", "🤣", "🥳", "💐", "🐼", "🐻", "🤤", "👀", "🤭",
+    "😌", "💓", "💖", "💕", "💗", "💘",
+}
+
 
 def _fetch_stickers(bot_token: str, pack_names: list) -> list:
-    """Return flat list of sticker dicts (each with file_id) from all packs."""
+    """Return flat list of affectionate sticker dicts (filtered by emoji) from all packs."""
     out = []
     for name in pack_names:
         name = name.strip()
@@ -63,9 +73,13 @@ def _fetch_stickers(bot_token: str, pack_names: list) -> list:
             )
             body = r.json()
             if body.get("ok"):
-                stickers = body.get("result", {}).get("stickers", [])
-                log.info(f"[Stickers] {name}: {len(stickers)} stickers")
-                out.extend(stickers)
+                all_stickers = body.get("result", {}).get("stickers", [])
+                # Filter to affectionate emojis only
+                cute = [s for s in all_stickers
+                        if s.get("emoji", "") in _AFFECTIONATE_EMOJIS]
+                log.info(f"[Stickers] {name}: {len(all_stickers)} total, "
+                         f"{len(cute)} affectionate (emoji-filtered)")
+                out.extend(cute)
             else:
                 log.warning(f"[Stickers] {name}: {body.get('description', 'not ok')}")
         except Exception as e:

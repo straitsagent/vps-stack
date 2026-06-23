@@ -6366,10 +6366,11 @@ def _load_affection_mod():
 def test_affection_ping_picks_valid_sticker(monkeypatch):
     """_fetch_stickers must return a non-empty list; random.choice picks one with file_id."""
     mod = _load_affection_mod()
+    # Stickers must have emoji markers — _fetch_stickers filters by affectionate emojis
     fake_stickers = [
-        {"file_id": "AAA111", "set_name": "BubuDudu"},
-        {"file_id": "BBB222", "set_name": "BubuDudu"},
-        {"file_id": "CCC333", "set_name": "BubuDudu"},
+        {"file_id": "AAA111", "set_name": "BubuDudu", "emoji": "🥰"},
+        {"file_id": "BBB222", "set_name": "BubuDudu", "emoji": "😍"},
+        {"file_id": "CCC333", "set_name": "BubuDudu", "emoji": "😡"},  # angry — filtered out
     ]
     # Patch requests.get to return our fake stickers
     class _FakeResp:
@@ -6380,9 +6381,36 @@ def test_affection_ping_picks_valid_sticker(monkeypatch):
     import requests as _real_req
     monkeypatch.setattr(_real_req, "get", lambda *a, **kw: _FakeResp(fake_stickers))
     result = mod._fetch_stickers("fake_token", ["BubuDudu"])
-    assert len(result) == 3, f"Expected 3 stickers, got {len(result)}"
+    # Only 2 stickers pass the affectionate-emoji filter (angry one excluded)
+    assert len(result) == 2, f"Expected 2 affectionate stickers (angry filtered), got {len(result)}"
     file_ids = {s["file_id"] for s in result}
-    assert file_ids == {"AAA111", "BBB222", "CCC333"}
+    assert file_ids == {"AAA111", "BBB222"}, f"Angry sticker should be filtered out, got {file_ids}"
+
+
+def test_affection_ping_filters_negative_emojis(monkeypatch):
+    """_fetch_stickers must exclude negative-emotion stickers (angry, sad, crying, etc.)."""
+    mod = _load_affection_mod()
+    fake_stickers = [
+        {"file_id": "GOOD1", "emoji": "🥰"},
+        {"file_id": "GOOD2", "emoji": "😊"},
+        {"file_id": "BAD1", "emoji": "😡"},   # angry
+        {"file_id": "BAD2", "emoji": "😢"},   # crying
+        {"file_id": "BAD3", "emoji": "😭"},   # sobbing
+        {"file_id": "BAD4", "emoji": "😈"},   # devil
+    ]
+    class _FakeResp:
+        def json(self):
+            return {"ok": True, "result": {"stickers": fake_stickers}}
+    import requests as _real_req
+    monkeypatch.setattr(_real_req, "get", lambda *a, **kw: _FakeResp())
+    result = mod._fetch_stickers("fake_token", ["BubuDudu"])
+    file_ids = {s["file_id"] for s in result}
+    assert file_ids == {"GOOD1", "GOOD2"}, \
+        f"Only affectionate emojis should pass filter, got {file_ids}"
+    assert "BAD1" not in file_ids, "Angry sticker must be filtered"
+    assert "BAD2" not in file_ids, "Crying sticker must be filtered"
+    assert "BAD3" not in file_ids, "Sobbing sticker must be filtered"
+    assert "BAD4" not in file_ids, "Devil sticker must be filtered"
 
 
 def test_affection_ping_caption_one_sentence(monkeypatch):
