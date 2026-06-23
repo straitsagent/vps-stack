@@ -326,6 +326,77 @@ declaring it works:
 
 ---
 
+## Verify the Response, Not the Request (Hard Rule 21)
+
+Hard Rule 17's procedures (IMAP body fetch, `word_count ≥ 500`, "→ email" pointer check) are
+written for ≥500-word text reports. For non-report sends (stickers, short messages, emojis) or any
+send where the API may silently drop parameters, Rule 17's *principle* (inspect the actual delivered
+artifact) still applies — but the *procedure* must be adapted. Hard Rule 21 closes this gap.
+
+**The problem:** APIs may return `ok: true` while silently dropping parameters. Telegram's
+`sendSticker` accepts a `caption` parameter but never delivers it — the response has no `caption`
+field, and no error is returned. A test that asserts `payload["caption"] == X` proves the code
+*sent* the parameter; it does not prove the user *received* it.
+
+### Testing rule
+
+Mock the API to return a **realistic response** — including fields the API actually returns,
+**omitting** fields it silently drops. Then assert on the response, not the request:
+
+```python
+# ❌ Wrong — asserts on the request payload. Proves nothing about delivery.
+assert payload["caption"] == "hello there"
+
+# ✅ Correct — mocks a realistic sendSticker response (no caption field),
+# asserts the code detects the missing field and reports failure.
+class _FakeStickerResp:
+    def json(self):
+        return {"ok": True, "result": {"message_id": 1, "sticker": {"emoji": "🥰"}}}
+        # note: no "caption" field — Telegram drops it silently
+
+def test_send_sticker_detects_missing_caption(monkeypatch):
+    mod = _load_affection_mod()
+    monkeypatch.setattr(requests, "post", lambda *a, **kw: _FakeStickerResp())
+    delivered, err = mod._send_sticker("tok", "-123", "FILE", "hello there")
+    # Code must detect that caption was not delivered and report it
+    assert "caption" in err.lower(), "Must flag missing caption in error"
+```
+
+For sends where the response *does* include the content field (e.g. `sendMessage` returns
+`result.text`), assert directly on that field:
+
+```python
+# ✅ Correct — asserts the text field is present and matches in the response
+assert response["result"]["text"] == "hello there"
+```
+
+### Live verification rule
+
+Inspect the actual API response JSON. Do not trust `ok: true`, `delivered: True` from your own
+code, or DB rows written by your own code. For every user-visible field the send is supposed to
+deliver:
+
+| Send type | What to check in the response | What is NOT verification |
+|---|---|---|
+| `sendMessage` (text) | `result.text` present and matches expected content | `ok: true`; `delivered: True` in your DB |
+| `sendSticker` | `result.sticker.emoji` present and matches expected emoji; `result.sticker.file_id` matches what was sent | `ok: true`; `payload["sticker"]` in the request |
+| `sendSticker` with caption | **Caption is never in the response** — if a caption is needed, send it via `sendMessage` first, then verify `result.text` on the `sendMessage` response | `payload["caption"]` in the request |
+| Sticker content audit | Resolve `file_id` back to its emoji via `getStickerSet`, assert emoji is in the expected set (e.g. `_AFFECTIONATE_EMOJIS`) | Trusting `random.choice` picked correctly |
+
+### Worked example — the bugs this rule would have caught
+
+**Bug 1 (2026-06-23): `sendSticker` caption silently dropped.**
+- What shipped: `_send_sticker` sent `caption` in the `sendSticker` payload, checked `body.get("ok")`, reported `delivered: True`.
+- What Rule 21 requires: inspect `sendSticker` response — no `caption` field present. Code must detect this and either send caption via `sendMessage` or report failure.
+- What the test should have been: mock `sendSticker` returning `{ok: true, result: {sticker: {...}}}` (no caption), assert `_send_sticker` flags the missing caption.
+
+**Bug 2 (2026-06-23): Angry-emoji sticker paired with loving caption.**
+- What shipped: `random.choice` over 77 stickers including 😡😢😭😈, no emoji filter, no verification of delivered sticker's emoji.
+- What Rule 21 requires: resolve delivered `file_id` to its emoji via `getStickerSet`, assert emoji is affectionate.
+- What the live verification should have been: `getStickerSet` → find the sticker by `file_id` → check `sticker.emoji` ∈ `_AFFECTIONATE_EMOJIS`.
+
+---
+
 ## Files
 
 | File | Purpose |
@@ -333,7 +404,7 @@ declaring it works:
 | `agent/tests/test_windmill_scripts.py` | All tests — ASD dicts, artifact-render harnesses, round-trip contracts, architecture guards |
 | `windmill/u/admin/health_check.py` | Proven example: `_send_email`, `_build_md_content`, `_write_canonical_md`, `_build_front_matter` factored; Tier 0 `_fetch_sent_body` + `_artifact_body_check` |
 | `docs/WORKFLOW_ARCHITECTURE.md` | Per-workflow front-matter schema contracts |
-| `CLAUDE.md` Hard Rules 15–20 | Encoding of this philosophy as rules |
+| `CLAUDE.md` Hard Rules 15–21 | Encoding of this philosophy as rules |
 
 ---
 

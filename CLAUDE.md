@@ -226,6 +226,11 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
     5. **Completeness:** Does `test_<script>_email_and_telegram_agree` iterate **all** `_SCRIPT_ASD["shared_fields"]`, not a hand-picked subset?
     See `docs/TESTING.md` → "Testing Critic" section for examples of each failure mode.
 
+21. **Verify the response, not the request.** For any API call that delivers a user-visible artifact (Telegram message, sticker, email), the authoritative test and live verification assert on the API *response* body, not the request payload. APIs may return `ok: true` while silently dropping parameters — Telegram's `sendSticker` does this with `caption`.
+    - **Tests:** mock the API to return a realistic response (including fields the API actually returns, omitting fields it silently drops). Assert the code detects missing fields and reports failure. A test that asserts `payload["caption"] == X` proves nothing — assert `response["result"]["text"] == X`, or assert the code flags delivery failure when the field is absent.
+    - **Live verification:** inspect the actual API response JSON. For Telegram sends: confirm every intended field is present in `result` (e.g. `result.text` for messages, `result.sticker.emoji` for stickers). Resolve delivered `file_id`s back to their properties via `getStickerSet` and assert those properties match expectations.
+    - **Applies to all sends** — report or non-report, text or non-text. Rule 16 exemption does not exempt this rule. This is the gap that let Bug 2 (`sendSticker` caption silently dropped) and Bug 1 (angry-emoji sticker paired with loving caption) ship to production on 2026-06-23. Both were caught only by the human reading the group chat, not by tests or live verification — because both checked what the code *sent*, not what Telegram *delivered*.
+
 ---
 
 ## Earnings Report Standards
@@ -245,7 +250,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-23 (Affection Ping workflow built — hourly sticker + Deepseek caption to Telegram group, 8AM–10PM SGT. Silent groups agent routing added (`SILENT_GROUPS` env var) — bot ignores casual messages in listed groups, only responds to `/`-commands and `@StraitsAgentBot` mentions. New `affection_outbox` table (isolated from `telegram_outbox`). Rule 16 exemption logged for non-report sticker sends. 642 tests passing in container. Prior: Gap analysis applied — ASD convention, Testing Critic, Tier 0 verification. Repo: `vps-stack`.)
+**Last updated:** 2026-06-23 (Affection Ping workflow built — hourly sticker + Deepseek caption to Telegram group, 8AM–10PM SGT. Silent groups agent routing added (`SILENT_GROUPS` env var) — bot ignores casual messages in listed groups, only responds to `/`-commands and `@StraitsAgentBot` mentions. New `affection_outbox` table (isolated from `telegram_outbox`). Rule 16 exemption logged for non-report sticker sends. Two post-deploy bugs caught by owner: (1) negative-emoji stickers paired with loving captions — fixed with `_AFFECTIONATE_EMOJIS` allowlist; (2) `sendSticker` caption silently dropped by Telegram — fixed by sending caption as separate `sendMessage`. Hard Rule 21 added (verify the response, not the request) to prevent recurrence. 643 tests passing in container. Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`

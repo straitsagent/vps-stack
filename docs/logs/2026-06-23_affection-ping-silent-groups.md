@@ -1,6 +1,6 @@
 # Affection Ping — Hourly Sticker + Caption with Silent Groups Routing
 **Date:** 2026-06-23
-**Scope:** `affection_ping.py` (new), `agent/config.py`, `agent/main.py`, `agent.env`, `portfolio/schema.sql`, schedule YAML, 18 new tests.
+**Scope:** `affection_ping.py` (new), `agent/config.py`, `agent/main.py`, `agent.env`, `portfolio/schema.sql`, schedule YAML, 20 new tests, Hard Rule 21.
 
 ---
 
@@ -120,6 +120,27 @@ The owner reported: "none of the captions are being delivered. only stickers are
 
 **Live verified:** `sendMessage` response has `text: "This sticker's got more bounce than my heart when I think of you."` (msg 2132), `sendSticker` response has `sticker` with emoji 🤭 (msg 2133). Both messages appear in the group.
 
+### Bug 3 — Tests and live verification checked the request, not the response (root cause of Bugs 1+2)
+
+**This was the root cause that let Bugs 1 and 2 ship.** The tests asserted on the *request payload* (`assert payload["caption"] == "hello there"`) rather than the *API response* (`assert response["result"]["text"] == "hello there"`). The live verification checked `delivered: True` (which came from the code's own `body.get("ok")` check) and the DB row — both circular. Neither inspected the actual Telegram API response to confirm the delivered fields.
+
+Hard Rule 17's procedures (IMAP body fetch, `word_count ≥ 500`, "→ email" pointer) are all written for ≥500-word text reports. For a sticker send, none apply, and the methodology was effectively bypassed.
+
+**Fix — Hard Rule 21 added to CLAUDE.md:**
+
+> **Verify the response, not the request.** For any API call that delivers a user-visible artifact, the authoritative test and live verification assert on the API *response* body, not the request payload. APIs may return `ok: true` while silently dropping parameters.
+
+**Code fix — `_send_sticker` and `_send_message` now verify response fields:**
+- `_send_message`: checks `result.text` is present and matches the sent text; reports failure if missing or mismatched
+- `_send_sticker`: checks `result.sticker` is present and `result.sticker.emoji` is in `_AFFECTIONATE_EMOJIS`; reports failure if the emoji is negative (e.g. 😡) — even if `ok: true`
+
+**`docs/TESTING.md` updated** with a new "Verify the Response, Not the Request" section covering: the testing rule (mock realistic responses, assert on response fields), the live verification rule (per-send-type table of what to check), and worked examples showing how Rule 21 would have caught Bugs 1 and 2.
+
+**Live verified (Rule 21):**
+- Delivered sticker `file_id` resolved to emoji 😅 via `getStickerSet` — confirmed in `_AFFECTIONATE_EMOJIS` ✓
+- `sendMessage` response `result.text` present and matches caption ✓
+- `sendSticker` response `result.sticker` present with affectionate emoji ✓
+
 ---
 
 ## ⚠️ METHODOLOGY FAILURE — Testing Principles Not Followed
@@ -171,23 +192,25 @@ The affection_ping script was treated as exempt from the artifact-driven methodo
 
 ## TDD Evidence
 
-18 new tests across two files:
+20 new tests across two files:
 
 | File | Section | Tests | Result |
 |---|---|---|---|
-| `test_windmill_scripts.py` | affection_ping | 9 | GREEN |
+| `test_windmill_scripts.py` | affection_ping | 11 | GREEN |
 | `test_routing.py` | silent groups | 9 | GREEN |
 
 **affection_ping tests:**
 1. `test_affection_ping_picks_valid_sticker` — fake getStickerSet, assert valid file_id chosen, angry emoji filtered
 2. `test_affection_ping_filters_negative_emojis` — 😡😢😭😈 explicitly filtered out, 🥰😊 kept
 3. `test_affection_ping_caption_one_sentence` — fake Deepseek, assert ≤1024 chars, ≤1 sentence
-4. `test_affection_ping_send_sticker_payload` — two API calls: sendMessage (text) + sendSticker (no caption)
-5. `test_affection_ping_outbox_row_written` — fake psycopg2, assert INSERT with all 7 fields
-6. `test_affection_ping_deepseek_failure_fallback` — Deepseek raises, assert fallback caption used
-7. `test_affection_ping_skips_outside_window` — patch datetime to 3AM, assert `skipped: True`
-8. `test_affection_ping_no_sticker_pack_resolved` — getStickerSet fails, assert RuntimeError
-9. `test_affection_ping_group_id_is_negative` — static check: group_id passed through unchanged
+4. `test_affection_ping_send_sticker_payload` — two API calls: sendMessage (text) + sendSticker (no caption); mocks return realistic responses with `result.text` and `result.sticker.emoji`
+5. `test_affection_ping_send_sticker_detects_negative_emoji` — **Rule 21**: mock `sendSticker` returning `ok:true` with emoji 😡; assert `_send_sticker` reports failure (not `delivered: True`)
+6. `test_affection_ping_send_message_verifies_text` — **Rule 21**: mock `sendMessage` returning `ok:true` but no `result.text`; assert `_send_message` reports failure
+7. `test_affection_ping_outbox_row_written` — fake psycopg2, assert INSERT with all 7 fields
+8. `test_affection_ping_deepseek_failure_fallback` — Deepseek raises, assert fallback caption used
+9. `test_affection_ping_skips_outside_window` — patch datetime to 3AM, assert `skipped: True`
+10. `test_affection_ping_no_sticker_pack_resolved` — getStickerSet fails, assert RuntimeError
+11. `test_affection_ping_group_id_is_negative` — static check: group_id passed through unchanged
 
 **silent group tests:**
 1. `test_silent_group_ignores_plain_message` — "hey what's for dinner" → None (ignored)
@@ -200,41 +223,38 @@ The affection_ping script was treated as exempt from the artifact-driven methodo
 8. `test_silent_group_config_imported_in_main` — source check: SILENT_GROUPS imported
 9. `test_silent_group_config_in_config_py` — source check: SILENT_GROUPS + BOT_USERNAME defined
 
-**Full suite: 643 passed, 1 skipped** (was 625 before this session)
+**Full suite: 645 passed, 1 skipped** (was 625 before this session)
 
 ---
 
-## Live Verification (post-fix)
+## Live Verification (post-Rule-21 fix)
 
 ### Sticker + caption delivery
 
-**Final live run** (job `019ef323...`):
+**Final live run** (job `019ef335...`):
 ```
 INFO [Stickers] BubuDudu: 77 total, 50 affectionate (emoji-filtered)
-INFO [Affection] Caption (65 chars): This sticker's got more bounce than my heart when I think of you.
+INFO [Affection] Caption (69 chars): Woke up thinking of you and sent this little guy to steal your smile.
 INFO [Affection] Sticker delivered to group
 ```
 
-**Telegram API response verified for both messages:**
+**Rule 21 independent verification (inspecting actual API responses):**
 
-`sendMessage` (caption) → message_id 2132:
-```
-ok: True
-text field present: True
-text: "This sticker's got more bounce than my heart when I think of you."
-```
+1. **Delivered sticker emoji resolved via `getStickerSet`:**
+   - `file_id` → emoji 😅 (sweat smile)
+   - `in _AFFECTIONATE_EMOJIS: True` ✓
 
-`sendSticker` (sticker) → message_id 2133:
-```
-ok: True
-sticker field present: True
-sticker emoji: 🤭
-has caption: False  (expected — caption sent as separate message)
-```
+2. **`sendMessage` response for caption — `result.text` present and matches:**
+   - `ok: True`
+   - `result.text present: True`
+   - `result.text matches: True`
+   - `result.text: "Woke up thinking of you and sent this little guy to steal your smile."` ✓
+
+3. **`sendSticker` response — `result.sticker` present with affectionate emoji** (verified in code: `_send_sticker` checks `result.sticker.emoji ∈ _AFFECTIONATE_EMOJIS` before reporting `delivered: True`) ✓
 
 **`affection_outbox` row verified:**
 ```
-recipient_id=-4830227987 | sticker_pack=BubuDudu | caption="This sticker's got more bounce..." | llm_model=deepseek-chat | delivered=t | error=NULL
+recipient_id=-4830227987 | sticker_pack=BubuDudu | caption="Woke up thinking of you..." | llm_model=deepseek-chat | delivered=t | error=NULL
 ```
 
 ### Agent silence in group
@@ -266,9 +286,10 @@ Schedule created via REST API `POST /api/w/admins/schedules/create` — path `u/
 
 ## Docs Updated
 
-- `CLAUDE.md` — Current Status, Workflows Built table (affection_ping row), Running Services (silent groups note), Telegram Agent summary (643 tests, silent groups)
+- `CLAUDE.md` — Current Status (645 tests, Rule 21 added), Workflows Built table (affection_ping row), Running Services (silent groups note), Telegram Agent summary, **Hard Rule 21** (verify the response, not the request)
 - `docs/ROADMAP.md` — Windmill Resources table (2 new variables)
 - `docs/WORKFLOW_ARCHITECTURE.md` — Section 9: affection_ping spec (non-report, Rule 16 exempt)
+- `docs/TESTING.md` — New "Verify the Response, Not the Request (Hard Rule 21)" section with testing rule, live verification table, and worked examples for Bugs 1+2; Files table updated to reference Hard Rules 15–21
 - `shared/override_log.md` — Rule 16 exemption entry
 - `agent.env.example` — `SILENT_GROUPS` documented
 
@@ -282,4 +303,5 @@ Schedule created via REST API `POST /api/w/admins/schedules/create` — path `u/
 | `d1d3777` | docs: implementation log (initial — pre-bug-discovery) |
 | `f6dbe4e` | fix: filter stickers by affectionate emoji — exclude angry/sad/devil stickers |
 | `69504ab` | fix: send caption as separate sendMessage — sendSticker caption silently dropped |
-| (this commit) | docs: rewrite implementation log with methodology failure note |
+| `9dbf7d0` | docs: rewrite implementation log with methodology failure note |
+| (this commit) | feat: Hard Rule 21 (verify response not request) + code fix + TESTING.md update |

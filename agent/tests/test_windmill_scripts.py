@@ -6436,16 +6436,25 @@ def test_affection_ping_send_sticker_payload(monkeypatch):
     """_send_sticker must send caption via sendMessage, then sticker via sendSticker.
     sendSticker's caption parameter is silently dropped by Telegram — verified live.
     So the caption goes as a separate sendMessage before the sticker.
+
+    Per Hard Rule 21: mocks return realistic API responses (with result.text and
+    result.sticker.emoji), not just {ok: true}. The code must verify these fields.
     """
     mod = _load_affection_mod()
     calls = []
-    class _FakeResp:
+    class _FakeMsgResp:
         def json(self):
-            return {"ok": True}
+            return {"ok": True, "result": {"message_id": 100, "text": "hello there"}}
+    class _FakeStickerResp:
+        def json(self):
+            return {"ok": True, "result": {"message_id": 101,
+                    "sticker": {"file_id": "FILE123", "emoji": "🥰"}}}
     import requests as _real_req
     def _fake_post(url, json=None, **kw):
         calls.append({"url": url, "payload": json})
-        return _FakeResp()
+        if "/sendMessage" in url:
+            return _FakeMsgResp()
+        return _FakeStickerResp()
     monkeypatch.setattr(_real_req, "post", _fake_post)
     delivered, err = mod._send_sticker("tok", "-4830227987", "FILE123", "hello there")
     assert delivered is True, f"Should deliver, got err: {err}"
@@ -6462,6 +6471,49 @@ def test_affection_ping_send_sticker_payload(monkeypatch):
     assert calls[1]["payload"]["sticker"] == "FILE123"
     assert "caption" not in calls[1]["payload"], \
         "sendSticker must NOT include caption — Telegram silently drops it"
+
+
+def test_affection_ping_send_sticker_detects_negative_emoji(monkeypatch):
+    """Per Hard Rule 21: _send_sticker must detect if the delivered sticker has a
+    negative emoji (angry/sad/devil) and report failure — even if ok:true.
+    This is the bug that shipped 😡 stickers with loving captions on 2026-06-23.
+    """
+    mod = _load_affection_mod()
+    class _FakeMsgResp:
+        def json(self):
+            return {"ok": True, "result": {"message_id": 100, "text": "hello"}}
+    class _FakeAngryStickerResp:
+        def json(self):
+            return {"ok": True, "result": {"message_id": 101,
+                    "sticker": {"file_id": "FILE123", "emoji": "😡"}}}
+    import requests as _real_req
+    def _fake_post(url, json=None, **kw):
+        if "/sendMessage" in url:
+            return _FakeMsgResp()
+        return _FakeAngryStickerResp()
+    monkeypatch.setattr(_real_req, "post", _fake_post)
+    delivered, err = mod._send_sticker("tok", "-4830227987", "FILE123", "hello")
+    assert delivered is False, \
+        "Must NOT deliver when sticker emoji is 😡 — Rule 21 response verification"
+    assert "affectionate" in (err or "").lower() or "emoji" in (err or "").lower(), \
+        f"Error must mention emoji/affectionate, got: {err}"
+
+
+def test_affection_ping_send_message_verifies_text(monkeypatch):
+    """Per Hard Rule 21: _send_message must verify result.text is present and matches
+    the sent text — not just ok:true. Catches APIs that accept but silently drop content.
+    """
+    mod = _load_affection_mod()
+    class _FakeMissingTextResp:
+        def json(self):
+            return {"ok": True, "result": {"message_id": 100}}  # no "text" field
+    import requests as _real_req
+    monkeypatch.setattr(_real_req, "post", lambda *a, **kw: _FakeMissingTextResp())
+    delivered, err = mod._send_message("tok", "-123", "hello there")
+    assert delivered is False, \
+        "Must NOT deliver when result.text is missing — Rule 21"
+    assert "text" in (err or "").lower(), \
+        f"Error must mention missing text field, got: {err}"
 
 
 def test_affection_ping_outbox_row_written(monkeypatch):

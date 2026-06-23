@@ -118,13 +118,20 @@ def _send_sticker(bot_token: str, chat_id: str, file_id: str, caption: str) -> t
     """Send caption as sendMessage, then sticker as sendSticker (separate messages).
     sendSticker's caption parameter is silently dropped by Telegram — verified live.
     Returns (delivered: bool, error: str|None). Both must succeed for delivered=True.
+
+    Per Hard Rule 21: verifies the API *response* contains the expected fields,
+    not just ok:true. sendMessage response must contain result.text matching the
+    caption. sendSticker response must contain result.sticker with an affectionate
+    emoji — if the emoji is negative (angry/sad/devil), reports failure rather
+    than declaring success.
     """
-    # 1. Send caption as a text message
+    # 1. Send caption as a text message — verify result.text is present (Rule 21)
     msg_ok, msg_err = _send_message(bot_token, chat_id, caption)
     if not msg_ok:
         return False, f"caption sendMessage failed: {msg_err}"
 
     # 2. Send the sticker (no caption — it doesn't work)
+    #    Verify result.sticker is present and emoji is affectionate (Rule 21)
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendSticker",
@@ -132,15 +139,27 @@ def _send_sticker(bot_token: str, chat_id: str, file_id: str, caption: str) -> t
             timeout=15,
         )
         body = r.json()
-        if body.get("ok"):
-            return True, None
-        return False, f"sendSticker failed: {body.get('description', f'HTTP {r.status_code}')}"
+        if not body.get("ok"):
+            return False, f"sendSticker failed: {body.get('description', f'HTTP {r.status_code}')}"
+        result = body.get("result", {})
+        sticker = result.get("sticker")
+        if not sticker:
+            return False, "sendSticker response missing result.sticker field"
+        emoji = sticker.get("emoji", "")
+        if emoji and emoji not in _AFFECTIONATE_EMOJIS:
+            return False, f"delivered sticker emoji is {emoji} — not in affectionate set (Rule 21)"
+        return True, None
     except Exception as e:
         return False, str(e)
 
 
 def _send_message(bot_token: str, chat_id: str, text: str) -> tuple:
-    """Send a plain text message via sendMessage. Returns (delivered: bool, error: str|None)."""
+    """Send a plain text message via sendMessage. Returns (delivered: bool, error: str|None).
+
+    Per Hard Rule 21: verifies the API *response* contains result.text matching
+    the sent text — not just ok:true. Telegram could theoretically accept the
+    message but deliver empty content; checking result.text catches that.
+    """
     try:
         r = requests.post(
             f"https://api.telegram.org/bot{bot_token}/sendMessage",
@@ -148,9 +167,15 @@ def _send_message(bot_token: str, chat_id: str, text: str) -> tuple:
             timeout=15,
         )
         body = r.json()
-        if body.get("ok"):
-            return True, None
-        return False, body.get("description", f"HTTP {r.status_code}")
+        if not body.get("ok"):
+            return False, body.get("description", f"HTTP {r.status_code}")
+        result = body.get("result", {})
+        delivered_text = result.get("text", "")
+        if not delivered_text:
+            return False, "sendMessage response missing result.text field"
+        if delivered_text != text:
+            return False, f"result.text mismatch: sent {text!r}, got {delivered_text!r}"
+        return True, None
     except Exception as e:
         return False, str(e)
 
