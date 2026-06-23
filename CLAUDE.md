@@ -201,8 +201,10 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
 15. **Artifact-driven TDD is mandatory for ALL code. No exceptions. See `docs/TESTING.md` for the full philosophy.**
     - **The RED/GREEN target is the rendered artifact** — not source-code substrings or `success: True`. A test earns its place only if its failure means the human gets a broken or missing artifact.
     - **Every sending script must have** an `_render_<script>_artifacts(world)` harness that runs the real `main()` (I/O faked only at the edges) and returns `(email_html, md_content, telegram_message)`. Assert every user-visible field appears in **both** email and Telegram. The `test_<script>_email_and_telegram_agree` test is the single highest-authority correctness check.
-    - **Write artifact tests FIRST (RED).** Confirm they fail. Implement. Confirm GREEN. Live-verify (see Rule 17).
+    - **Write the ASD first.** Define `_<SCRIPT>_ASD` with the required strings as the spec. Build `_<SCRIPT>_WORLD` from the ASD (world references ASD, not the reverse). Call `_validate_world_vs_asd(world, asd)` at the top of every harness.
+    - **Write artifact tests FIRST (RED).** Confirm they fail. Implement. Confirm GREEN. Live-verify (see Rule 17). Apply Testing Critic checklist (Rule 20) before committing.
     - **Tautology ban:** tests must use minimum-viable realistic inputs with distinct strings, never a pre-sized fixture passed into a size assertion. A test that feeds a 500-word fixture into `_build_message` and asserts ≥500 words proves nothing.
+    - **Every harness must include `assert len(tg_msg.split()) >= 500`** to verify the world fixture drives sufficient Telegram content. A world fixture that produces <500 words is unrealistically small.
     - **Source-substring tests** (`assert "smtp" in src`) are the lowest-value tier — allowed only where no artifact path exists, and must have a comment explaining why. Never use them to verify rendered content.
     - **Round-trip contract tests** use the real `_build_md_content` (not a test-local copy) so the formatter is tested against exactly what `main()` writes.
     - The PostToolUse hook prints a TDD reminder after every Python file edit. Do not suppress or skip it.
@@ -216,6 +218,13 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
     Any report of "it works" without this evidence is invalid. For event-driven formatters (move_monitor, analyst_alert) that haven't fired live, the round-trip contract test (Hard Rule 18) substitutes until a real event occurs.
 18. **Front-matter schema is a contract.** Any change to a main script's front-matter keys (adding, renaming, or removing keys) must be accompanied in the same commit by: (a) updating the matching formatter's `_build_message` to use the new keys, and (b) updating the round-trip contract test in `agent/tests/test_windmill_scripts.py` (`test_contract_<name>_*`) to exercise the changed keys. The front-matter schema for all 8 scripts is documented in `docs/WORKFLOW_ARCHITECTURE.md`.
 19. **Lock-file deploy rule.** After pushing a `.py` script with `wmill script push`, confirm its `*.script.lock` carries resolved package versions (not bare `# py: 3.12`, which means "no packages" and causes `ModuleNotFoundError` if the script imports third-party libraries). Relative cross-script imports (`from u.admin.other_script import ...`) are disallowed for formatter scripts — the 8 formatters each carry their own identical `_send_telegram`/`_split_telegram_message` copy to avoid single-file-push staleness. The `test_all_formatter_senders_identical` test enforces that all 8 copies stay byte-identical.
+20. **Before committing any artifact test, apply the Testing Critic checklist.** A test fails the Critic if "yes" to any of these 5 questions means the test can pass while the human gets a broken artifact:
+    1. **Empty-artifact:** Can `email_html` and `tg_msg` both be `None`/empty and all assertions still pass? (Must have explicit `assert email_html is not None` guards.)
+    2. **Template-string:** Could any asserted string appear in boilerplate HTML/template text independently of the world fixture? (Use world-fixture-unique strings — not `"Email"`, `"Schedule"`, etc.)
+    3. **Tautology:** Is any asserted value derived from a fixture pre-sized to match the threshold? (Use a realistic narrative, not a padded stub; the word-count floor is a minimum, not a target.)
+    4. **ASD-derived:** Is every asserted string present in `_SCRIPT_ASD`? Document in a comment if not.
+    5. **Completeness:** Does `test_<script>_email_and_telegram_agree` iterate **all** `_SCRIPT_ASD["shared_fields"]`, not a hand-picked subset?
+    See `docs/TESTING.md` → "Testing Critic" section for examples of each failure mode.
 
 ---
 
@@ -236,7 +245,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-22 (Artifact-driven testing philosophy adopted — health_check is the proven example: seams factored (`_send_email`, `_build_front_matter`, `_build_md_content`, `_write_canonical_md`), `_render_health_check_artifacts(world)` harness + 9 artifact assertion tests added (incl. `test_hc_email_and_telegram_agree` — the cross-check that would have caught the shipped missing-digest bug), contract test updated to use real `_build_md_content`, 2 misleading substring tests pruned. `docs/TESTING.md` written as canonical testing philosophy. CLAUDE.md Hard Rules 15/17 rewritten around the artifact principle. 624 tests passing in container. Prior: health_check email was missing digest/spec/diagnoses sections (content engine ran after email build). Fixed + triple-layer notification model: Layer A (Deepseek diagnosis), Layer B (error_alert), Layer C (deadman). Repo: `vps-stack`.)
+**Last updated:** 2026-06-23 (Gap analysis applied — 4 architectural gaps (A1–A4) + 6 implementation gaps addressed. ASD convention introduced: `_HC_ASD` as authoritative pre-implementation spec, `_HC_WORLD` derived from ASD constants, `_validate_world_vs_asd` helper added. `test_hc_telegram_min_word_count` added (gap G4 — revealed world fixture was only 143 words; fixed with realistic ~600-word narrative). `test_hc_email_and_telegram_agree` updated to iterate `_HC_ASD["shared_fields"]` mechanically. Hard Rule 20 added (Testing Critic 5-point checklist). Tier 0 production verification defined (health_check IMAP body fetch — Phase B). `docs/TESTING.md` updated with ASD convention, Testing Critic, Tier 0, broken-artifact definition, copy-paste template, rollout sequencing. 625 tests passing in container. Prior: artifact-driven testing philosophy adopted on health_check. Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`

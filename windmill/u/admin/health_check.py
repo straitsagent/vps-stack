@@ -523,6 +523,114 @@ def _write_canonical_md(md_content: str, path: str) -> None:
     log.info(f"[md] Written {path}")
 
 
+# ── Tier 0 — Production artifact verification ────────────────────────────────
+# Checks actual delivered email bodies (not just subjects) for structural markers.
+# Runs inside main() after schedule status collection. Non-blocking — failures
+# surface as warnings in the health check report and are written to artifact_verification.
+
+ARTIFACT_MARKERS: dict[str, list[str]] = {
+    "Morning Digest":   ["Source:", "token"],
+    "Portfolio":        ["Total Value", "P&L"],
+    "Macro Research":   ["VIX", "10Y"],
+    "Weekly Review":    ["Week P&L", "Top Movers"],
+    "Health Check":     ["Schedules", "Telegram Outbox", "Digest"],
+    "Move Monitor":     ["triggered", "threshold"],
+    "Analyst Alert":    ["upgrade", "downgrade", "target"],
+    "YouTube Monitor":  ["channel", "transcript"],
+}
+
+
+def _fetch_sent_body(gmail_smtp: dict, subject_fragment: str, hours: int = 25) -> str | None:
+    """Fetch the HTML body of the most-recent sent email matching subject_fragment.
+
+    Extends fetch_sent_subjects — uses RFC822 fetch instead of headers-only.
+    Returns the HTML body string, or None if no matching email is found.
+    """
+    import email as _email_lib
+    conn = imaplib.IMAP4_SSL(IMAP_HOST)
+    try:
+        conn.login(gmail_smtp["username"], gmail_smtp["password"])
+        for folder in ('"[Gmail]/Sent Mail"', "Sent"):
+            status, _ = conn.select(folder, readonly=True)
+            if status == "OK":
+                break
+
+        cutoff_utc = datetime.now(timezone.utc) - timedelta(hours=hours)
+        since_str = cutoff_utc.strftime("%d-%b-%Y")
+        _, msg_ids = conn.search(None, f"SINCE {since_str}")
+        if not msg_ids or not msg_ids[0]:
+            return None
+
+        frag_lower = subject_fragment.lower()
+        # Iterate in reverse (most recent first)
+        for mid in reversed(msg_ids[0].split()):
+            _, hdr_data = conn.fetch(mid, "(RFC822.HEADER)")
+            if not hdr_data or not hdr_data[0]:
+                continue
+            raw_hdr = hdr_data[0][1] if isinstance(hdr_data[0], tuple) else hdr_data[0]
+            hdr_msg = _email_lib.message_from_bytes(raw_hdr)
+            subject = decode_subject(hdr_msg.get("Subject", ""))
+            if frag_lower not in subject.lower():
+                continue
+            # Found — fetch full body
+            _, body_data = conn.fetch(mid, "(RFC822)")
+            if not body_data or not body_data[0]:
+                return None
+            raw_body = body_data[0][1] if isinstance(body_data[0], tuple) else body_data[0]
+            full_msg = _email_lib.message_from_bytes(raw_body)
+            # Extract HTML part
+            if full_msg.is_multipart():
+                for part in full_msg.walk():
+                    if part.get_content_type() == "text/html":
+                        payload = part.get_payload(decode=True)
+                        if payload:
+                            return payload.decode("utf-8", errors="replace")
+            else:
+                payload = full_msg.get_payload(decode=True)
+                if payload:
+                    return payload.decode("utf-8", errors="replace")
+        return None
+    except Exception as exc:
+        log.warning(f"[Tier0] _fetch_sent_body({subject_fragment!r}): {exc}")
+        return None
+    finally:
+        try:
+            conn.logout()
+        except Exception:
+            pass
+
+
+def _artifact_body_check(body: str, required_markers: list[str]) -> dict:
+    """Check body HTML for presence of required_markers. Pure function.
+
+    Returns {"pass": bool, "missing": list[str], "found": list[str]}.
+    """
+    missing = [m for m in required_markers if m not in body]
+    found   = [m for m in required_markers if m in body]
+    return {"pass": len(missing) == 0, "missing": missing, "found": found}
+
+
+def _write_artifact_verification(portfolio_db: dict, script_name: str, email_ok: bool,
+                                  missing_sections: list[str], email_subject: str) -> None:
+    """Write one row to artifact_verification table. Non-blocking on error."""
+    if not portfolio_db:
+        return
+    try:
+        import psycopg2
+        conn = psycopg2.connect(**{k: v for k, v in portfolio_db.items() if k != "sslmode"})
+        with conn.cursor() as cur:
+            cur.execute(
+                """INSERT INTO artifact_verification
+                   (script_name, email_ok, missing_sections, email_subject)
+                   VALUES (%s, %s, %s, %s)""",
+                (script_name, email_ok, missing_sections or [], email_subject),
+            )
+        conn.commit()
+        conn.close()
+    except Exception as exc:
+        log.warning(f"[Tier0] artifact_verification write failed: {exc}")
+
+
 # ─────────────────────────────────────────────────────────────────────────────
 
 def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_completion,
@@ -949,6 +1057,42 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
     log.info(f"Sent emails found in outbox: {len(sent_subjects)}")
     if total_prompt or total_completion:
         log.info(f"Tokens: {total_prompt:,} prompt + {total_completion:,} completion · est. ${total_cost:.4f}")
+
+    # ── Tier 0 — production artifact verification ────────────────────────────
+    # Fetch actual delivered email bodies and check for structural markers.
+    # Non-blocking: failures are logged and written to DB but do not abort the run.
+    if gmail_smtp:
+        tier0_results = []
+        for sched in SCHEDULES:
+            if not sched.get("email_match"):
+                continue  # schedule doesn't send email — skip
+            label = sched["label"]
+            # Match schedule label to ARTIFACT_MARKERS key via substring
+            marker_key = next((k for k in ARTIFACT_MARKERS if k.lower() in label.lower()
+                                or label.lower() in k.lower()), None)
+            if not marker_key:
+                continue
+            try:
+                kw = sched["email_match"][0] if sched["email_match"] else ""
+                body = _fetch_sent_body(gmail_smtp, kw, hours=25)
+                if body is None:
+                    log.info(f"[Tier0] {label}: no email found in last 25h")
+                    tier0_results.append({"label": label, "pass": None, "missing": [], "note": "no_email"})
+                    _write_artifact_verification(portfolio_db, label, False, ["email_not_found"], kw)
+                else:
+                    check = _artifact_body_check(body, ARTIFACT_MARKERS[marker_key])
+                    tier0_results.append({"label": label, **check})
+                    if check["pass"]:
+                        log.info(f"[Tier0] {label}: OK — all {len(check['found'])} markers present")
+                    else:
+                        log.warning(f"[Tier0] {label}: FAIL — missing markers: {check['missing']}")
+                    _write_artifact_verification(portfolio_db, label, check["pass"],
+                                                  check["missing"], kw)
+            except Exception as t0_exc:
+                log.warning(f"[Tier0] {label}: check failed: {t0_exc}")
+        if tier0_results:
+            passed = sum(1 for r in tier0_results if r.get("pass") is True)
+            log.info(f"[Tier0] {passed}/{len(tier0_results)} scripts passed artifact body check")
 
     # ── Write canonical .md and dispatch Telegram formatter ─────────────────
     if telegram_bot_token and telegram_owner_id:

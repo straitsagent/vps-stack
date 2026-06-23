@@ -1,6 +1,6 @@
 # Testing Philosophy — Test the Artifact the Human Receives
 
-**Last updated:** 2026-06-22
+**Last updated:** 2026-06-23
 
 ---
 
@@ -27,14 +27,101 @@ the human was receiving broken or empty artifacts.
 
 ---
 
+## What "Broken" Means
+
+An artifact is **broken** if any of the following are true:
+
+- **(a)** Email body is empty, not sent, or not delivered.
+- **(b)** A required section is absent (digest, diagnoses, spec failures, status rows).
+- **(c)** A field value is wrong: null, `$0` where not expected, wrong sign (negative rendered as positive), wrong currency.
+- **(d)** Telegram `word_count < 500` (Hard Rule 16).
+- **(e)** `delivered = false` or `error IS NOT NULL` in `telegram_outbox`.
+
+Tier 0 (production verification) and Tier 1 (artifact-render tests) each catch a different subset of
+these. Both are required.
+
+---
+
 ## Test Hierarchy (High → Low Authority)
 
-| Tier | Type | Authoritative for | Allowed when |
-|------|------|-------------------|--------------|
-| **1 — Artifact-render** | `_render_<script>_artifacts(world)` → assert on `email_html` + `tg_msg` | Email and Telegram content for every sending script | Always required for every script that sends email or Telegram |
+| Tier | Type | Authoritative for | When |
+|------|------|-------------------|------|
+| **0 — Production verify** | `health_check` fetches delivered email bodies, checks structural markers via `_artifact_body_check` | Actual delivery + structural completeness post-deployment | Automated daily (runs inside health_check) |
+| **1 — Artifact-render** | `_render_<script>_artifacts(world)` → assert on `email_html` + `tg_msg` | Email and Telegram content correctness | Always required for every script that sends email or Telegram |
 | **2 — Round-trip contract** | `_build_md_content(fm, narrative)` → `_parse_md_report` → `_build_message` → assert fields | `.md` front-matter → formatter round-trip | One per formatter (8 total); uses the **real** `_build_md_content`, never a test-local fake |
 | **3 — Architecture guard** | Source-level or module-level structural invariants | Script topology — e.g. no direct `_send_telegram` calls in main scripts; all 8 formatter `_send_telegram` copies are byte-identical | Structural constraints that render-tests can't catch |
 | **4 — Substring** | `assert "keyword" in src` | Nothing rendered-content-related | Only for things with no artifact path (e.g., confirming a constant exists in source). **Lowest value.** Add a comment explaining why no artifact test is possible. |
+
+---
+
+## Artifact Specification Documents (ASD)
+
+Every sending script has a `_<SCRIPT>_ASD` dict in `test_windmill_scripts.py`. The ASD is the
+**authoritative pre-implementation spec** — it is written before the world fixture, and the world
+fixture is built to contain the ASD's required strings. This prevents the world fixture from being
+crafted to pass its own assertions (gap A4).
+
+**ASD format:**
+```python
+_<SCRIPT>_ASD = {
+    # Strings that MUST appear in email_html — distinct, non-template values from the world fixture
+    "email_required": ["<unique string from world>", ...],
+    # Strings that MUST appear in tg_msg
+    "telegram_required": ["<unique string from world>", ...],
+    # The shared set: (label, value) tuples — drives test_<script>_email_and_telegram_agree
+    # mechanically. Add here, not in the test.
+    "shared_fields": [
+        ("field label", "<unique string>"),
+        ...
+    ],
+    "min_telegram_words": 500,
+}
+```
+
+**World fixture** is then built to contain those ASD strings:
+```python
+_<SCRIPT>_WORLD = {
+    "diagnosis": {
+        "root_cause": _<SCRIPT>_ASD_ROOT_CAUSE,    # references ASD constant
+        ...
+    },
+    ...
+}
+```
+
+**`_validate_world_vs_asd(world, asd)`** is called at the top of every harness. It asserts every
+ASD-required string appears somewhere in the world fixture — fails loudly if the ASD is updated
+without updating the world.
+
+**Invariant:** ASD → world fixture → assertions. Never the reverse.
+
+---
+
+## Testing Critic (Gap A2 — adversarial self-review)
+
+Before committing any artifact test, apply this 5-point adversarial checklist. A test **fails the
+Critic** if the answer to any question is "yes":
+
+1. **Empty-artifact check:** Can `email_html` and `tg_msg` both be empty strings/`None` and all
+   assertions still pass? (Harness must have `assert email_html is not None` and
+   `assert tg_msg is not None` guards — enforced by Hard Rule 20.)
+
+2. **Template-string check:** Could any asserted string appear in boilerplate HTML/template text
+   *independently* of the world fixture? (e.g., asserting `"Email"` or `"Schedule"` which appear in
+   every template header — use world-fixture-unique strings only.)
+
+3. **Tautology check:** Is any asserted value derived from a fixture value pre-sized to match the
+   threshold? (e.g., feeding a 500-word fixture into `_build_message` and asserting ≥500 words —
+   use a realistic narrative, not a padded stub.)
+
+4. **ASD-derived check:** Is every asserted string present in `_SCRIPT_ASD`? If not, document in a
+   comment why no ASD entry exists.
+
+5. **Completeness check:** Does `test_<script>_email_and_telegram_agree` cover **all**
+   `_SCRIPT_ASD["shared_fields"]` entries? The test must iterate `_SCRIPT_ASD["shared_fields"]`
+   directly — not a hand-picked subset.
+
+This checklist is encoded as Hard Rule 20 in CLAUDE.md.
 
 ---
 
@@ -43,12 +130,13 @@ the human was receiving broken or empty artifacts.
 Building starts from the target artifact — not from the code.
 
 1. **Design** (Hard Rule 7): Show the exact email and Telegram the human will receive. Include all sections, all field values. Get approval.
-2. **Write the artifact test first (RED)**: `_render_<script>_artifacts(world)` → assert each field from the design appears in `email_html` AND `tg_msg`. Confirm the test fails.
-3. **Implement**: Write the code to make the test green.
-4. **Confirm GREEN**: All artifact tests pass.
-5. **Live verify** (see below): Trigger a real run. Read the actual email body (IMAP). Read the actual Telegram text (formatter logs + `telegram_outbox`). Assert the same fields present in both.
+2. **Write the ASD first:** Define `_<SCRIPT>_ASD` with the required strings. These are your spec.
+3. **Write the artifact test (RED):** Build `_<SCRIPT>_WORLD` from the ASD. Write `_render_<script>_artifacts(world)`. Assert each ASD-required field. Apply the Testing Critic checklist. Confirm the test **fails**.
+4. **Implement:** Write the code to make the test green.
+5. **Confirm GREEN:** All artifact tests pass. Word-count assertion ≥500 passes.
+6. **Live verify** (see below): Trigger a real run. Read the actual email body (IMAP). Read the actual Telegram text. Assert the same fields present in both.
 
-Done = RED → GREEN → live body inspected → both artifacts agree.
+Done = ASD written → RED → GREEN → live body inspected → both artifacts agree.
 
 ---
 
@@ -56,37 +144,115 @@ Done = RED → GREEN → live body inspected → both artifacts agree.
 
 Every sending script gets one harness function in `agent/tests/test_windmill_scripts.py`.
 
-**Structure:**
+**Copy-paste template for new scripts:**
 ```python
+# ── <SCRIPT> ASD ─────────────────────────────────────────────────────────────
+_<SCRIPT>_ASD_FIELD_1   = "<unique string 1>"
+_<SCRIPT>_ASD_FIELD_2   = "<unique string 2>"
+_<SCRIPT>_ASD_NARRATIVE = _<SCRIPT>_ASD_FIELD_1 + " <realistic ~600-word narrative...>"
+
+_<SCRIPT>_ASD = {
+    "email_required":    [_<SCRIPT>_ASD_FIELD_1, _<SCRIPT>_ASD_FIELD_2],
+    "telegram_required": [_<SCRIPT>_ASD_FIELD_1, _<SCRIPT>_ASD_FIELD_2],
+    "shared_fields": [
+        ("field 1", _<SCRIPT>_ASD_FIELD_1),
+        ("field 2", _<SCRIPT>_ASD_FIELD_2),
+    ],
+    "min_telegram_words": 500,
+}
+
+_<SCRIPT>_WORLD = {
+    "field_1_key": _<SCRIPT>_ASD_FIELD_1,   # sourced from ASD
+    "narrative":   _<SCRIPT>_ASD_NARRATIVE,  # sourced from ASD
+    # ... other world keys ...
+}
+
+# ── Harness ───────────────────────────────────────────────────────────────────
+_<SCRIPT>_ARTIFACTS_CACHE = {}
+
 def _render_<script>_artifacts(world=None):
     """
     Run the real <script>.main() with all I/O seams mocked at the edges.
     Returns (email_html: str, md_content: str, telegram_message: str).
     """
-    # 1. Load the script module
+    import tempfile as _tf
+    if world is None:
+        world = _<SCRIPT>_WORLD
+    _validate_world_vs_asd(world, _<SCRIPT>_ASD)   # A1/A4 gate
+
     mod = _load_<script>_module()
     tg_mod = _load_formatter("<script>")
 
-    # 2. Mock edge I/O only (all external calls that don't produce artifact content):
-    #    - Network/API helpers (wmill_get, fetch_sent_subjects, LLM synthesis, etc.)
-    #    - _send_email     → capture email HTML
-    #    - _write_canonical_md → capture .md content
-    #    - _dispatch_formatter → no-op (we render Telegram manually)
+    captured_email_html = [None]
+    captured_md_content = [None]
 
-    # 3. Run real main() with fake but realistic creds
-    mod.main(gmail_smtp={...}, telegram_bot_token="fake", ...)
+    def mock_send_email(gmail_smtp, recipient, subject, html):
+        captured_email_html[0] = html
 
-    # 4. Render the real Telegram message from the captured .md
-    parsed_fm, narrative = tg_mod._parse_md_report(tmp_md_path)
-    tg_msg = tg_mod._build_message(parsed_fm, narrative)
+    def mock_write_canonical_md(md_content, path):
+        captured_md_content[0] = md_content
 
-    return email_html, md_content, tg_msg
+    with (
+        patch.object(mod, "<api_call_1>", return_value=world["<key1>"]),
+        # ... other edge mocks ...
+        patch.object(mod, "_send_email",         side_effect=mock_send_email),
+        patch.object(mod, "_write_canonical_md", side_effect=mock_write_canonical_md),
+        patch.object(mod, "_dispatch_formatter"),
+    ):
+        mod.main(
+            gmail_smtp={"host": "smtp.gmail.com", "port": 587,
+                        "username": "test@example.com", "password": "testpass"},
+            # ... other required args ...
+        )
+
+    email_html = captured_email_html[0]
+    md_content = captured_md_content[0]
+
+    telegram_message = None
+    if md_content:
+        with _tf.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp:
+            tmp.write(md_content)
+            tmp_path = tmp.name
+        try:
+            parsed_fm, narrative = tg_mod._parse_md_report(tmp_path)
+            telegram_message = tg_mod._build_message(parsed_fm, narrative)
+        finally:
+            os.unlink(tmp_path)
+
+    return email_html, md_content, telegram_message
+
+
+def _get_<script>_artifacts(force_refresh=False):
+    if "v" not in _<SCRIPT>_ARTIFACTS_CACHE or force_refresh:
+        _<SCRIPT>_ARTIFACTS_CACHE.clear()
+        _<SCRIPT>_ARTIFACTS_CACHE["v"] = _render_<script>_artifacts()
+    return _<SCRIPT>_ARTIFACTS_CACHE["v"]
+
+
+# ── Assertion tests ────────────────────────────────────────────────────────────
+def test_<script>_email_and_telegram_agree():
+    """Shared ASD fields must appear in BOTH email HTML and Telegram message."""
+    email_html, _, tg_msg = _get_<script>_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert tg_msg is not None, "_build_message returned None"
+    failures = []
+    for field_name, value in _<SCRIPT>_ASD["shared_fields"]:   # derived from ASD
+        if value not in email_html:
+            failures.append(f"  MISSING from email:    {field_name} = {value!r}")
+        if value not in tg_msg:
+            failures.append(f"  MISSING from Telegram: {field_name} = {value!r}")
+    assert not failures, "Shared fields must appear in BOTH artifacts:\n" + "\n".join(failures)
+
+
+def test_<script>_telegram_min_word_count():
+    """Telegram message must be ≥500 words (Hard Rule 16)."""
+    _, _, tg_msg = _get_<script>_artifacts()
+    assert tg_msg is not None
+    word_count = len(tg_msg.split())
+    assert word_count >= _<SCRIPT>_ASD["min_telegram_words"], (
+        f"Telegram has {word_count} words — must be ≥{_<SCRIPT>_ASD['min_telegram_words']}"
+    )
 ```
-
-**The `world` fixture** must be minimum-viable-realistic (Hard Rule 15 tautology ban):
-- Use distinct strings that must appear in the artifact (not generic placeholders)
-- Include at least one FAILED/STALE schedule, one spec failure, one diagnosis
-- Do NOT pre-size to match assertion thresholds
 
 **Seam factoring** (required for main() to be drivable in tests):
 - `_send_email(gmail_smtp, recipient, subject, html)` — patches SMTP send
@@ -94,35 +260,51 @@ def _render_<script>_artifacts(world=None):
 - `_write_canonical_md(md_content, path)` — patches file write
 - `_build_front_matter(...) -> dict` — pure, single source for email + Telegram
 
-Scripts that have these seams: `health_check`. Rollout to others: `portfolio_email`, `macro_research`, `portfolio_review`.
+Scripts that have these seams: `health_check`. Rollout to others: `macro_research`, `portfolio_email`, `portfolio_review`, `portfolio_rationalization`, `portfolio_move_monitor`, `portfolio_analyst_alert`, `youtube_monitor`.
 
 ---
 
 ## Key Cross-Check Test
 
-Every sending script must have a `test_<script>_email_and_telegram_agree` test:
+Every sending script must have a `test_<script>_email_and_telegram_agree` test. The `shared_fields`
+list **must be derived from `_SCRIPT_ASD["shared_fields"]`** — never a hand-written subset:
 
 ```python
-def test_hc_email_and_telegram_agree():
-    """
-    Shared fields (digest, each diagnosis, each spec violation) must appear
-    in BOTH email HTML and Telegram message.
-    This catches any code path where email and Telegram render from different sources.
-    """
-    email_html, _, tg_msg = _get_hc_artifacts()
-    shared_fields = [
-        ("digest", _HC_WORLD["digest"][:50]),
-        ("diagnosis root_cause", _HC_WORLD["diagnosis"]["root_cause"]),
-        ...
-    ]
-    for field_name, value in shared_fields:
-        assert value in email_html, f"{field_name} missing from email"
-        assert value in tg_msg,     f"{field_name} missing from Telegram"
+# ✅ Correct — ASD-derived, mechanical coverage
+shared_fields = _HC_ASD["shared_fields"]
+
+# ❌ Wrong — hand-written subset, will miss new ASD entries
+shared_fields = [
+    ("digest", _HC_WORLD["digest"][:50]),
+    ...  # could silently miss new required fields
+]
 ```
 
 ---
 
-## Live Verification Procedure (Hard Rule 17 + email extension)
+## Tier 0 — Production Artifact Verification
+
+Tier 0 runs automatically inside `health_check.py` daily. It fetches actual delivered email bodies
+via IMAP and checks for structural markers from `ARTIFACT_MARKERS`.
+
+**Implementation in `health_check.py`:**
+- `_fetch_sent_body(gmail_smtp, subject_fragment, hours=25)` — IMAP fetch, returns HTML body
+- `_artifact_body_check(body, required_markers)` — pure check, returns `{pass, missing, found}`
+- `ARTIFACT_MARKERS` dict — per-script structural HTML markers (field labels, section headers)
+
+**What Tier 0 catches that Tier 1 misses:**
+- Delivery failure (email never arrived)
+- Script deployed with broken seams (e.g. `_send_email` was accidentally removed)
+- Template regression that removes structural sections from the HTML
+- Post-deploy regressions between green tests and a live run
+
+**What Tier 0 does NOT replace:**
+- Tier 1 artifact-render tests (Tier 0 checks structure, Tier 1 checks content correctness)
+- Hard Rule 17 live verification on first deploy (Tier 0 is automated; Hard Rule 17 is manual + inspected)
+
+---
+
+## Live Verification Procedure (Hard Rule 17)
 
 After any live run of a sending script, all of the following must be true before
 declaring it works:
@@ -140,7 +322,7 @@ declaring it works:
 
 **Agreement check:**
 - The shared field set (digest, diagnoses, spec violations, schedule rows) must be present in both
-- `test_hc_email_and_telegram_agree` (and its equivalents) encode this as an automated test
+- `test_<script>_email_and_telegram_agree` (and its equivalents) encode this as an automated test
 
 ---
 
@@ -148,22 +330,30 @@ declaring it works:
 
 | File | Purpose |
 |------|---------|
-| `agent/tests/test_windmill_scripts.py` | All tests — artifact-render harnesses, round-trip contracts, architecture guards |
-| `windmill/u/admin/health_check.py` | Proven example: `_send_email`, `_build_md_content`, `_write_canonical_md`, `_build_front_matter` factored |
+| `agent/tests/test_windmill_scripts.py` | All tests — ASD dicts, artifact-render harnesses, round-trip contracts, architecture guards |
+| `windmill/u/admin/health_check.py` | Proven example: `_send_email`, `_build_md_content`, `_write_canonical_md`, `_build_front_matter` factored; Tier 0 `_fetch_sent_body` + `_artifact_body_check` |
 | `docs/WORKFLOW_ARCHITECTURE.md` | Per-workflow front-matter schema contracts |
-| `CLAUDE.md` Hard Rules 15–19 | Encoding of this philosophy as rules |
+| `CLAUDE.md` Hard Rules 15–20 | Encoding of this philosophy as rules |
 
 ---
 
 ## Rollout Status
 
-| Script | Seams factored | Artifact harness | `_agree` test | Substring tests pruned |
-|--------|---------------|-----------------|---------------|----------------------|
-| `health_check` | ✅ | ✅ | ✅ | ✅ (2 pruned) |
-| `portfolio_email` | ✗ | ✗ | ✗ | ✗ |
-| `macro_research` | ✗ (partial — `_send_email` exists) | ✗ | ✗ | ✗ |
-| `portfolio_review` | ✗ | ✗ | ✗ | ✗ |
-| `portfolio_rationalization` | ✗ | ✗ | ✗ | ✗ |
-| `portfolio_move_monitor` | ✗ | ✗ | ✗ | ✗ |
-| `portfolio_analyst_alert` | ✗ | ✗ | ✗ | ✗ |
-| `youtube_monitor` | ✗ | ✗ | ✗ | ✗ |
+Per-script checklist: ASD written → seams factored → harness RED→GREEN → word_count ≥500 →
+`_agree` test ASD-derived → substring tests pruned → Tier 0 `ARTIFACT_MARKERS` entry added →
+live verify (Hard Rule 17).
+
+| Script | ASD | Seams factored | Artifact harness | `_agree` ASD-derived | Word-count test | Tier 0 markers | Substring tests pruned |
+|--------|-----|---------------|-----------------|---------------------|-----------------|----------------|----------------------|
+| `health_check` | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 Phase B | ✅ (2 pruned) |
+| `macro_research` | 🔲 | partial (`_send_email` exists) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_email` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_review` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_rationalization` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_move_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_analyst_alert` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `youtube_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+
+**Rollout order:** `macro_research` (partial seams) → `portfolio_email` → `portfolio_review` →
+`portfolio_rationalization` → `portfolio_move_monitor` → `portfolio_analyst_alert` → `youtube_monitor`.
+Each is one commit, per the same pattern as `health_check`.

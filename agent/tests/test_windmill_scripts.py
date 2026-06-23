@@ -5937,6 +5937,84 @@ def test_build_html_no_new_content_unchanged():
 # Minimum-viable-realistic world fixture (Hard Rule 15 tautology ban).
 # Contains distinct strings that must appear in BOTH email and Telegram to
 # verify the shared-source plumbing works end-to-end.
+# ── Health-check Artifact Specification Document (ASD) ───────────────────────
+# This is the authoritative pre-implementation spec for health_check artifacts.
+# _HC_WORLD is DERIVED from these constants — the ASD is written first, world second.
+# Adding a string here without updating _HC_WORLD triggers _validate_world_vs_asd failure.
+
+_HC_ASD_DIGEST_PREFIX   = "Executive brief 22 Jun 2026: equity markets"
+_HC_ASD_ROOT_CAUSE      = "SMTP rate limit exceeded on Gmail relay."
+_HC_ASD_REMEDIATION     = "Add exponential backoff and retry logic."
+_HC_ASD_SPEC_VIOLATION  = "narrative.word_count must be ge2400 but got 1850"
+
+# Realistic ~600-word LLM digest (production output is 500-700 words).
+# Long enough to drive the Telegram formatter past the 500-word floor without padding.
+# Not a tautology: the narrative is realistic in shape; the word-count assertion is
+# a floor check, not a pre-sized match.
+_HC_ASD_DIGEST_NARRATIVE = (
+    _HC_ASD_DIGEST_PREFIX + " posted modest gains led by technology sector outperformance, "
+    "with the S&P 500 closing up 0.4% and the Nasdaq adding 0.7%. Semiconductor names led the "
+    "advance following stronger-than-expected earnings guidance from a major chipmaker. "
+    "US 10Y yields ticked up 4bp to 4.49% on firmer-than-expected composite PMI data, which "
+    "showed services activity expanding at its fastest pace in three months. The move in rates "
+    "was contained, however, as the Fed speak during the session was largely neutral on the "
+    "near-term rate path. VIX compressed further below 16.0, ending the session at 15.6, "
+    "signalling reduced near-term volatility concern and an environment broadly supportive of "
+    "risk assets. Credit spreads remained tight with IG spreads at 87bp and HY at 312bp. "
+    "\n\n"
+    "Portfolio performing broadly in line with benchmarks for the day. The technology weighting "
+    "was accretive, adding approximately 0.3% relative to a blended benchmark. The HK-listed "
+    "positions lagged slightly as the HSI drifted 0.2% lower in a session characterised by "
+    "thin volumes ahead of the long weekend. FX was broadly stable with USDHKD holding the "
+    "7.84–7.85 range. The SGD positions were neutral contributors with the SGD firming slightly "
+    "against the USD. Macro backdrop remains constructive for equities over the medium term: "
+    "inflation trajectory is trending toward the Fed target, labour market is softening "
+    "gradually, and earnings revisions remain net positive for the year. "
+    "\n\n"
+    "Ops status: one workflow failure recorded overnight — the Morning News Digest experienced "
+    "an SMTP rate-limit error at 06:28 SGT. The failure was isolated to a single run and did "
+    "not affect downstream workflows. The Macro Research workflow completed on schedule at "
+    "07:02 SGT with a 2,514-word narrative and all six sections populated. Portfolio email "
+    "delivered on schedule at both the 06:00 and 18:00 SGT windows with correct P&L figures. "
+    "YouTube Monitor completed its 06:00 SGT run with 4 channel summaries delivered. "
+    "One spec violation detected: the macro narrative fell short of the 2,400-word floor at "
+    "1,850 words on the 20 Jun run; the 22 Jun run is compliant. Telegram outbox shows all "
+    "overnight deliveries as successful with word counts above the 500-word floor. "
+    "\n\n"
+    "Key risks to monitor: any repricing of the Fed terminal rate on hotter-than-expected "
+    "PCE data due Friday; China PMI readings due Tuesday which could move HK-listed positions; "
+    "and ongoing USD/HKD peg monitoring given recent FX reserve commentary. No immediate "
+    "action items for the portfolio but the SMTP rate-limit failure warrants adding exponential "
+    "backoff and retry logic to the Gmail relay configuration before the next scheduled run."
+)
+
+_HC_ASD = {
+    # Strings that MUST appear in email_html — world-fixture-unique, non-template values
+    "email_required": [
+        _HC_ASD_DIGEST_PREFIX,
+        _HC_ASD_ROOT_CAUSE,
+        _HC_ASD_REMEDIATION,
+        _HC_ASD_SPEC_VIOLATION,
+    ],
+    # Strings that MUST appear in tg_msg — same shared fields
+    "telegram_required": [
+        _HC_ASD_DIGEST_PREFIX,
+        _HC_ASD_ROOT_CAUSE,
+        _HC_ASD_REMEDIATION,
+        _HC_ASD_SPEC_VIOLATION,
+    ],
+    # Shared set — each tuple (label, value) must appear in BOTH artifacts
+    # Drives test_hc_email_and_telegram_agree mechanically — add entries here, not in the test
+    "shared_fields": [
+        ("digest prefix",         _HC_ASD_DIGEST_PREFIX),
+        ("diagnosis root_cause",  _HC_ASD_ROOT_CAUSE),
+        ("diagnosis remediation", _HC_ASD_REMEDIATION),
+        ("spec violation",        _HC_ASD_SPEC_VIOLATION),
+    ],
+    "min_telegram_words": 500,
+}
+
+# ── World fixture — values sourced from ASD constants above ──────────────────
 _HC_WORLD = {
     "sent_subjects": [
         "Morning Digest 22 Jun",
@@ -5951,22 +6029,35 @@ _HC_WORLD = {
             "front_matter": {"timestamp": "2026-06-22T07:00:00+08:00"},
         }
     ],
-    "spec_violations": ["narrative.word_count must be ge2400 but got 1850"],
-    "digest": (
-        "Executive brief 22 Jun 2026: equity markets posted modest gains led by technology. "
-        "US 10Y yields ticked up 4bp on firmer-than-expected PMI data. VIX compressed "
-        "below 16.0, signalling reduced near-term volatility concern. Portfolio performing "
-        "broadly in line with benchmarks. Macro backdrop remains constructive for equities."
-    ),
+    "spec_violations": [_HC_ASD_SPEC_VIOLATION],           # sourced from ASD
+    "digest": _HC_ASD_DIGEST_NARRATIVE,                    # sourced from ASD (realistic ~600w)
     "diagnosis": {
-        "root_cause": "SMTP rate limit exceeded on Gmail relay.",
-        "remediation": "Add exponential backoff and retry logic.",
+        "root_cause": _HC_ASD_ROOT_CAUSE,                  # sourced from ASD
+        "remediation": _HC_ASD_REMEDIATION,                # sourced from ASD
     },
     "outbox_rows": [
         {"script_name": "macro_daily_push_telegram", "delivered": True,
          "word_count": 558, "error": None},
     ],
 }
+
+
+def _validate_world_vs_asd(world, asd):
+    """Assert every ASD-required string appears somewhere in the world fixture values.
+
+    Called at top of every _render_<script>_artifacts harness.
+    Prevents ASD and world from diverging silently — if you add a required string to the
+    ASD without updating the world, this fails immediately rather than producing a
+    green test that can never catch a missing-field bug.
+    """
+    all_required = set(asd.get("email_required", [])) | set(asd.get("telegram_required", []))
+    world_str = str(world)
+    missing = [s for s in sorted(all_required) if s not in world_str]
+    assert not missing, (
+        f"World fixture is missing {len(missing)} ASD-required string(s). "
+        f"Update the world fixture so it can produce these strings in the artifact:\n"
+        + "\n".join(f"  {s!r}" for s in missing)
+    )
 
 
 def _render_health_check_artifacts(world=None):
@@ -5994,6 +6085,9 @@ def _render_health_check_artifacts(world=None):
 
     if world is None:
         world = _HC_WORLD
+
+    # A1/A4 gate: world must contain every ASD-required string
+    _validate_world_vs_asd(world, _HC_ASD)
 
     hc = _load_hc_module()
     tg_mod = _load_formatter("health_check")
@@ -6209,16 +6303,16 @@ def test_hc_email_and_telegram_agree():
     This single test would have caught the shipped bug where the email was sent
     before the content engine ran — the email had none of the digest/spec/diagnoses
     sections while Telegram (reading the .md) had all of them.
+
+    shared_fields is derived from _HC_ASD["shared_fields"] — add a new required
+    field to the ASD and it is automatically covered here without editing this test.
     """
     email_html, _, tg_msg = _get_hc_artifacts()
     assert email_html is not None, "_send_email was never called"
     assert tg_msg is not None, "_build_message returned None"
 
-    shared_fields = [
-        ("digest[:50]", _HC_WORLD["digest"][:50]),
-        ("diagnosis root_cause", _HC_WORLD["diagnosis"]["root_cause"]),
-        ("diagnosis remediation", _HC_WORLD["diagnosis"]["remediation"]),
-    ] + [("spec violation", v) for v in _HC_WORLD["spec_violations"]]
+    # Derived mechanically from ASD — Testing Critic G3 compliance
+    shared_fields = _HC_ASD["shared_fields"]
 
     failures = []
     for field_name, value in shared_fields:
@@ -6232,4 +6326,19 @@ def test_hc_email_and_telegram_agree():
     assert not failures, (
         "Shared fields must appear in BOTH email HTML and Telegram message:\n"
         + "\n".join(failures)
+    )
+
+
+def test_hc_telegram_min_word_count():
+    """Telegram message must be ≥500 words (Hard Rule 16).
+
+    This is gap G4 from the gap analysis — every harness must assert the word-count
+    floor. A world fixture that produces <500 words fails here, not silently at delivery.
+    """
+    _, _, tg_msg = _get_hc_artifacts()
+    assert tg_msg is not None, "_build_message returned None"
+    word_count = len(tg_msg.split())
+    assert word_count >= _HC_ASD["min_telegram_words"], (
+        f"Telegram message has {word_count} words — must be ≥{_HC_ASD['min_telegram_words']} "
+        f"(Hard Rule 16). Snippet: {tg_msg[:400]}"
     )

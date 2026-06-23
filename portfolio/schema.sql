@@ -538,3 +538,14 @@ CREATE TABLE IF NOT EXISTS telegram_outbox (
     error       TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_telegram_outbox_sent_at ON telegram_outbox (sent_at DESC);
+
+-- Tier 0 artifact verification — daily body-check results per sending script
+CREATE TABLE IF NOT EXISTS artifact_verification (
+    id               SERIAL PRIMARY KEY,
+    checked_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+    script_name      TEXT NOT NULL,
+    email_ok         BOOLEAN,
+    missing_sections TEXT[],
+    email_subject    TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_artver_checked_at ON artifact_verification (checked_at DESC);
