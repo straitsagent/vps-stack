@@ -417,7 +417,7 @@ live verify (Hard Rule 17).
 | Script | ASD | Seams factored | Artifact harness | `_agree` ASD-derived | Word-count test | Tier 0 markers | Substring tests pruned | Live verified |
 |--------|-----|---------------|-----------------|---------------------|-----------------|----------------|----------------------|---------------|
 | `health_check` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (2 pruned) | 🔲 |
-| `macro_research` | 🔲 | partial (`_send_email` exists) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `macro_research` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `portfolio_email` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
 | `portfolio_review` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
 | `portfolio_rationalization` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
