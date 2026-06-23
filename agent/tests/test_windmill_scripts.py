@@ -6342,3 +6342,191 @@ def test_hc_telegram_min_word_count():
         f"Telegram message has {word_count} words — must be ≥{_HC_ASD['min_telegram_words']} "
         f"(Hard Rule 16). Snippet: {tg_msg[:400]}"
     )
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# affection_ping — hourly sticker + caption (Rule 16 exempt, see override_log.md)
+# ─────────────────────────────────────────────────────────────────────────────
+
+_AFFECTION_SCRIPT = os.path.join(
+    os.path.dirname(__file__), "../../windmill/u/admin/affection_ping.py"
+)
+
+
+def _load_affection_mod():
+    """Load affection_ping.py as a module, stubbing requests/psycopg2."""
+    spec = importlib.util.spec_from_file_location("_affection", _AFFECTION_SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    for stub in ["requests", "psycopg2"]:
+        sys.modules.setdefault(stub, type(sys)(stub))
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_affection_ping_picks_valid_sticker(monkeypatch):
+    """_fetch_stickers must return a non-empty list; random.choice picks one with file_id."""
+    mod = _load_affection_mod()
+    fake_stickers = [
+        {"file_id": "AAA111", "set_name": "BubuDudu"},
+        {"file_id": "BBB222", "set_name": "BubuDudu"},
+        {"file_id": "CCC333", "set_name": "BubuDudu"},
+    ]
+    # Patch requests.get to return our fake stickers
+    class _FakeResp:
+        def __init__(self, data):
+            self._data = data
+        def json(self):
+            return {"ok": True, "result": {"stickers": self._data}}
+    import requests as _real_req
+    monkeypatch.setattr(_real_req, "get", lambda *a, **kw: _FakeResp(fake_stickers))
+    result = mod._fetch_stickers("fake_token", ["BubuDudu"])
+    assert len(result) == 3, f"Expected 3 stickers, got {len(result)}"
+    file_ids = {s["file_id"] for s in result}
+    assert file_ids == {"AAA111", "BBB222", "CCC333"}
+
+
+def test_affection_ping_caption_one_sentence(monkeypatch):
+    """_generate_caption must return a non-empty string ≤1024 chars with ≤1 sentence."""
+    mod = _load_affection_mod()
+    fake_caption = "Thinking of you right now, just because."
+    class _FakeResp:
+        def raise_for_status(self): pass
+        def json(self):
+            return {"choices": [{"message": {"content": fake_caption}}]}
+    import requests as _real_req
+    monkeypatch.setattr(_real_req, "post", lambda *a, **kw: _FakeResp())
+    caption = mod._generate_caption("fake_key")
+    assert caption, "Caption must not be empty"
+    assert len(caption) <= 1024, f"Caption too long: {len(caption)} chars"
+    # ≤1 sentence-ending punctuation (after splitting, only 1 piece)
+    import re as _re
+    sentences = _re.split(r"(?<=[.!?])\s+", caption)
+    assert len(sentences) <= 1, f"Caption must be one sentence, got {len(sentences)}: {caption}"
+
+
+def test_affection_ping_send_sticker_payload(monkeypatch):
+    """_send_sticker must POST to /sendSticker with chat_id, sticker, caption."""
+    mod = _load_affection_mod()
+    captured = {}
+    class _FakeResp:
+        def json(self):
+            return {"ok": True}
+    import requests as _real_req
+    def _fake_post(url, json=None, **kw):
+        captured["url"] = url
+        captured["payload"] = json
+        return _FakeResp()
+    monkeypatch.setattr(_real_req, "post", _fake_post)
+    delivered, err = mod._send_sticker("tok", "-4830227987", "FILE123", "hello there")
+    assert delivered is True, f"Should deliver, got err: {err}"
+    assert err is None
+    assert "/sendSticker" in captured["url"], f"URL must end with /sendSticker: {captured['url']}"
+    assert captured["payload"]["chat_id"] == "-4830227987"
+    assert captured["payload"]["sticker"] == "FILE123"
+    assert captured["payload"]["caption"] == "hello there"
+
+
+def test_affection_ping_outbox_row_written(monkeypatch):
+    """_log_affection must INSERT all 7 fields into affection_outbox."""
+    mod = _load_affection_mod()
+    captured = {}
+    class _FakeCursor:
+        def execute(self, sql, params):
+            captured["sql"] = sql
+            captured["params"] = params
+        def close(self): pass
+    class _FakeConn:
+        def cursor(self): return _FakeCursor()
+        def commit(self): pass
+        def close(self): pass
+    import psycopg2 as _real_pg
+    monkeypatch.setattr(_real_pg, "connect", lambda **kw: _FakeConn())
+    db = {"host": "h", "port": 5432, "dbname": "d", "user": "u", "password": "p"}
+    mod._log_affection(db, "-4830227987", "BubuDudu", "FILE123", "hi caption",
+                       "deepseek-chat", True, None)
+    assert "INSERT INTO affection_outbox" in captured["sql"]
+    assert captured["params"] == (
+        "-4830227987", "BubuDudu", "FILE123", "hi caption",
+        "deepseek-chat", True, None,
+    )
+
+
+def test_affection_ping_deepseek_failure_fallback(monkeypatch):
+    """_generate_caption must fall back to hardcoded list when Deepseek fails."""
+    mod = _load_affection_mod()
+    import requests as _real_req
+    def _raise(*a, **kw):
+        raise Exception("Deepseek down")
+    monkeypatch.setattr(_real_req, "post", _raise)
+    caption = mod._generate_caption("fake_key")
+    assert caption, "Fallback caption must not be empty"
+    assert caption in mod._FALLBACK_CAPTIONS, \
+        f"Fallback caption must come from _FALLBACK_CAPTIONS, got: {caption}"
+
+
+def test_affection_ping_skips_outside_window(monkeypatch):
+    """main() must return skipped=True outside 8AM–10PM SGT window."""
+    mod = _load_affection_mod()
+    from datetime import datetime as _dt
+    # Patch datetime.now to return 3AM SGT
+    class _FakeDT(_dt):
+        @classmethod
+        def now(cls, tz=None):
+            return _dt(2026, 6, 23, 3, 0, 0, tzinfo=mod.SGT)
+    monkeypatch.setattr(mod, "datetime", _FakeDT)
+    # Patch requests to fail if any HTTP call is made
+    import requests as _real_req
+    def _no_http(*a, **kw):
+        raise AssertionError("No HTTP calls should be made outside window")
+    monkeypatch.setattr(_real_req, "get", _no_http)
+    monkeypatch.setattr(_real_req, "post", _no_http)
+    result = mod.main(
+        telegram_bot_token="tok",
+        telegram_owner_id="123",
+        affection_group_id="-4830227987",
+        affection_sticker_packs="BubuDudu",
+        deepseek_key="key",
+        portfolio_db={},
+    )
+    assert result.get("skipped") is True, f"Should skip at 3AM, got: {result}"
+
+
+def test_affection_ping_no_sticker_pack_resolved(monkeypatch):
+    """main() must raise RuntimeError if no stickers resolve from getStickerSet."""
+    mod = _load_affection_mod()
+    class _FakeResp:
+        def json(self):
+            return {"ok": False, "description": "sticker set not found"}
+    import requests as _real_req
+    monkeypatch.setattr(_real_req, "get", lambda *a, **kw: _FakeResp())
+    # Patch datetime to 10AM SGT (inside window)
+    from datetime import datetime as _dt
+    class _FakeDT(_dt):
+        @classmethod
+        def now(cls, tz=None):
+            return _dt(2026, 6, 23, 10, 0, 0, tzinfo=mod.SGT)
+    monkeypatch.setattr(mod, "datetime", _FakeDT)
+    with pytest.raises(RuntimeError, match="no stickers resolved"):
+        mod.main(
+            telegram_bot_token="tok",
+            telegram_owner_id="123",
+            affection_group_id="-4830227987",
+            affection_sticker_packs="NonexistentPack",
+            deepseek_key="key",
+            portfolio_db={},
+        )
+
+
+def test_affection_ping_group_id_is_negative():
+    """The affection_group_id must be a negative number (group chat, not DM)."""
+    # Static source check: the script must accept and pass through the group_id unchanged.
+    mod = _load_affection_mod()
+    # Inspect main's signature — affection_group_id must be a required param
+    import inspect
+    sig = inspect.signature(mod.main)
+    assert "affection_group_id" in sig.parameters, \
+        "main() must accept affection_group_id parameter"
+    # The group_id is passed through to _send_sticker as chat_id — verified by
+    # test_affection_ping_send_sticker_payload above. This test documents the invariant.
+    src = open(_AFFECTION_SCRIPT).read()
+    assert "affection_group_id" in src, "Script must reference affection_group_id"

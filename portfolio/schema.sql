@@ -539,6 +539,20 @@ CREATE TABLE IF NOT EXISTS telegram_outbox (
 );
 CREATE INDEX IF NOT EXISTS idx_telegram_outbox_sent_at ON telegram_outbox (sent_at DESC);
 
+-- Affection outbox — separate log for hourly sticker pings (isolated from telegram_outbox)
+CREATE TABLE IF NOT EXISTS affection_outbox (
+    id              SERIAL PRIMARY KEY,
+    sent_at         TIMESTAMPTZ NOT NULL DEFAULT now(),
+    recipient_id    TEXT NOT NULL,
+    sticker_pack    TEXT,
+    sticker_file_id TEXT NOT NULL,
+    caption         TEXT,
+    llm_model       TEXT,
+    delivered       BOOLEAN,
+    error           TEXT
+);
+CREATE INDEX IF NOT EXISTS idx_affection_outbox_sent_at ON affection_outbox (sent_at DESC);
+
 -- Tier 0 artifact verification — daily body-check results per sending script
 CREATE TABLE IF NOT EXISTS artifact_verification (
     id               SERIAL PRIMARY KEY,

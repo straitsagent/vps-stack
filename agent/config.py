@@ -4,6 +4,11 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_OWNER_ID = os.environ.get("TELEGRAM_OWNER_ID", "")  # Owner's Telegram chat ID
 TELEGRAM_WEBHOOK_SECRET = os.environ.get("TELEGRAM_WEBHOOK_SECRET", "")
 DRAFTS_GROUP_ID = os.environ.get("DRAFTS_GROUP_ID", "")  # Telegram group chat ID (negative int as string)
+# Silent groups: comma-separated group chat_ids where the bot only responds to /commands
+# or @StraitsAgentBot mentions — casual messages are ignored (no draft, no auto-reply).
+SILENT_GROUPS_RAW = os.environ.get("SILENT_GROUPS", "")
+SILENT_GROUPS = {g.strip() for g in SILENT_GROUPS_RAW.split(",") if g.strip()}
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "StraitsAgentBot").lstrip("@")
 
 WM_BASE_URL = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
 WM_WORKSPACE = os.environ.get("WM_WORKSPACE", "admins")

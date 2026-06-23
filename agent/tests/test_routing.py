@@ -223,3 +223,85 @@ def test_macro_brief_calls_run_macro_brief():
     src = main_path.read_text()
     assert "run_macro_brief" in src, \
         "main.py must call pl.run_macro_brief for macro_brief — the step-loop cannot handle 5 parallel news searches"
+
+
+# ── Silent groups routing ────────────────────────────────────────────────────
+# In silent groups, the bot only responds to /commands or @StraitsAgentBot mentions.
+# Casual messages are ignored (no draft, no auto-reply, no audit row).
+
+import re as _re
+
+_SILENT_MENTION_RE = _re.compile(r"@StraitsAgentBot\s*", _re.IGNORECASE)
+
+
+def _silent_group_route(text: str) -> str | None:
+    """Mirror the logic in main.py _handle_silent_group.
+    Returns the cleaned text to route to handle_owner, or None to ignore.
+    """
+    if text.startswith("/"):
+        return text[1:]  # strip only the leading slash (matches handle_owner)
+    elif _SILENT_MENTION_RE.match(text):
+        cleaned = _SILENT_MENTION_RE.sub("", text, count=1).strip()
+        return cleaned if cleaned else None
+    else:
+        return None
+
+
+def test_silent_group_ignores_plain_message():
+    """Plain message in silent group must be ignored (returns None)."""
+    assert _silent_group_route("hey what's for dinner") is None
+
+
+def test_silent_group_ignores_question():
+    """Question without / or @mention must be ignored."""
+    assert _silent_group_route("how is the market doing today?") is None
+
+
+def test_silent_group_responds_to_slash_command():
+    """/command must be routed (slash stripped)."""
+    assert _silent_group_route("/macro") == "macro"
+    assert _silent_group_route("/portfolio") == "portfolio"
+    assert _silent_group_route("/research NVDA earnings") == "research NVDA earnings"
+
+
+def test_silent_group_responds_to_mention():
+    """@StraitsAgentBot mention must be routed (mention stripped)."""
+    assert _silent_group_route("@StraitsAgentBot macro") == "macro"
+    assert _silent_group_route("@StraitsAgentBot portfolio") == "portfolio"
+
+
+def test_silent_group_mention_case_insensitive():
+    """Mention must work regardless of case."""
+    assert _silent_group_route("@straitsagentbot macro") == "macro"
+    assert _silent_group_route("@STRAITSAGENTBOT portfolio") == "portfolio"
+
+
+def test_silent_group_mention_only_returns_none():
+    """Just @StraitsAgentBot with nothing after must be ignored."""
+    assert _silent_group_route("@StraitsAgentBot") is None
+    assert _silent_group_route("@StraitsAgentBot ") is None
+
+
+def test_silent_group_double_slash_only_strips_first():
+    """//command should become /command (only the leading slash stripped)."""
+    assert _silent_group_route("//portfolio") == "/portfolio"
+
+
+def test_silent_group_config_imported_in_main():
+    """main.py must import SILENT_GROUPS and BOT_USERNAME from config."""
+    import pathlib
+    main_src = pathlib.Path(__file__).parent.parent.joinpath("main.py").read_text()
+    assert "SILENT_GROUPS" in main_src, \
+        "main.py must import SILENT_GROUPS from config"
+    assert "_handle_silent_group" in main_src, \
+        "main.py must define _handle_silent_group function"
+
+
+def test_silent_group_config_in_config_py():
+    """config.py must define SILENT_GROUPS set and BOT_USERNAME."""
+    import pathlib
+    config_src = pathlib.Path(__file__).parent.parent.joinpath("config.py").read_text()
+    assert "SILENT_GROUPS" in config_src, \
+        "config.py must define SILENT_GROUPS"
+    assert "BOT_USERNAME" in config_src, \
+        "config.py must define BOT_USERNAME"

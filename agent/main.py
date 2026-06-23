@@ -14,6 +14,7 @@ import classifier as clf
 from config import (
     ASYNC_NOTIFY, FAST, FIRE, GATED_WRITE, MULTI_STEP,
     TELEGRAM_OWNER_ID as OWNER_ID, DRAFTS_GROUP_ID,
+    SILENT_GROUPS, BOT_USERNAME,
 )
 from formatter import (
     confirmation_prompt, draft_notification, outbound_draft_notification,
@@ -98,8 +99,26 @@ async def handle_message(msg: dict):
         await handle_owner(phone, text, t0)
     elif DRAFTS_GROUP_ID and phone == DRAFTS_GROUP_ID:
         await handle_drafts_group(phone, text)
+    elif phone in SILENT_GROUPS:
+        await _handle_silent_group(phone, text, t0)
     else:
         await handle_contact(phone, msg.get("display_name", phone), text)
+
+
+async def _handle_silent_group(group_id: str, text: str, t0: float):
+    """In silent groups, only respond to /commands or @StraitsAgentBot mentions.
+    Casual messages are ignored — no draft, no auto-reply, no audit row.
+    """
+    mention_re = re.compile(rf"@{re.escape(BOT_USERNAME)}\s*", re.IGNORECASE)
+    if text.startswith("/"):
+        cleaned = text[1:]  # strip only the leading slash (matches handle_owner)
+    elif mention_re.match(text):
+        cleaned = mention_re.sub("", text, count=1).strip()
+        if not cleaned:
+            return  # just the mention, nothing to act on
+    else:
+        return  # silent — ignore casual messages
+    await handle_owner(group_id, cleaned, t0)
 
 
 # ── Owner command flow ───────────────────────────────────────────────────────

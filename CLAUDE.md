@@ -44,7 +44,7 @@ After any SSH login, run `cr` to re-enter the persistent session.
 | Windmill | `root-windmill_server-1` etc | 8080 | Compose at `/root/docker-compose.yml`. Primary orchestration platform. |
 | n8n | `n8n-n8n-1`, `n8n-caddy-1` | 80/443 | Compose at `/opt/n8n/docker-compose.yml`. Kept running but not actively used. Do not build new workflows here. |
 | PostgreSQL | `root-portfolio_postgres-1` | 5432 | Portfolio Intelligence System — live in `/root/docker-compose.yml` as `portfolio_postgres` service, volume `portfolio_db_data`. Stores `price_history`, `portfolio_positions`, `fx_rates`. Internal only — not exposed externally. |
-| Telegram Agent | `root-straitsagent-1` | 8001 (internal) | FastAPI agent service at `/root/agent/`. Joined to `agent_net` + `default` networks. Receives Telegram webhooks via Caddy. |
+| Telegram Agent | `root-straitsagent-1` | 8001 (internal) | FastAPI agent service at `/root/agent/`. Joined to `agent_net` + `default` networks. Receives Telegram webhooks via Caddy. Silent groups (env `SILENT_GROUPS`) — bot only responds to `/`-commands or `@StraitsAgentBot` mentions in listed groups; casual messages ignored. |
 | Caddy | `n8n-caddy-1` | 80/443 | Reverse-proxies `https://<YOUR_DOMAIN>` — routes `/webhook/telegram*` → `straitsagent:8001`, everything else → `n8n:5678`. Config at `/opt/n8n/Caddyfile`. |
 
 ---
@@ -245,7 +245,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-23 (Gap analysis applied — 4 architectural gaps (A1–A4) + 6 implementation gaps addressed. ASD convention introduced: `_HC_ASD` as authoritative pre-implementation spec, `_HC_WORLD` derived from ASD constants, `_validate_world_vs_asd` helper added. `test_hc_telegram_min_word_count` added (gap G4 — revealed world fixture was only 143 words; fixed with realistic ~600-word narrative). `test_hc_email_and_telegram_agree` updated to iterate `_HC_ASD["shared_fields"]` mechanically. Hard Rule 20 added (Testing Critic 5-point checklist). Tier 0 production verification defined (health_check IMAP body fetch — Phase B). `docs/TESTING.md` updated with ASD convention, Testing Critic, Tier 0, broken-artifact definition, copy-paste template, rollout sequencing. 625 tests passing in container. Prior: artifact-driven testing philosophy adopted on health_check. Repo: `vps-stack`.)
+**Last updated:** 2026-06-23 (Affection Ping workflow built — hourly sticker + Deepseek caption to Telegram group, 8AM–10PM SGT. Silent groups agent routing added (`SILENT_GROUPS` env var) — bot ignores casual messages in listed groups, only responds to `/`-commands and `@StraitsAgentBot` mentions. New `affection_outbox` table (isolated from `telegram_outbox`). Rule 16 exemption logged for non-report sticker sends. 642 tests passing in container. Prior: Gap analysis applied — ASD convention, Testing Critic, Tier 0 verification. Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`
@@ -267,6 +267,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 | **Macro Research** | ✅ Live | **7:00 AM SGT daily (Mon–Fri)** — 25 Yahoo indicators + 13 FRED series + Fed RSS + Google News. 6-section Deepseek analysis (~2,400+ words). HTML email + Telegram push. Script: `u/admin/macro_research`. Old `macro_daily_push` schedule disabled. |
 | 6.1 — Daily Health Check | ✅ Live | **8:00 AM SGT daily** — 3-layer notifications: (A) Deepseek per-schedule diagnosis, (B) error_alert Telegram+diagnosis on crash, (C) host deadman at 08:30 SGT. Content engine: 24h .md collector, spec-check per output type, Grok-4 holistic daily digest. Recipient: <YOUR_RECIPIENT_EMAIL> |
 | 6.2 — Windmill Error Alert | ✅ Live | On failure — email + **Telegram** + Deepseek 1-line diagnosis |
+| Affection Ping | ✅ Live | Hourly 8AM–10PM SGT (`0 0 8-22 * * *`). Random sticker from `BubuDudu` pack + Deepseek one-sentence affectionate caption sent to Telegram group. Logs to `affection_outbox` (separate from `telegram_outbox`). Rule 16 exempt (non-report). Script: `u/admin/affection_ping`. |
 
 ### Windmill Variables Added
 See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/resource inventory.
@@ -297,7 +298,7 @@ See `docs/ROADMAP.md` → "Windmill Resources" section for the full variable/res
 ### Telegram Agent — Build Status
 See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full component inventory.
 
-**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 8 Windmill scripts (all via md-driven formatter architecture), macro_research at 7:00 AM SGT (25 Yahoo + 13 FRED + Fed RSS + 6-section analysis), Telegram push via Deepseek synthesis (~545 words), 624 tests passing in container (windmill_scripts suite). Pending: Agent Drafts Telegram group (manual owner task).
+**Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 8 Windmill scripts (all via md-driven formatter architecture), macro_research at 7:00 AM SGT (25 Yahoo + 13 FRED + Fed RSS + 6-section analysis), Telegram push via Deepseek synthesis (~545 words), silent groups routing (`SILENT_GROUPS` — bot ignores casual messages in listed groups, responds only to `/`-commands and `@StraitsAgentBot` mentions), 642 tests passing in container. Pending: Agent Drafts Telegram group (manual owner task).
 
 ### Next Up
 1. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`
