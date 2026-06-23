@@ -391,6 +391,7 @@ ORANGE = "#e36209"
 # email_expect: expected count in 24h. None = variable (no flag if 0)
 SCHEDULES = [
     {"path": "u/admin/morning_news_digest",             "label": "Morning News Digest",         "max_age_h": 26, "has_llm": True,  "llm_aggregate": False, "weekday_only": False, "email_match": ["Morning Digest"],           "email_expect": 1},
+    {"path": "u/admin/macro_research",                  "label": "Macro Research",              "max_age_h": 26, "has_llm": True,  "llm_aggregate": False, "weekday_only": True,  "email_match": ["Macro Research"],           "email_expect": 1},
     {"path": "u/admin/portfolio_price_fetcher_daily",   "label": "Portfolio Price Fetcher (AM)", "max_age_h": 26, "has_llm": False, "llm_aggregate": False, "weekday_only": True,  "email_match": None,                         "email_expect": None},
     {"path": "u/admin/portfolio_email_daily",           "label": "Portfolio Email (AM)",         "max_age_h": 26, "has_llm": False, "llm_aggregate": False, "weekday_only": True,  "email_match": ["Portfolio", "US Close"],     "email_expect": 1},
     {"path": "u/admin/portfolio_price_fetcher_evening", "label": "Portfolio Price Fetcher (PM)", "max_age_h": 26, "has_llm": False, "llm_aggregate": False, "weekday_only": True,  "email_match": None,                         "email_expect": None},

@@ -414,16 +414,16 @@ Per-script checklist: ASD written → seams factored → harness RED→GREEN →
 `_agree` test ASD-derived → substring tests pruned → Tier 0 `ARTIFACT_MARKERS` entry added →
 live verify (Hard Rule 17).
 
-| Script | ASD | Seams factored | Artifact harness | `_agree` ASD-derived | Word-count test | Tier 0 markers | Substring tests pruned |
-|--------|-----|---------------|-----------------|---------------------|-----------------|----------------|----------------------|
-| `health_check` | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 Phase B | ✅ (2 pruned) |
-| `macro_research` | 🔲 | partial (`_send_email` exists) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| `portfolio_email` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| `portfolio_review` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| `portfolio_rationalization` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| `portfolio_move_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| `portfolio_analyst_alert` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
-| `youtube_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| Script | ASD | Seams factored | Artifact harness | `_agree` ASD-derived | Word-count test | Tier 0 markers | Substring tests pruned | Live verified |
+|--------|-----|---------------|-----------------|---------------------|-----------------|----------------|----------------------|---------------|
+| `health_check` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (2 pruned) | 🔲 |
+| `macro_research` | 🔲 | partial (`_send_email` exists) | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_email` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_review` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_rationalization` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_move_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_analyst_alert` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `youtube_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
 
 **Rollout order:** `macro_research` (partial seams) → `portfolio_email` → `portfolio_review` →
 `portfolio_rationalization` → `portfolio_move_monitor` → `portfolio_analyst_alert` → `youtube_monitor`.

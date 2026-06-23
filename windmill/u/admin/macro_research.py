@@ -552,6 +552,13 @@ Deepseek cost est.: {cost_str} &nbsp;|&nbsp; Generated {time_label}
 </body>
 </html>"""
 
+# ── Canonical .md writer (seam for tests) ─────────────────────────────────────
+
+def _write_canonical_md(content: str, path: str) -> None:
+    with open(path, "w") as f:
+        f.write(content)
+
+
 # ── Email sender ──────────────────────────────────────────────────────────────
 
 def _send_email(smtp_res: dict, recipient: str, subject: str, html_body: str):
@@ -690,8 +697,7 @@ def main(
         f"{narrative}\n\n"
         "<!-- DETAIL -->\n"
     )
-    with open(md_path, "w") as f:
-        f.write(md_content)
+    _write_canonical_md(md_content, md_path)
     log.info(f"[MacroResearch] Written {md_path}")
 
     # ── HTML email ────────────────────────────────────────────────────────────

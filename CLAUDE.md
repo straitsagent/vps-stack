@@ -250,7 +250,7 @@ See `docs/earnings_report_standards.md` for the 6 mandatory report standards. Wh
 
 ## Current Status
 
-**Last updated:** 2026-06-23 (Affection Ping workflow built — hourly sticker + Deepseek caption to Telegram group, 8AM–10PM SGT. Silent groups agent routing added (`SILENT_GROUPS` env var) — bot ignores casual messages in listed groups, only responds to `/`-commands and `@StraitsAgentBot` mentions. New `affection_outbox` table (isolated from `telegram_outbox`). Rule 16 exemption logged for non-report sticker sends. Two post-deploy bugs caught by owner: (1) negative-emoji stickers paired with loving captions — fixed with `_AFFECTIONATE_EMOJIS` allowlist; (2) `sendSticker` caption silently dropped by Telegram — fixed by sending caption as separate `sendMessage`. Hard Rule 21 added (verify the response, not the request) to prevent recurrence. 643 tests passing in container. Repo: `vps-stack`.)
+**Last updated:** 2026-06-23 (Testing framework Phase A complete — 4 architectural gaps closed: ASD convention (`_HC_ASD`), Testing Critic Hard Rule 20, Tier 0 production artifact verification in `health_check.py` + `artifact_verification` DB table, word-count floor (`assert len(tg_msg.split()) >= 500`). Spec false-positives fixed: `_collect_24h_reports` now assigns sub-types for `move_`, `rationalization_`, `review_` portfolio files so SPEC_RULES["portfolio"] only fires on email .md files. YouTube Monitor stale threshold corrected: `max_age_h` 2→8, label updated to "(6-hourly)". Phase C testing rollout in progress — `macro_research` next. 643 tests passing in container. Repo: `vps-stack`.)
 
 ### Phase 0 — Foundation
 - [x] Windmill running at `http://<YOUR_VPS_IP>:8080`
@@ -306,7 +306,8 @@ See `docs/ROADMAP.md` → "Telegram Agent Build Status" section for the full com
 **Summary:** Agent fully live — FastAPI service, Telegram webhook, 15 commands (alphabetical), W2/W3/W4 tools + candidate_evaluation, /macro→macro_brief (24 indicators, 6 groups, per-section commentary + news sources), /candidate fast-path, push notifications from 8 Windmill scripts (all via md-driven formatter architecture), macro_research at 7:00 AM SGT (25 Yahoo + 13 FRED + Fed RSS + 6-section analysis), Telegram push via Deepseek synthesis (~545 words), silent groups routing (`SILENT_GROUPS` — bot ignores casual messages in listed groups, responds only to `/`-commands and `@StraitsAgentBot` mentions), 642 tests passing in container. Pending: Agent Drafts Telegram group (manual owner task).
 
 ### Next Up
-1. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`
+1. **Phase C — Testing rollout** — Apply ASD + seam factoring + artifact harness + word-count test + Tier 0 markers to 7 remaining sending scripts in order: `macro_research` → `portfolio_email` → `portfolio_review` → `portfolio_rationalization` → `portfolio_move_monitor` → `portfolio_analyst_alert` → `youtube_monitor`. Per-script: ASD written → seams factored → harness RED→GREEN → word-count ≥500 → Testing Critic → Tier 0 markers → live verify. See `docs/TESTING.md` rollout table.
+2. **Create "Agent Drafts" Telegram group** (owner manual task) — owner + <YOUR_BOT_USERNAME> → copy group chat_id (negative integer) → set `DRAFTS_GROUP_ID` in `/root/agent.env` → `docker compose up -d straitsagent`
 
 ---
 

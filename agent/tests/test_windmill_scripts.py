@@ -2208,7 +2208,7 @@ def test_health_check_six_schedules():
     # Count entries by unique u/admin/ schedule path pattern (avoids false matches
     # from other "path" keys added in helper functions)
     count = src.count('"path": "u/admin/')
-    assert count == 6, f"Expected 6 SCHEDULES entries (u/admin/ paths), found {count}"
+    assert count == 7, f"Expected 7 SCHEDULES entries (u/admin/ paths), found {count}"
 
 
 def test_health_count_matching_requires_all_keywords():
@@ -6620,3 +6620,298 @@ def test_affection_ping_group_id_is_negative():
     # test_affection_ping_send_sticker_payload above. This test documents the invariant.
     src = open(_AFFECTION_SCRIPT).read()
     assert "affection_group_id" in src, "Script must reference affection_group_id"
+
+
+# =============================================================================
+# macro_research — Artifact-render harness (Phase C testing rollout)
+# =============================================================================
+
+# ── ASD constants ─────────────────────────────────────────────────────────────
+
+_MR_ASD_FED_TITLE = "Calibration of the neutral rate amid persistent services inflation"
+_MR_ASD_HEADLINE  = "IMF trims 2026 global growth to 2.8 pct on tariff drag"
+_MR_ASD_EQUITY    = "VIX compression into the low-teens signals late-cycle complacency"
+
+_MR_ASD_EQUITY_SECTION = (
+    _MR_ASD_EQUITY + " as US equities post narrow gains while global indices diverge "
+    "sharply. The S&P 500 advance masks widening breadth deterioration beneath the surface. "
+    "NDX outperformance relative to the Russell 2000 reflects continued mega-cap concentration "
+    "in AI infrastructure names. Nikkei leads developed-market peers on yen weakness and "
+    "export tailwinds, while the DAX consolidates near all-time highs on European fiscal "
+    "expansion. The HSI underperformance versus the CSI300 reflects the persistent offshore "
+    "discount to mainland multiples driven by geopolitical risk premium. For a 40/60 "
+    "HK/US portfolio, the cross-market divergence argues for trimming HSI overweights into "
+    "strength rather than adding exposure at current risk-adjusted returns. Elevated FOMO "
+    "positioning in US megacap AI names warrants vigilance on mean-reversion risk given "
+    "the multiple expansion from earnings season expectations that may not fully materialise."
+)
+
+_MR_ASD = {
+    "email_required": [
+        _MR_ASD_FED_TITLE,   # from fed_items[0] in Fed Reserve Commentary section
+        _MR_ASD_HEADLINE,    # from headlines[0] in Macro Headlines section (53 chars, under 70)
+        _MR_ASD_EQUITY,      # from equity section in analysis
+    ],
+    "telegram_required": [
+        _MR_ASD_FED_TITLE,   # from fed_items[0] as Fed Watch line
+        _MR_ASD_HEADLINE,    # from headlines[0] in news block
+        _MR_ASD_EQUITY,      # from narrative block (full sections text)
+    ],
+    "shared_fields": [
+        ("fed item title",  _MR_ASD_FED_TITLE),
+        ("news headline",   _MR_ASD_HEADLINE),
+        ("equity section",  _MR_ASD_EQUITY),
+    ],
+    "min_telegram_words": 500,
+}
+
+_MR_WORLD = {
+    "yahoo": {
+        "VIX":    {"value": 13.2,    "change_pct": -3.1},
+        "SP500":  {"value": 5520.0,  "change_pct":  0.4},
+        "NDX":    {"value": 19350.0, "change_pct":  0.6},
+        "RUT":    {"value": 2010.0,  "change_pct": -0.2},
+        "Nikkei": {"value": 38200.0, "change_pct":  1.1},
+        "DAX":    {"value": 19800.0, "change_pct":  0.3},
+        "FTSE":   {"value": 8350.0,  "change_pct": -0.1},
+        "HSI":    {"value": 23450.0, "change_pct": -0.8},
+        "CSI300": {"value": 3970.00, "change_pct": -0.5},
+        "UST5Y":  {"value": 4.12,    "change_pct": None},
+        "UST10Y": {"value": 4.38,    "change_pct": None},
+        "UST30Y": {"value": 4.62,    "change_pct": None},
+        "HYG":    {"value": 79.5,    "change_pct":  0.1},
+        "LQD":    {"value": 108.2,   "change_pct":  0.0},
+        "DXY":    {"value": 104.8,   "change_pct":  0.3},
+        "EURUSD": {"value": 1.0821,  "change_pct": -0.3},
+        "GBPUSD": {"value": 1.2675,  "change_pct": -0.1},
+        "USDJPY": {"value": 157.30,  "change_pct":  0.2},
+        "USDCNY": {"value": 7.2510,  "change_pct":  0.1},
+        "USDSGD": {"value": 1.3485,  "change_pct":  0.1},
+        "USDHKD": {"value": 7.8050,  "change_pct":  0.0},
+        "Gold":   {"value": 2340.0,  "change_pct": -0.5},
+        "Brent":  {"value": 81.2,    "change_pct":  1.2},
+        "Copper": {"value": 4.512,   "change_pct":  0.3},
+        "NatGas": {"value": 2.215,   "change_pct": -1.1},
+    },
+    "fred": {
+        "DFF":          {"label": "Fed Funds Rate",   "value": 5.33,   "date": "2026-06-20"},
+        "SOFR":         {"label": "SOFR",             "value": 5.31,   "date": "2026-06-20"},
+        "DGS2":         {"label": "2Y Treasury",      "value": 4.75,   "date": "2026-06-20"},
+        "T10Y2Y":       {"label": "10Y-2Y Spread",    "value": -0.37,  "date": "2026-06-20"},
+        "T10Y3M":       {"label": "10Y-3M Spread",    "value": -0.52,  "date": "2026-06-20"},
+        "T5YIE":        {"label": "5Y Breakeven",     "value": 2.31,   "date": "2026-06-20"},
+        "T10YIE":       {"label": "10Y Breakeven",    "value": 2.28,   "date": "2026-06-20"},
+        "CPIAUCSL":     {"label": "CPI YoY",          "value": 3.1,    "date": "2026-05-31"},
+        "PCEPI":        {"label": "PCE YoY",          "value": 2.7,    "date": "2026-05-31"},
+        "UNRATE":       {"label": "Unemployment",     "value": 4.0,    "date": "2026-05-31"},
+        "NFCI":         {"label": "Chicago FCI",      "value": -0.18,  "date": "2026-06-14"},
+        "BAMLH0A0HYM2": {"label": "HY OAS",           "value": 310.0,  "date": "2026-06-20"},
+        "BAMLC0A0CM":   {"label": "IG OAS",           "value": 88.0,   "date": "2026-06-20"},
+    },
+    "fed_items": [
+        {
+            "speaker": "Waller",
+            "title":   _MR_ASD_FED_TITLE,
+            "date":    "2026-06-20",
+            "type":    "speech",
+            "url":     "https://www.federalreserve.gov/speeches/waller20260620.htm",
+        }
+    ],
+    "headlines": [
+        {"title": _MR_ASD_HEADLINE,                                 "source": "Reuters",   "date": "2026-06-23"},
+        {"title": "Fed minutes signal two more cuts possible in H2", "source": "FT",        "date": "2026-06-22"},
+        {"title": "Brent crude rallies on OPEC+ output discipline",  "source": "Bloomberg", "date": "2026-06-22"},
+        {"title": "DXY holds gains as euro softens on PMI miss",     "source": "Reuters",   "date": "2026-06-22"},
+    ],
+    "sections": {
+        "equity":      _MR_ASD_EQUITY_SECTION,
+        "rates":       (
+            "The 10Y-2Y spread at -37bp maintains an inverted yield curve that has "
+            "historically preceded US recessions with an 8-18 month lag. The T10Y3M at "
+            "-52bp confirms the inversion depth. HYG and LQD credit proxy spreads remain "
+            "benign at 310bp and 88bp respectively, implying investment-grade borrowers face "
+            "no immediate credit stress. Fed Funds at 5.33% versus SOFR at 5.31% signals "
+            "smooth policy transmission. Duration risk remains elevated in long-end portfolios "
+            "given the inverted curve and potential for a steepening trade as cuts materialise."
+        ),
+        "fed":         (
+            "Fed Funds at 5.33% remains restrictive relative to the 2.31% five-year breakeven, "
+            "implying positive real rates of approximately 302bp. CPI at 3.1% and PCE at 2.7% "
+            "are converging toward the two percent target but services inflation remains sticky "
+            "above four percent. Unemployment at 4.0% near the NAIRU estimate of 4.1% provides "
+            "no urgency for emergency easing. Financial conditions indexed by the Chicago NFCI "
+            "at -0.18 are accommodative, mildly counteracting policy restrictiveness. The base "
+            "case remains two 25bp cuts by year-end contingent on continued disinflation."
+        ),
+        "fx_credit":   (
+            "DXY at 104.8 reflects dollar resilience anchored by rate differential advantage. "
+            "EUR/USD at 1.0821 faces headwinds from PMI disappointments in Germany and France. "
+            "USD/JPY at 157.3 approaches BOJ intervention thresholds observed in prior episodes. "
+            "USD/SGD at 1.3485 and USD/HKD near the 7.805 mid-point reflect currency board "
+            "stability in the SGD basket and HKD peg respectively. HY OAS at 310bp is moderate "
+            "by historical standards, not signalling systemic credit stress in the cycle."
+        ),
+        "commodities": (
+            "Brent at $81.2 recovered on OPEC+ compliance signals from the Vienna meeting. "
+            "Gold at $2,340 consolidates after the recent correction from $2,450, supported "
+            "by real-rate expectations and central bank demand from EM sovereigns. Copper at "
+            "$4.51 reflects mixed signals from Chinese industrial demand data. Natural gas at "
+            "$2.22 remains below seasonal norms on storage surplus. The commodity complex is "
+            "neutral to slightly positive for the near-term inflation trajectory."
+        ),
+        "hk_china":    (
+            "HSI at 23,450 underperforms CSI300 at 3,970 reflecting persistent offshore "
+            "discount driven by geopolitical risk premium and reduced mainland liquidity flows "
+            "into H-shares. USD/HKD near 7.805 at the currency board mid-point signals orderly "
+            "conditions. PBOC cautious easing stance limits near-term HSI upside. The 40% HK "
+            "allocation in the portfolio context faces selective headwinds from macro-political "
+            "uncertainty, partially offset by attractive dividend yields in energy and financials."
+        ),
+    },
+}
+
+
+# ── Harness ───────────────────────────────────────────────────────────────────
+
+_MR_ARTIFACTS_CACHE: dict = {}
+
+
+def _render_macro_research_artifacts(world=None):
+    """
+    Run the real macro_research.main() with all I/O seams mocked at the edges.
+    Returns (email_html: str, md_content: str, telegram_message: str).
+
+    Patches applied (edge I/O only):
+      - _fetch_yahoo_macro       → canned yahoo indicators
+      - _fetch_fred_data         → canned fred series
+      - _fetch_fed_news          → canned fed_items
+      - _fetch_macro_news        → canned headlines
+      - _synthesise_section      → canned section texts (no Deepseek call)
+      - _write_canonical_md      → captures md_content
+      - _send_email              → captures email_html
+      - _dispatch_formatter      → no-op (Telegram rendered directly below)
+    """
+    import tempfile as _tf
+    import datetime as _dtt
+
+    if world is None:
+        world = _MR_WORLD
+
+    _validate_world_vs_asd(world, _MR_ASD)   # A1/A4 gate
+
+    mr = _load_macro_research_module()
+    tg_mod = _load_formatter("macro_daily_push")
+
+    # Patch the pytz stub so datetime.now(sgt) receives a valid tzinfo object
+    _pytz_stub = getattr(mr, "pytz", None)
+    if _pytz_stub is not None:
+        _pytz_stub.timezone = lambda name: _dtt.timezone(_dtt.timedelta(hours=8))
+
+    captured_email_html = [None]
+    captured_md_content = [None]
+
+    def mock_send_email(smtp_res, recipient, subject, html_body):
+        captured_email_html[0] = html_body
+
+    def mock_write_canonical_md(content, path):
+        captured_md_content[0] = content
+
+    def mock_synthesise_section(section_key, data_str, deepseek_key, extra_str=""):
+        return (
+            world["sections"].get(section_key, f"placeholder for section {section_key}"),
+            {"prompt_tokens": 10, "completion_tokens": 10},
+        )
+
+    with (
+        patch.object(mr, "_fetch_yahoo_macro",  return_value=world["yahoo"]),
+        patch.object(mr, "_fetch_fred_data",    return_value=world["fred"]),
+        patch.object(mr, "_fetch_fed_news",     return_value=world["fed_items"]),
+        patch.object(mr, "_fetch_macro_news",   return_value=world["headlines"]),
+        patch.object(mr, "_synthesise_section", side_effect=mock_synthesise_section),
+        patch.object(mr, "_send_email",         side_effect=mock_send_email),
+        patch.object(mr, "_write_canonical_md", side_effect=mock_write_canonical_md),
+        patch.object(mr, "_dispatch_formatter"),
+    ):
+        mr.main(
+            fred_api_key="fake-fred-key",
+            deepseek_key="fake-deepseek-key",
+            telegram_bot_token="fake-bot-token",
+            telegram_owner_id="12345678",
+            smtp_resource={"host": "smtp.gmail.com", "port": 587,
+                           "username": "test@example.com", "password": "testpass"},
+            recipient_email="test@example.com",
+        )
+
+    email_html = captured_email_html[0]
+    md_content = captured_md_content[0]
+
+    telegram_message = None
+    if md_content:
+        with _tf.NamedTemporaryFile(mode="w", suffix=".md", delete=False) as tmp:
+            tmp.write(md_content)
+            tmp_path = tmp.name
+        try:
+            parse_fn = getattr(tg_mod, "_parse_md_report", None)
+            build_fn = getattr(tg_mod, "_build_message", None)
+            if parse_fn and build_fn:
+                parsed_fm, parsed_narrative = parse_fn(tmp_path)
+                telegram_message = build_fn(parsed_fm, parsed_narrative)
+        finally:
+            os.unlink(tmp_path)
+
+    return email_html, md_content, telegram_message
+
+
+def _get_mr_artifacts(force_refresh=False):
+    if "v" not in _MR_ARTIFACTS_CACHE or force_refresh:
+        _MR_ARTIFACTS_CACHE.clear()
+        _MR_ARTIFACTS_CACHE["v"] = _render_macro_research_artifacts()
+    return _MR_ARTIFACTS_CACHE["v"]
+
+
+# ── Assertion tests ────────────────────────────────────────────────────────────
+
+def test_macro_research_email_and_telegram_agree():
+    """Shared ASD fields must appear in BOTH email HTML and Telegram message."""
+    email_html, _, tg_msg = _get_mr_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert tg_msg is not None, "_build_message returned None"
+    failures = []
+    for field_name, value in _MR_ASD["shared_fields"]:
+        if value not in email_html:
+            failures.append(f"  MISSING from email:    {field_name} = {value!r}")
+        if value not in tg_msg:
+            failures.append(f"  MISSING from Telegram: {field_name} = {value!r}")
+    assert not failures, "Shared fields must appear in BOTH artifacts:\n" + "\n".join(failures)
+
+
+def test_macro_research_telegram_min_word_count():
+    """Telegram message must be ≥500 words (Hard Rule 16)."""
+    _, _, tg_msg = _get_mr_artifacts()
+    assert tg_msg is not None
+    word_count = len(tg_msg.split())
+    assert word_count >= _MR_ASD["min_telegram_words"], (
+        f"Telegram has {word_count} words — must be ≥{_MR_ASD['min_telegram_words']}"
+    )
+
+
+def test_macro_research_email_not_none():
+    """_send_email must be called and produce a non-empty HTML body."""
+    email_html, _, _ = _get_mr_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert len(email_html) > 100, "email_html is too short to be valid"
+
+
+def test_macro_research_md_content_valid():
+    """_write_canonical_md must produce a well-formed .md with front-matter and separator."""
+    _, md_content, _ = _get_mr_artifacts()
+    assert md_content is not None, "_write_canonical_md was never called"
+    assert "```json" in md_content, ".md must contain a JSON front-matter block"
+    assert "<!-- DETAIL -->" in md_content, ".md must include <!-- DETAIL --> separator"
+
+
+def test_macro_research_has_write_canonical_md_seam():
+    """macro_research.py must define _write_canonical_md for test harness patching."""
+    mr = _load_macro_research_module()
+    assert callable(getattr(mr, "_write_canonical_md", None)), \
+        "macro_research must define _write_canonical_md(content, path)"
