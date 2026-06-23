@@ -330,6 +330,26 @@ def _dispatch_formatter(formatter_name: str, md_path: str,
         return ""
 
 
+def _send_email(smtp_resource: dict, recipient_email: str, subject: str, html: str) -> None:
+    username = smtp_resource["username"]
+    password = smtp_resource["password"]
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = username
+    msg["To"] = recipient_email
+    msg.attach(MIMEText(html, "html"))
+    with smtplib.SMTP(smtp_resource["host"], smtp_resource["port"]) as server:
+        server.starttls()
+        server.login(username, password)
+        server.sendmail(username, [recipient_email], msg.as_string())
+    log.info(f"Sent: {subject}")
+
+
+def _write_canonical_md(content: str, path: str) -> None:
+    with open(path, "w") as f:
+        f.write(content)
+
+
 def main(
     smtp_resource: smtp,
     deepseek_key: str,
@@ -397,18 +417,7 @@ def main(
     n_summarised = sum(1 for v in results if v.get("summary"))
     n_bare = len(results) - n_summarised
     subject = f"YouTube Digest — {now_sgt} ({n_summarised} new)" + (f" + {n_bare} no transcript" if n_bare else "")
-    username = smtp_resource["username"]
-    password = smtp_resource["password"]
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = username
-    msg["To"] = recipient_email
-    msg.attach(MIMEText(html, "html"))
-    with smtplib.SMTP(smtp_resource["host"], smtp_resource["port"]) as server:
-        server.starttls()
-        server.login(username, password)
-        server.sendmail(username, [recipient_email], msg.as_string())
-    log.info(f"Sent: {subject}")
+    _send_email(smtp_resource, recipient_email, subject, html)
 
     est_cost = (total_prompt_tokens / 1_000_000) * 0.14 + (total_completion_tokens / 1_000_000) * 0.28
     log.info(f"Deepseek: {total_prompt_tokens:,} prompt + {total_completion_tokens:,} completion tokens · est. ${est_cost:.4f}")
@@ -461,8 +470,7 @@ def main(
         "<!-- DETAIL -->\n\n"
         f"{detail_block}\n"
     )
-    with open(md_path, "w") as f:
-        f.write(md_content)
+    _write_canonical_md(md_content, md_path)
     log.info(f"[md] Written {md_path}")
 
     if telegram_bot_token and telegram_owner_id:

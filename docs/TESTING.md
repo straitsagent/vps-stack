@@ -423,7 +423,7 @@ live verify (Hard Rule 17).
 | `portfolio_rationalization` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `portfolio_move_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `portfolio_analyst_alert` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `youtube_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `youtube_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 
 **Rollout order:** `macro_research` (partial seams) → `portfolio_email` → `portfolio_review` →
 `portfolio_rationalization` → `portfolio_move_monitor` → `portfolio_analyst_alert` → `youtube_monitor`.

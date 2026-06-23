@@ -8218,3 +8218,274 @@ def test_portfolio_analyst_alert_has_seams():
     paa = _load_portfolio_analyst_alert_module()
     assert callable(getattr(paa, "_write_canonical_md", None)), \
         "portfolio_analyst_alert must define _write_canonical_md seam"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# youtube_monitor — Phase C artifact tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import datetime as _ytm_dtt
+
+_YTM_ASD_VIDEO_TITLE   = "AI infrastructure transformation: Deepseek benchmark deep dive"
+_YTM_ASD_CHANNEL_NAME  = "TechInsightsDaily"
+_YTM_ASD_WATCH_URL     = "https://youtube.com/watch?v=yttest001"
+_YTM_ASD_VIDEO_SUMMARY = (
+    "Deepseek's latest model demonstrates significant reasoning improvements over the V3 "
+    "baseline, with substantially reduced inference cost per token for equivalent quality output."
+)
+
+# ~600-word canned synthesis (replaces Deepseek call in harness); contains ASD strings
+_YTM_ASD_SYNTHESIS = (
+    "The past twenty-four hours of investment-focused YouTube content converged on a single "
+    "dominant theme: the accelerating commoditisation of large language model inference and "
+    "what the implications of this scaling breakthrough mean for the companies positioned "
+    "across the AI value chain. Across TechInsightsDaily and several adjacent channels, "
+    "analysts and independent researchers have been dissecting Deepseek's latest benchmark "
+    "results with unusual intensity, noting that the performance-per-dollar curve has moved "
+    "sharply in a direction that favours application-layer businesses over pure infrastructure "
+    "incumbents.\n\n"
+    "The central argument circulating across these discussions is that the marginal cost of "
+    "intelligence is compressing faster than the market has priced. Deepseek's architecture "
+    "choices — mixture-of-experts routing, aggressive KV cache compression, and multi-head "
+    "latent attention — allow it to deliver GPT-4 class reasoning at a fraction of the "
+    "compute cost. For portfolio managers with exposure to US and Hong Kong technology, this "
+    "creates a bifurcated signal: application layer winners such as workflow automation, "
+    "enterprise AI, and coding tools should see margin expansion as their input costs fall, "
+    "while pure-play GPU infrastructure names face a more contested bull case unless data "
+    "centre buildout volumes can offset the efficiency gains recorded in these benchmarks.\n\n"
+    "TechInsightsDaily's presenter made a compelling point about the hardware stack: the "
+    "demand for compute is not shrinking, but the workload composition is shifting. Training "
+    "runs may plateau as open-weight models proliferate, while inference demand continues to "
+    "compound on a longer time horizon. This matters for NVIDIA's revenue mix — the shift "
+    "toward inference-optimised silicon is a deliberate hedge, and Deepseek's architecture "
+    "actually creates new demand for high-memory-bandwidth products rather than cannibalising "
+    "them wholesale. The net signal from today's coverage is cautiously bullish on NVIDIA's "
+    "medium-term positioning, with the near-term risk being multiple compression if markets "
+    "reprice the total addressable market assumptions embedded in current analyst consensus.\n\n"
+    "Hong Kong-listed technology beneficiaries received less airtime but are arguably the more "
+    "interesting signal for this portfolio. Meituan and several Tencent-adjacent AI application "
+    "businesses are quietly integrating open-weight models into logistics optimisation and "
+    "consumer recommendation engines. The cost reduction unlocked by next-generation inference "
+    "models could accelerate the profitability timeline for businesses that have historically "
+    "treated AI as a cost centre. One channel flagged Meituan's management commentary "
+    "acknowledging that the AI infrastructure cost reduction had already improved margin "
+    "guidance for the second half — a concrete near-term catalyst worth monitoring.\n\n"
+    "The macro backdrop remains supportive but fragile. US technology earnings season is "
+    "approaching with elevated expectations baked into consensus estimates. Any miss on "
+    "AI-related revenue lines from the hyperscalers will likely be interpreted as a signal "
+    "that enterprise AI adoption is progressing more slowly than projected, even if the "
+    "underlying reason is efficiency gains rather than demand weakness. This creates a "
+    "communication risk that portfolio managers should watch closely in upcoming earnings "
+    "calls from Microsoft and Alphabet in the weeks ahead. Maintaining awareness of the "
+    "divergence between model efficiency gains and enterprise adoption rates is essential "
+    "for managing expectations in technology-weighted portfolios across both markets."
+)
+
+_YTM_ASD = {
+    "email_required": [
+        _YTM_ASD_VIDEO_TITLE,
+        _YTM_ASD_CHANNEL_NAME,
+        _YTM_ASD_WATCH_URL,
+        _YTM_ASD_VIDEO_SUMMARY,
+    ],
+    "telegram_required": [
+        _YTM_ASD_VIDEO_TITLE,
+        _YTM_ASD_CHANNEL_NAME,
+        _YTM_ASD_WATCH_URL,
+        "the implications of this scaling breakthrough",
+    ],
+    "shared_fields": [
+        ("video title",  _YTM_ASD_VIDEO_TITLE),
+        ("channel name", _YTM_ASD_CHANNEL_NAME),
+        ("watch url",    _YTM_ASD_WATCH_URL),
+    ],
+    "min_telegram_words": 500,
+}
+
+_YTM_WORLD = {
+    "smtp_resource": {
+        "host": "smtp.gmail.com", "port": 587,
+        "username": "test@gmail.com", "password": "testpw",
+        "tls_implicit": False,
+    },
+    "deepseek_key":      "dk-test-key",
+    "rapidapi_key":      "rapi-test-key",
+    "youtube_feeds":     (
+        '[{"channel_id": "UCtest001", "channel_name": "TechInsightsDaily",'
+        ' "feed_url": "https://www.youtube.com/feeds/videos.xml?channel_id=UCtest001"}]'
+    ),
+    "recipient_email":      "test@example.com",
+    "telegram_bot_token":   "1234567:AABOTTOKEN",
+    "telegram_owner_id":    "999888777",
+    "video": {
+        "video_id":     "yttest001",
+        "title":        _YTM_ASD_VIDEO_TITLE,
+        "channel_name": _YTM_ASD_CHANNEL_NAME,
+        "watch_url":    _YTM_ASD_WATCH_URL,
+        "published_at": None,
+    },
+    "transcript": "Deepseek has released new benchmark results demonstrating significant improvements.",
+    "summary":    _YTM_ASD_VIDEO_SUMMARY,
+    "synthesis":  _YTM_ASD_SYNTHESIS,
+}
+
+
+def _load_youtube_monitor_module():
+    import importlib.util, pathlib
+    from unittest.mock import MagicMock
+    for _pkg in ("feedparser", "openai"):
+        sys.modules.setdefault(_pkg, MagicMock())
+    path = (pathlib.Path(__file__).parent.parent.parent
+            / "windmill" / "u" / "admin" / "youtube_monitor.py")
+    spec = importlib.util.spec_from_file_location("youtube_monitor", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _render_youtube_monitor_artifacts(world: dict):
+    """Run youtube_monitor.main() with mocked I/O, return (email_html, md_content, tg_msg)."""
+    import re, json
+    import importlib.util, pathlib
+    from unittest.mock import MagicMock, patch
+
+    mod = _load_youtube_monitor_module()
+    _validate_world_vs_asd(world, _YTM_ASD)
+
+    _fixed_now = _ytm_dtt.datetime(
+        2026, 6, 9, 14, 30, 0,
+        tzinfo=_ytm_dtt.timezone(_ytm_dtt.timedelta(hours=8)),
+    )
+
+    class _DatetimeStub:
+        @classmethod
+        def now(cls, tz=None):
+            return _fixed_now
+
+    video   = world["video"]
+    summary = world["summary"]
+    # fm_videos mirrors what main() builds before writing md_content
+    fm_videos = [{
+        "title":        video["title"],
+        "watch_url":    video["watch_url"],
+        "channel_name": video["channel_name"],
+        "summary":      summary,
+    }]
+
+    captured = {}
+
+    def _fake_send_email(smtp_resource, recipient_email, subject, html):
+        captured["email_html"]    = html
+        captured["email_subject"] = subject
+
+    def _fake_write_md(content, path):
+        captured["md_content"] = content
+
+    with patch.object(mod, "load_state",         return_value=(set(), {})), \
+         patch.object(mod, "save_state"), \
+         patch.object(mod, "fetch_fresh_videos",  return_value=[video]), \
+         patch.object(mod, "get_transcript",      return_value=world["transcript"]), \
+         patch.object(mod, "summarize",           return_value=(summary, 100, 50)), \
+         patch.object(mod, "_collect_24h_videos", return_value=fm_videos), \
+         patch.object(mod, "_synthesise_24h",     return_value=world["synthesis"]), \
+         patch.object(mod, "_dispatch_formatter", return_value=""), \
+         patch.object(mod, "_send_email",         side_effect=_fake_send_email), \
+         patch.object(mod, "_write_canonical_md", side_effect=_fake_write_md), \
+         patch.object(mod, "datetime",            _DatetimeStub), \
+         patch("os.makedirs"):
+        mod.main(
+            smtp_resource=world["smtp_resource"],
+            deepseek_key=world["deepseek_key"],
+            rapidapi_key=world["rapidapi_key"],
+            youtube_feeds=world["youtube_feeds"],
+            recipient_email=world["recipient_email"],
+            telegram_bot_token=world["telegram_bot_token"],
+            telegram_owner_id=world["telegram_owner_id"],
+            portfolio_db={},
+            wm_token="test-wm-token",
+        )
+
+    assert "email_html" in captured,  "_send_email was not called — _send_email seam missing"
+    assert "md_content" in captured,  "_write_canonical_md was not called — seam missing"
+
+    email_html = captured["email_html"]
+    md_content = captured["md_content"]
+
+    # Parse canonical_md → build Telegram via real formatter (pure function, no I/O)
+    fm_match      = re.search(r"```json\s*\n([\s\S]*?)\n```", md_content)
+    front_matter  = json.loads(fm_match.group(1)) if fm_match else {}
+    after_fm      = md_content[fm_match.end():] if fm_match else md_content
+    detail_idx    = after_fm.find("<!-- DETAIL -->")
+    narrative_txt = after_fm[:detail_idx].strip() if detail_idx != -1 else after_fm.strip()
+
+    tg_path = (pathlib.Path(__file__).parent.parent.parent
+               / "windmill" / "u" / "admin" / "youtube_monitor_telegram.py")
+    tg_spec = importlib.util.spec_from_file_location("youtube_monitor_telegram", tg_path)
+    tg_mod  = importlib.util.module_from_spec(tg_spec)
+    tg_spec.loader.exec_module(tg_mod)
+    tg_msg = tg_mod._build_message(front_matter, narrative_txt)
+
+    return email_html, md_content, tg_msg
+
+
+_YTM_ARTIFACTS_CACHE = {}
+
+
+def _get_ytm_artifacts():
+    if not _YTM_ARTIFACTS_CACHE:
+        email_html, md_content, tg_msg = _render_youtube_monitor_artifacts(_YTM_WORLD)
+        _YTM_ARTIFACTS_CACHE["email_html"] = email_html
+        _YTM_ARTIFACTS_CACHE["md_content"] = md_content
+        _YTM_ARTIFACTS_CACHE["tg_msg"]     = tg_msg
+    return (
+        _YTM_ARTIFACTS_CACHE["email_html"],
+        _YTM_ARTIFACTS_CACHE["md_content"],
+        _YTM_ARTIFACTS_CACHE["tg_msg"],
+    )
+
+
+def test_youtube_monitor_email_and_telegram_agree():
+    """Every ASD shared_field must appear in both email_html and tg_msg."""
+    email_html, _, tg_msg = _get_ytm_artifacts()
+    assert email_html is not None, "email_html is None"
+    assert tg_msg     is not None, "tg_msg is None"
+    for field_name, value in _YTM_ASD["shared_fields"]:
+        assert value in email_html, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in email_html"
+        )
+        assert value in tg_msg, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in tg_msg"
+        )
+
+
+def test_youtube_monitor_telegram_min_word_count():
+    """Telegram message must be ≥500 words."""
+    _, _, tg_msg = _get_ytm_artifacts()
+    word_count = len(tg_msg.split())
+    assert word_count >= _YTM_ASD["min_telegram_words"], (
+        f"Telegram has {word_count} words — must be ≥{_YTM_ASD['min_telegram_words']}"
+    )
+
+
+def test_youtube_monitor_email_not_none():
+    """_send_email must be called and produce a non-empty HTML body."""
+    email_html, _, _ = _get_ytm_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert len(email_html) > 100,  "email_html is too short to be valid"
+
+
+def test_youtube_monitor_md_content_valid():
+    """_write_canonical_md must produce a well-formed .md with front-matter and separator."""
+    _, md_content, _ = _get_ytm_artifacts()
+    assert md_content is not None,               "_write_canonical_md was never called"
+    assert "```json"         in md_content,      ".md must contain a JSON front-matter block"
+    assert "<!-- DETAIL -->" in md_content,      ".md must include <!-- DETAIL --> separator"
+
+
+def test_youtube_monitor_has_seams():
+    """youtube_monitor.py must define both _send_email and _write_canonical_md seams."""
+    ytm = _load_youtube_monitor_module()
+    assert callable(getattr(ytm, "_send_email", None)), \
+        "youtube_monitor must define _send_email seam"
+    assert callable(getattr(ytm, "_write_canonical_md", None)), \
+        "youtube_monitor must define _write_canonical_md seam"
