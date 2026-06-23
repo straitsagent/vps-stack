@@ -419,7 +419,7 @@ live verify (Hard Rule 17).
 | `health_check` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (2 pruned) | 🔲 |
 | `macro_research` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `portfolio_email` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `portfolio_review` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_review` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `portfolio_rationalization` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
 | `portfolio_move_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
 | `portfolio_analyst_alert` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |

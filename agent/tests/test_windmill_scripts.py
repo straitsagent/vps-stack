@@ -7176,3 +7176,268 @@ def test_portfolio_email_has_seams():
         "portfolio_email must define _send_email(gmail_smtp, recipient_email, subject, html)"
     assert callable(getattr(pe, "_write_canonical_md", None)), \
         "portfolio_email must define _write_canonical_md(content, path)"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# portfolio_review — Phase C artifact harness
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# World: 2 USD-only positions, same as portfolio_email world.
+#   NVDA: 100 sh, curr=$525/prev=$500 → week_pct=+5.0%, week_impact=+$2,500
+#   MSFT:  50 sh, curr=$350/prev=$354 → week_pct≈-1.1%, week_impact=-$200
+#   Total value: $70,000  Week P&L: +$2,300
+#
+# Shared fields in BOTH email HTML (fmt_pct uses 1dp) and Telegram:
+#   "$70,000"  — Total Value cell (email) and val_str header (Telegram)
+#   "NVDA"     — movers table rows (email) and gainers line (Telegram)
+#   "+5.0%"    — fmt_pct(5.0) 1dp in movers rows (email) and _fmt_pct(5.0) in gainers (Telegram)
+
+import datetime as _pr_dtt
+
+_PR_ASD_TOTAL_VALUE = "$70,000"
+_PR_ASD_TOP_GAINER  = "NVDA"
+_PR_ASD_GAINER_PCT  = "+5.0%"
+
+_PR_ASD_NARRATIVE = (
+    "NVDA posted a strong +5.0% weekly gain, the standout performer in a portfolio that ended "
+    "the week at a total value of $70,000. The move was driven by renewed hyperscaler GPU "
+    "procurement signalling, with major cloud providers confirming accelerated data centre "
+    "capex plans through the second half of 2026. Semiconductor supply chain improvements have "
+    "reduced the risk of order slippage, and NVDA's competitive positioning in AI training "
+    "and inference workloads remains unchallenged near-term. The weekly chart confirms a "
+    "breakout from a six-week consolidation range, adding technical support to the fundamental "
+    "demand story. Institutional positioning data shows continued rotation into high-conviction "
+    "AI-infrastructure names, of which NVDA is the primary beneficiary.\n\n"
+
+    "From a portfolio impact perspective, NVDA contributed $2,500 of the total $2,300 net "
+    "week P&L, more than offsetting a modest pullback in MSFT. MSFT declined approximately "
+    "one percent on the week, giving back some recent gains as investors rotated into "
+    "higher-beta names. The Azure growth outlook remains intact and no negative fundamental "
+    "catalyst was identified. The pullback is viewed as a buying opportunity if it persists "
+    "into the following week. MSFT's defensive earnings characteristics and growing AI "
+    "monetisation from Copilot continue to underpin the medium-term bull case.\n\n"
+
+    "Portfolio concentration in technology names remains elevated, with both NVDA and MSFT "
+    "classified under the Technology sector. This concentration produces high correlation with "
+    "the Nasdaq 100 index and limited diversification benefit on down days. The portfolio "
+    "rationalization framework flags concentration risk when any single name exceeds 60 percent "
+    "of total value — at current prices, NVDA at $52,500 of $70,000 total represents 75 percent "
+    "and would trigger a concentration penalty in the monthly scoring run. This warrants "
+    "consideration of whether to trim into strength.\n\n"
+
+    "Geographic allocation is 100 percent US-listed for this two-position subset, which "
+    "means the portfolio is fully exposed to US equity market dynamics and USD movements. "
+    "The Hong Kong-listed portion of the broader 33-position portfolio provides geographic "
+    "diversification, but for the tracked positions here, there is no HKD exposure and "
+    "therefore no USDHKD FX risk. This simplifies the performance attribution for this "
+    "week's review and makes the $70,000 total value a clean USD figure.\n\n"
+
+    "The macroeconomic backdrop for the week was broadly supportive of risk assets. US "
+    "inflation data came in line with expectations, removing the tail risk of a policy "
+    "surprise from the Federal Reserve. Growth indicators remain resilient, and credit "
+    "spreads are near cycle tights. This environment typically favours momentum and growth "
+    "names over value and defensives, which is consistent with NVDA's outperformance. "
+    "Going into the following week, key risk events include manufacturing PMI data and "
+    "any Fed speaker commentary that could shift rate expectations. Portfolio positioning "
+    "should be reviewed ahead of these events to ensure the current allocation is appropriate "
+    "given the risk-reward profile at current valuation levels. The total portfolio value of "
+    "$70,000 provides a clean baseline from which to measure week-on-week progress, and the "
+    "strong NVDA performance this week reinforces the high-conviction AI infrastructure thesis "
+    "that underpins the current portfolio construction strategy."
+)
+
+_PR_ASD = {
+    "email_required":    [_PR_ASD_TOTAL_VALUE, _PR_ASD_TOP_GAINER, _PR_ASD_GAINER_PCT],
+    "telegram_required": [_PR_ASD_TOTAL_VALUE, _PR_ASD_TOP_GAINER, _PR_ASD_GAINER_PCT],
+    "shared_fields": [
+        ("total value", _PR_ASD_TOTAL_VALUE),
+        ("top gainer",  _PR_ASD_TOP_GAINER),
+        ("gainer pct",  _PR_ASD_GAINER_PCT),
+    ],
+    "min_telegram_words": 500,
+}
+
+# pos_rows: (ticker, company_name, shares, currency)
+# price_rows: (ticker, price_date, close_price, rn)  rn=1 current, rn=2 prior
+# fund_rows: (ticker, pe_ratio, analyst_target_usd, sector, country)
+_PR_WORLD = {
+    "pos_rows": [
+        ("NVDA", "NVIDIA Corporation",    100, "USD"),
+        ("MSFT", "Microsoft Corporation",  50, "USD"),
+    ],
+    "price_rows": [
+        ("NVDA", _pr_dtt.date(2026, 6, 9), 525.00, 1),
+        ("NVDA", _pr_dtt.date(2026, 6, 5), 500.00, 2),
+        ("MSFT", _pr_dtt.date(2026, 6, 9), 350.00, 1),
+        ("MSFT", _pr_dtt.date(2026, 6, 5), 354.00, 2),
+    ],
+    "fund_rows": [
+        ("NVDA", None, None, "Technology", "US"),
+        ("MSFT", None, None, "Technology", "US"),
+    ],
+    "usdhkd_row": (7.80,),
+    "narrative": _PR_ASD_NARRATIVE,
+    "today": _pr_dtt.date(2026, 6, 9),
+}
+
+
+def _load_portfolio_review_module():
+    import importlib.util, pathlib
+    path = (pathlib.Path(__file__).parent.parent.parent
+            / "windmill" / "u" / "admin" / "portfolio_review.py")
+    spec = importlib.util.spec_from_file_location("portfolio_review", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _render_portfolio_review_artifacts(world):
+    """Run portfolio_review.main() with mocked I/O, return (email_html, md_content, tg_msg)."""
+    import re, json
+    import importlib.util, pathlib
+    from unittest.mock import MagicMock, patch
+
+    mod = _load_portfolio_review_module()
+    _validate_world_vs_asd(world, _PR_ASD)
+
+    # DB mock: 3 fetchall calls (pos_rows, price_rows, fund_rows) + 1 fetchone (usdhkd)
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.side_effect = [
+        world["pos_rows"], world["price_rows"], world["fund_rows"]
+    ]
+    mock_cursor.fetchone.return_value = world["usdhkd_row"]
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+    mock_psycopg2 = MagicMock()
+    mock_psycopg2.connect.return_value = mock_conn
+
+    # date stub — today() returns fixed date
+    _date_stub = MagicMock()
+    _date_stub.today.return_value = world["today"]
+
+    # OpenAI stub — returns canned narrative
+    mock_resp = MagicMock()
+    mock_resp.choices = [MagicMock()]
+    mock_resp.choices[0].message.content = world["narrative"]
+    mock_openai_cls = MagicMock()
+    mock_openai_cls.return_value.chat.completions.create.return_value = mock_resp
+
+    captured = {}
+
+    def _fake_send_email(gmail_smtp, recipient_email, subject, html):
+        captured["email_html"] = html
+
+    def _fake_write_md(content, path):
+        captured["md_content"] = content
+
+    with patch.object(mod, "psycopg2", mock_psycopg2), \
+         patch.object(mod, "date", _date_stub), \
+         patch.object(mod, "OpenAI", mock_openai_cls), \
+         patch.object(mod, "requests") as mock_requests, \
+         patch.object(mod, "yf") as mock_yf, \
+         patch.object(mod, "_send_email", side_effect=_fake_send_email), \
+         patch.object(mod, "_write_canonical_md", side_effect=_fake_write_md), \
+         patch.object(mod, "_dispatch_formatter", return_value=""):
+
+        # Finnhub news: return empty list for all tickers
+        mock_requests.get.return_value.json.return_value = []
+        mock_requests.get.return_value.raise_for_status.return_value = None
+        # yfinance news: return empty list
+        mock_yf.Ticker.return_value.news = []
+
+        mod.main(
+            portfolio_db={"host": "localhost", "port": 5432, "dbname": "portfolio",
+                          "user": "user", "password": "pw"},
+            finnhub_key="fake_key",
+            deepseek_key="fake_key",
+            gmail_smtp={"host": "smtp.gmail.com", "port": 587,
+                        "username": "test@gmail.com", "password": "pw"},
+            recipient_email="test@test.com",
+            telegram_bot_token="fake_token",
+            telegram_owner_id="12345",
+            wm_token="",
+        )
+
+    assert "email_html" in captured, "_send_email was not called — _send_email seam missing"
+    assert "md_content" in captured, "_write_canonical_md was not called — seam missing"
+
+    email_html = captured["email_html"]
+    md_content = captured["md_content"]
+
+    # Parse md_content for front_matter and narrative
+    fm_match = re.search(r"```json\s*\n([\s\S]*?)\n```", md_content)
+    front_matter = json.loads(fm_match.group(1)) if fm_match else {}
+    after_fm = md_content[fm_match.end():] if fm_match else md_content
+    detail_idx = after_fm.find("<!-- DETAIL -->")
+    narrative_text = after_fm[:detail_idx].strip() if detail_idx != -1 else after_fm.strip()
+
+    # Build Telegram via the real formatter (pure function, no I/O)
+    tg_path = (pathlib.Path(__file__).parent.parent.parent
+               / "windmill" / "u" / "admin" / "portfolio_review_telegram.py")
+    tg_spec = importlib.util.spec_from_file_location("portfolio_review_telegram", tg_path)
+    tg_mod = importlib.util.module_from_spec(tg_spec)
+    tg_spec.loader.exec_module(tg_mod)
+    tg_msg = tg_mod._build_message(front_matter, narrative_text)
+
+    return email_html, md_content, tg_msg
+
+
+_PR_ARTIFACTS_CACHE = {}
+
+
+def _get_pr_artifacts():
+    if not _PR_ARTIFACTS_CACHE:
+        email_html, md_content, tg_msg = _render_portfolio_review_artifacts(_PR_WORLD)
+        _PR_ARTIFACTS_CACHE["email_html"] = email_html
+        _PR_ARTIFACTS_CACHE["md_content"] = md_content
+        _PR_ARTIFACTS_CACHE["tg_msg"] = tg_msg
+    return (_PR_ARTIFACTS_CACHE["email_html"],
+            _PR_ARTIFACTS_CACHE["md_content"],
+            _PR_ARTIFACTS_CACHE["tg_msg"])
+
+
+def test_portfolio_review_email_and_telegram_agree():
+    """Every ASD shared_field must appear in both email_html and tg_msg."""
+    email_html, _, tg_msg = _get_pr_artifacts()
+    assert email_html is not None, "email_html is None"
+    assert tg_msg is not None, "tg_msg is None"
+    for field_name, value in _PR_ASD["shared_fields"]:
+        assert value in email_html, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in email_html"
+        )
+        assert value in tg_msg, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in tg_msg"
+        )
+
+
+def test_portfolio_review_telegram_min_word_count():
+    """Telegram message must be ≥500 words."""
+    _, _, tg_msg = _get_pr_artifacts()
+    word_count = len(tg_msg.split())
+    assert word_count >= _PR_ASD["min_telegram_words"], (
+        f"Telegram has {word_count} words — must be ≥{_PR_ASD['min_telegram_words']}"
+    )
+
+
+def test_portfolio_review_email_not_none():
+    """_send_email must be called and produce a non-empty HTML body."""
+    email_html, _, _ = _get_pr_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert len(email_html) > 100, "email_html is too short to be valid"
+
+
+def test_portfolio_review_md_content_valid():
+    """_write_canonical_md must produce a well-formed .md with front-matter and separator."""
+    _, md_content, _ = _get_pr_artifacts()
+    assert md_content is not None, "_write_canonical_md was never called"
+    assert "```json" in md_content, ".md must contain a JSON front-matter block"
+    assert "<!-- DETAIL -->" in md_content, ".md must include <!-- DETAIL --> separator"
+
+
+def test_portfolio_review_has_seams():
+    """portfolio_review.py must define both _send_email and _write_canonical_md seams."""
+    pr = _load_portfolio_review_module()
+    assert callable(getattr(pr, "_send_email", None)), \
+        "portfolio_review must define _send_email(gmail_smtp, recipient_email, subject, html)"
+    assert callable(getattr(pr, "_write_canonical_md", None)), \
+        "portfolio_review must define _write_canonical_md(content, path)"

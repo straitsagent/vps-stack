@@ -54,6 +54,25 @@ def _dispatch_formatter(formatter_name: str, md_path: str,
         return ""
 
 
+def _send_email(gmail_smtp: dict, recipient_email: str, subject: str, html: str) -> None:
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = gmail_smtp["username"]
+    msg["To"]      = recipient_email
+    msg.attach(MIMEText(html, "html"))
+    server = smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"])
+    server.ehlo()
+    server.starttls()
+    server.login(gmail_smtp["username"], gmail_smtp["password"])
+    server.sendmail(gmail_smtp["username"], [recipient_email], msg.as_string())
+    server.quit()
+
+
+def _write_canonical_md(content: str, path: str) -> None:
+    with open(path, "w") as f:
+        f.write(content)
+
+
 def main(portfolio_db: dict, finnhub_key: str, deepseek_key: str, gmail_smtp: dict, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = "", wm_token: str = ""):
     today = date.today()
 
@@ -479,19 +498,7 @@ Be analytical and specific. Do not give buy/sell recommendations. Minimum 500 wo
 </body></html>"""
 
     # ── 8. Send ────────────────────────────────────────────────────────────
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = gmail_smtp["username"]
-    msg["To"]      = recipient_email
-    msg.attach(MIMEText(html, "html"))
-
-    server = smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"])
-    server.ehlo()
-    server.starttls()
-    server.login(gmail_smtp["username"], gmail_smtp["password"])
-    server.sendmail(gmail_smtp["username"], [recipient_email], msg.as_string())
-    server.quit()
-
+    _send_email(gmail_smtp, recipient_email, subject, html)
     log.info(f"Sent: {subject}")
 
     # ── Write canonical .md + dispatch Telegram formatter ────────────────────
@@ -520,8 +527,7 @@ Be analytical and specific. Do not give buy/sell recommendations. Minimum 500 wo
             f"{narrative}\n\n"
             "<!-- DETAIL -->\n"
         )
-        with open(md_path, "w") as f:
-            f.write(md_content)
+        _write_canonical_md(md_content, md_path)
         log.info(f"[md] Written {md_path}")
         _dispatch_formatter(
             "portfolio_review_telegram", md_path,
