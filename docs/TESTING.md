@@ -420,7 +420,7 @@ live verify (Hard Rule 17).
 | `macro_research` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `portfolio_email` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `portfolio_review` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `portfolio_rationalization` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
+| `portfolio_rationalization` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `portfolio_move_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
 | `portfolio_analyst_alert` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |
 | `youtube_monitor` | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 | 🔲 |

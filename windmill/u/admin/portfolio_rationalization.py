@@ -870,6 +870,11 @@ def _send_email(gmail_smtp: dict, subject: str, body_md: str, body_html: str, to
     log.info(f"[Email] Sent to {to_email}")
 
 
+def _write_canonical_md(content: str, path: str) -> None:
+    with open(path, "w", encoding="utf-8") as f:
+        f.write(content)
+
+
 def _md_to_html(md: str) -> str:
     import re
     h = re.sub(r"^# (.+)$", r"<h1>\1</h1>", md, flags=re.MULTILINE)
@@ -1248,8 +1253,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
 
     os.makedirs(REPORT_DIR, exist_ok=True)
     file_path = os.path.join(REPORT_DIR, f"rationalization_{today_str}.md")
-    with open(file_path, "w", encoding="utf-8") as f:
-        f.write(canonical_md)
+    _write_canonical_md(canonical_md, file_path)
     log.info(f"[File] Saved to {file_path}")
 
     # ── 12. Email ─────────────────────────────────────────────────────────────

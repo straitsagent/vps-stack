@@ -7029,6 +7029,9 @@ _PE_WORLD = {
 
 def _load_portfolio_email_module():
     import importlib.util, pathlib
+    from unittest.mock import MagicMock
+    for _pkg in ("pytz", "openai"):
+        sys.modules.setdefault(_pkg, MagicMock())
     path = (pathlib.Path(__file__).parent.parent.parent
             / "windmill" / "u" / "admin" / "portfolio_email.py")
     spec = importlib.util.spec_from_file_location("portfolio_email", path)
@@ -7283,6 +7286,9 @@ _PR_WORLD = {
 
 def _load_portfolio_review_module():
     import importlib.util, pathlib
+    from unittest.mock import MagicMock
+    for _pkg in ("pytz", "openai"):
+        sys.modules.setdefault(_pkg, MagicMock())
     path = (pathlib.Path(__file__).parent.parent.parent
             / "windmill" / "u" / "admin" / "portfolio_review.py")
     spec = importlib.util.spec_from_file_location("portfolio_review", path)
@@ -7441,3 +7447,311 @@ def test_portfolio_review_has_seams():
         "portfolio_review must define _send_email(gmail_smtp, recipient_email, subject, html)"
     assert callable(getattr(pr, "_write_canonical_md", None)), \
         "portfolio_review must define _write_canonical_md(content, path)"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# portfolio_rationalization — Phase C artifact tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import datetime as _prat_dtt
+
+_PRAT_ASD_EXEC = (
+    "NVDA demonstrates exceptional composite factor scores driven by AI "
+    "infrastructure tailwinds and data center expansion"
+)
+
+# ~554-word executive summary; contains _PRAT_ASD_EXEC verbatim.
+_PRAT_ASD_EXECUTIVE_SUMMARY = (
+    f"{_PRAT_ASD_EXEC}. "
+    "The position records a revenue CAGR of 35% and net income CAGR of 40% over the "
+    "trailing three-year period, alongside a net profit margin of 35% and return on equity "
+    "of 45%, placing it firmly at the top of quality and growth rankings across all four "
+    "weighting scenarios: balanced, quality-focused, growth-focused, and value-focused. "
+    "Forward PE of 45x represents a reasonable premium given the extraordinary growth "
+    "trajectory driven by accelerating AI workload adoption across hyperscale cloud providers, "
+    "enterprise deployments, and emerging edge inference architectures globally. The CUDA "
+    "software ecosystem moat combined with dominant GPU compute architecture creates "
+    "substantial switching costs that protect the long-term competitive advantage and justify "
+    "the elevated valuation multiple in a sustained AI adoption environment that continues to "
+    "accelerate quarter over quarter.\n\n"
+    "The analyst consensus with 15% upside target and mean recommendation of 1.5 on the "
+    "strong buy to sell scale confirms the external validation of the fundamental investment "
+    "thesis. No red flags were triggered across absolute threshold checks: net debt to EBITDA "
+    "of 0.5x sits well below the 4.0x ceiling, current ratio of 4.0 exceeds the 0.8x floor "
+    "by a wide margin, forward PE of 45x remains below the 60x absolute cap, and both revenue "
+    "and net income growth trajectories are strongly positive over the measured three-year "
+    "period. The exceptional balance sheet health eliminates financial distress risk entirely "
+    "from the near-term investment assessment framework.\n\n"
+    "**Consistent KEEPs** across all four scenarios: NVDA earns a unanimous KEEP verdict from "
+    "both quantitative scoring and qualitative assessment. The completeness of fundamental data "
+    "coverage further strengthens confidence in the composite score reliability, with quality, "
+    "growth, valuation, sentiment, and thesis dimensions all contributing to the composite "
+    "calculation. The absence of scenario sensitivity confirms the recommendation is robust to "
+    "changes in investor weighting preferences and does not collapse under any single-factor "
+    "stress test applied to the scoring framework.\n\n"
+    "**Scenario-Sensitive Positions**: None identified in this single-position portfolio. "
+    "NVIDIA scores consistently across all four weighting scenarios, which reflects the breadth "
+    "of its fundamental strength across multiple dimensions. There is no material divergence "
+    "between the quality-weighted and growth-weighted outcomes, confirming the KEEP "
+    "recommendation does not depend on any particular scenario assumption dominating the "
+    "composite score calculation.\n\n"
+    "**Trim Candidates**: None at this time. The position representing 100% of portfolio value "
+    "is a concentration management issue rather than a signal to trim the absolute NVIDIA "
+    "holding. The rationalization recommendation is to expand the portfolio toward the "
+    "15-position target rather than reduce core exposure to this high-conviction anchor.\n\n"
+    "**Exit Candidates**: None identified. All absolute red flag thresholds are comfortably "
+    "met, fundamental trajectory is strongly positive, and the thesis conviction remains High "
+    "with catalysts firmly intact including AI infrastructure demand and data center growth.\n\n"
+    "**Portfolio Construction Assessment**: Post-rationalization the strategic priority is "
+    "expansion from one position to the 15-position target. Adding approximately 14 new "
+    "positions across financials, healthcare, energy, consumer discretionary, and international "
+    "equities at 5% to 8% each will achieve gradual diversification while preserving the AI "
+    "infrastructure overweight and maintaining NVIDIA as the highest-conviction anchor position "
+    "in the portfolio going forward.\n\n"
+    "**Month-over-Month Assessment**: This run establishes the baseline for the rationalization "
+    "framework with no prior month data available for rank delta comparison. NVIDIA enters "
+    "ranked at position 1 across all four scenarios, setting the benchmark against which future "
+    "rank movements will be tracked across an expanding position universe over subsequent "
+    "monthly review cycles as the portfolio builds toward its 15-position target."
+)
+
+_PRAT_ASD = {
+    "email_required":    [_PRAT_ASD_EXEC, "NVDA"],
+    "telegram_required": [_PRAT_ASD_EXEC, "NVDA"],
+    "shared_fields": [
+        ("executive summary", _PRAT_ASD_EXEC),
+        ("top ticker",        "NVDA"),
+    ],
+    "min_telegram_words": 500,
+}
+
+_PRAT_WORLD = {
+    "today": _prat_dtt.date(2026, 6, 9),
+    "positions": [
+        {
+            "ticker":       "NVDA",
+            "company_name": "NVIDIA Corporation",
+            "sector":       "Technology",
+            "country":      "USA",
+            "shares":       33,
+            "currency":     "USD",
+            "price_local":  525.0,
+            "price_usd":    525.0,
+            "position_usd": 17325.0,
+            "hk_ticker":    None,
+        }
+    ],
+    "fund": {
+        "NVDA": {
+            "forward_pe":            45.0,
+            "peg_ratio":             1.2,
+            "ev_to_ebitda":          50.0,
+            "analyst_upside_pct":    0.15,
+            "analyst_rec_mean":      1.5,
+            "return_on_equity":      0.45,
+            "net_profit_margin":     0.35,
+            "net_debt_to_ebitda":    0.5,
+            "current_ratio":         4.0,
+            "revenue_cagr_3yr":      0.35,
+            "net_income_cagr_3yr":   0.40,
+            "momentum_52wk":         0.80,
+        }
+    },
+    "thesis": {
+        "NVDA": {
+            "conviction":    "High",
+            "catalysts":     ["AI infrastructure demand", "data center growth"],
+            "risks":         ["valuation premium", "competition"],
+            "target_price":  650.0,
+            "updated_at":    _prat_dtt.date(2026, 3, 1),
+        }
+    },
+    "call1_result": {
+        "text": (
+            '```json\n'
+            '[{"ticker": "NVDA", "verdict": "KEEP", "rationale_sentences": ['
+            '{"text": "' + _PRAT_ASD_EXEC + '.","evidence": ["momentum_52wk=80%","revenue_cagr_3yr=35%"]}]}]\n'
+            '```\n\n'
+            'NVDA — NVIDIA Corporation\n'
+            'Quantitative: Revenue CAGR of 35% and ROE of 45% reflect best-in-class fundamentals.\n'
+            'Qualitative: High conviction on AI infrastructure demand with strong catalyst pipeline.\n'
+            'Recommendation: KEEP\n'
+            'Rationale: No competing positions; NVIDIA anchors the portfolio AI thesis.\n'
+        ),
+        "model":         "grok-4.3",
+        "input_tokens":  800,
+        "output_tokens": 300,
+    },
+    "call2_result": {
+        "text":          _PRAT_ASD_EXECUTIVE_SUMMARY,
+        "model":         "grok-4.3",
+        "input_tokens":  600,
+        "output_tokens": 500,
+    },
+}
+
+
+def _load_portfolio_rationalization_module():
+    import importlib.util, pathlib
+    from unittest.mock import MagicMock
+    for _pkg in ("pytz", "openai"):
+        sys.modules.setdefault(_pkg, MagicMock())
+    path = (pathlib.Path(__file__).parent.parent.parent
+            / "windmill" / "u" / "admin" / "portfolio_rationalization.py")
+    spec = importlib.util.spec_from_file_location("portfolio_rationalization", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _render_portfolio_rationalization_artifacts(world: dict):
+    """Run portfolio_rationalization.main() with mocked I/O, return (email_html, md_content, tg_msg)."""
+    import re, json
+    import importlib.util, pathlib
+    import os as real_os
+    from datetime import date as real_date
+    from unittest.mock import MagicMock, patch
+
+    mod = _load_portfolio_rationalization_module()
+    _validate_world_vs_asd(world, _PRAT_ASD)
+
+    # date stub — today() returns the fixed world date
+    class _DateStub:
+        @staticmethod
+        def today():
+            return world["today"]
+
+    # Mock connection — DB fully bypassed via function-level mocks below
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = MagicMock()
+    mock_conn.commit.return_value = None
+    mock_conn.close.return_value = None
+
+    # os stub — makedirs is no-op; path.join delegates to real os.path.join
+    mock_os = MagicMock()
+    mock_os.makedirs = MagicMock()
+    mock_os.path.join.side_effect = real_os.path.join
+
+    captured = {}
+
+    def _fake_send_email(gmail_smtp, subject, body_md, body_html, to_email):
+        captured["email_html"]    = body_html
+        captured["email_subject"] = subject
+
+    def _fake_write_md(content, path):
+        captured["md_content"] = content
+
+    with patch.object(mod, "_conn",               return_value=mock_conn), \
+         patch.object(mod, "_fetch_positions",     return_value=world["positions"]), \
+         patch.object(mod, "_load_adr_pairs",      return_value={}), \
+         patch.object(mod, "_fetch_fundamentals",  return_value=world["fund"]), \
+         patch.object(mod, "_fetch_thesis",        return_value=world["thesis"]), \
+         patch.object(mod, "_fetch_prior_ranks",   return_value={}), \
+         patch.object(mod, "_call_grok_with_fallback",
+                      side_effect=[world["call1_result"], world["call2_result"]]), \
+         patch.object(mod, "date",                 _DateStub), \
+         patch.object(mod, "os",                   mock_os), \
+         patch.object(mod, "_send_email",          side_effect=_fake_send_email), \
+         patch.object(mod, "_write_canonical_md",  side_effect=_fake_write_md), \
+         patch.object(mod, "_dispatch_formatter",  return_value=""):
+        mod.main(
+            portfolio_db={
+                "host": "localhost", "port": 5432,
+                "dbname": "portfolio", "user": "user", "password": "pw",
+            },
+            gmail_smtp={
+                "host": "smtp.gmail.com", "port": 587,
+                "username": "test@gmail.com", "password": "pw",
+            },
+            xai_key="fake-xai-key",
+            deepseek_key="fake-deepseek-key",
+            recipient_email="test@test.com",
+            telegram_bot_token="fake_token",
+            telegram_owner_id="12345",
+            wm_token="",
+        )
+
+    assert "email_html" in captured,    "_send_email was not called — _send_email seam missing"
+    assert "md_content" in captured,    "_write_canonical_md was not called — seam missing"
+
+    email_html = captured["email_html"]
+    md_content = captured["md_content"]
+
+    # Parse canonical_md → build Telegram via real formatter (pure function, no I/O)
+    fm_match = re.search(r"```json\s*\n([\s\S]*?)\n```", md_content)
+    front_matter  = json.loads(fm_match.group(1)) if fm_match else {}
+    after_fm      = md_content[fm_match.end():] if fm_match else md_content
+    detail_idx    = after_fm.find("<!-- DETAIL -->")
+    narrative_txt = after_fm[:detail_idx].strip() if detail_idx != -1 else after_fm.strip()
+
+    tg_path = (pathlib.Path(__file__).parent.parent.parent
+               / "windmill" / "u" / "admin" / "portfolio_rationalization_telegram.py")
+    tg_spec = importlib.util.spec_from_file_location("portfolio_rationalization_telegram", tg_path)
+    tg_mod  = importlib.util.module_from_spec(tg_spec)
+    tg_spec.loader.exec_module(tg_mod)
+    tg_msg = tg_mod._build_message(front_matter, narrative_txt)
+
+    return email_html, md_content, tg_msg
+
+
+_PRAT_ARTIFACTS_CACHE = {}
+
+
+def _get_prat_artifacts():
+    if not _PRAT_ARTIFACTS_CACHE:
+        email_html, md_content, tg_msg = _render_portfolio_rationalization_artifacts(_PRAT_WORLD)
+        _PRAT_ARTIFACTS_CACHE["email_html"] = email_html
+        _PRAT_ARTIFACTS_CACHE["md_content"] = md_content
+        _PRAT_ARTIFACTS_CACHE["tg_msg"]     = tg_msg
+    return (
+        _PRAT_ARTIFACTS_CACHE["email_html"],
+        _PRAT_ARTIFACTS_CACHE["md_content"],
+        _PRAT_ARTIFACTS_CACHE["tg_msg"],
+    )
+
+
+def test_portfolio_rationalization_email_and_telegram_agree():
+    """Every ASD shared_field must appear in both email_html and tg_msg."""
+    email_html, _, tg_msg = _get_prat_artifacts()
+    assert email_html is not None, "email_html is None"
+    assert tg_msg     is not None, "tg_msg is None"
+    for field_name, value in _PRAT_ASD["shared_fields"]:
+        assert value in email_html, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in email_html"
+        )
+        assert value in tg_msg, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in tg_msg"
+        )
+
+
+def test_portfolio_rationalization_telegram_min_word_count():
+    """Telegram message must be ≥500 words."""
+    _, _, tg_msg = _get_prat_artifacts()
+    word_count = len(tg_msg.split())
+    assert word_count >= _PRAT_ASD["min_telegram_words"], (
+        f"Telegram has {word_count} words — must be ≥{_PRAT_ASD['min_telegram_words']}"
+    )
+
+
+def test_portfolio_rationalization_email_not_none():
+    """_send_email must be called and produce a non-empty HTML body."""
+    email_html, _, _ = _get_prat_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert len(email_html) > 100,  "email_html is too short to be valid"
+
+
+def test_portfolio_rationalization_md_content_valid():
+    """_write_canonical_md must produce a well-formed .md with front-matter and separator."""
+    _, md_content, _ = _get_prat_artifacts()
+    assert md_content is not None,              "_write_canonical_md was never called"
+    assert "```json"        in md_content,      ".md must contain a JSON front-matter block"
+    assert "<!-- DETAIL -->" in md_content,     ".md must include <!-- DETAIL --> separator"
+
+
+def test_portfolio_rationalization_has_seams():
+    """portfolio_rationalization.py must define both _send_email and _write_canonical_md seams."""
+    prat = _load_portfolio_rationalization_module()
+    assert callable(getattr(prat, "_send_email", None)), \
+        "portfolio_rationalization must define _send_email seam"
+    assert callable(getattr(prat, "_write_canonical_md", None)), \
+        "portfolio_rationalization must define _write_canonical_md seam"
