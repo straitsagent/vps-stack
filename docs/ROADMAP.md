@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-17 (candidate eval auto-fetch + research integration live — 353 tests passing; rationalization changed to weekly Monday 9PM SGT + optional include_research)
+**Last updated:** 2026-06-23 (testing framework gap analysis applied — ASD convention, Testing Critic Hard Rule 20, Tier 0 production artifact verification — 625 tests passing)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).

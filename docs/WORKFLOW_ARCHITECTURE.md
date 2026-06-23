@@ -1,6 +1,6 @@
 # Workflow Architecture
 
-**Last updated:** 2026-06-22 (artifact-driven testing philosophy added; Workflow 6.1 health_check seams factored and artifact-render harness added — see docs/TESTING.md)  
+**Last updated:** 2026-06-23 (ASD convention added to Testing Contract; Tier 0 artifact body verification added to health_check; see docs/TESTING.md)  
 **Owner:** the owner  
 **Purpose:** Human-readable / pseudocode spec for every workflow in the stack. Claude Code reads this before building or modifying any workflow. Each built workflow is documented in full. Planned workflows have a brief stub — fill in the full spec before coding.
 
@@ -8,13 +8,15 @@
 
 ## Testing Contract (read before building or modifying any workflow)
 
-Every sending workflow (email or Telegram) must have an artifact-render test in `agent/tests/test_windmill_scripts.py`. See `docs/TESTING.md` for the full pattern and rationale.
+Every sending workflow (email or Telegram) must have an artifact-render test in `agent/tests/test_windmill_scripts.py`. See `docs/TESTING.md` for the full pattern, ASD convention, Testing Critic checklist, and Tier 0.
 
 **The required test shape for each sending script:**
+- `_<SCRIPT>_ASD` dict — the authoritative pre-implementation spec; defines `email_required`, `telegram_required`, `shared_fields`, `min_telegram_words`. Written first, before world fixture or tests.
+- `_<SCRIPT>_WORLD` — derived from ASD constants (world references ASD, not the reverse). `_validate_world_vs_asd(world, asd)` called at top of harness.
 - `_render_<script>_artifacts(world)` — runs real `main()` with I/O seams mocked; returns `(email_html, md_content, telegram_message)`
-- `test_<script>_email_contains_*` — assert each user-visible field in the email HTML
-- `test_<script>_telegram_contains_*` — same fields in the Telegram message
-- `test_<script>_email_and_telegram_agree` — **the cross-check**: shared fields (digest, diagnoses, spec violations, schedule rows) must appear in BOTH artifacts; this single test catches the class of bug where email and Telegram read from diverged code paths
+- `test_<script>_email_and_telegram_agree` — **the cross-check**: iterates `_SCRIPT_ASD["shared_fields"]` mechanically; must cover all shared fields
+- `test_<script>_telegram_min_word_count` — asserts `len(tg_msg.split()) >= 500`
+- Apply **Testing Critic checklist** (Hard Rule 20) before committing any artifact test
 
 **Seam factoring (required for main() to be test-drivable):**
 - `_send_email(gmail_smtp, recipient, subject, html)` — SMTP send, interceptable in tests
@@ -22,7 +24,13 @@ Every sending workflow (email or Telegram) must have an artifact-render test in 
 - `_build_md_content(front_matter, narrative) -> str` — pure; produces the `.md` string
 - `_write_canonical_md(md_content, path)` — file write, interceptable in tests
 
-Scripts with seams factored: `health_check` ✅. Rollout: `portfolio_email`, `macro_research`, `portfolio_review` (pending).
+**Tier 0 — production artifact verification:**
+- Each script in `ARTIFACT_MARKERS` (health_check.py) has structural HTML markers checked daily
+- `_fetch_sent_body` + `_artifact_body_check` run inside health_check `main()` after email send
+- Results written to `artifact_verification` Postgres table; failures logged as warnings
+- Add a `ARTIFACT_MARKERS` entry for every new sending script
+
+Scripts with full test coverage: `health_check` ✅. Rollout order: `macro_research` → `portfolio_email` → `portfolio_review` → `portfolio_rationalization` → `portfolio_move_monitor` → `portfolio_analyst_alert` → `youtube_monitor`.
 
 ---
 
