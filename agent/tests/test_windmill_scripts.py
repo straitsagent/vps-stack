@@ -7755,3 +7755,245 @@ def test_portfolio_rationalization_has_seams():
         "portfolio_rationalization must define _send_email seam"
     assert callable(getattr(prat, "_write_canonical_md", None)), \
         "portfolio_rationalization must define _write_canonical_md seam"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# portfolio_move_monitor — Phase C artifact tests
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import datetime as _pmmm_dtt
+
+_PMMM_ASD_TICKER = "NVDA"
+_PMMM_ASD_MOVE   = "+6.00%"
+
+# ~500-word canned narrative (replaces deepseek call in harness)
+_PMMM_ASD_NARRATIVE = (
+    "A portfolio move alert was triggered at 9 Jun 14:30 SGT. The portfolio recorded a "
+    "significant intraday upward move of +6.00%, well above the configured threshold of "
+    "plus or minus 1.5%. The total dollar impact of this move was approximately $3,000. "
+    "This type of sharp intraday move is typically driven by a combination of sector-wide "
+    "risk-on sentiment, company-specific catalysts, or macro data releases that shift "
+    "investor positioning across technology and AI-related equities. NVDA, as the sole "
+    "position and the primary driver of this alert, warrants careful monitoring for "
+    "follow-through in subsequent trading sessions and any fundamental news that might "
+    "justify or contradict the magnitude of the intraday move.\n\n"
+    "The NVDA position gained +6.00% intraday, representing a dollar impact of approximately "
+    "$3,000 on the portfolio. This move exceeds the per-position alert threshold of plus or "
+    "minus 5.0% and is significant enough to warrant a review of the underlying news flow. "
+    "Moves of this magnitude in a large-cap semiconductor stock like NVDA are typically "
+    "associated with earnings guidance revisions, analyst rating changes, AI infrastructure "
+    "spending announcements from hyperscale cloud providers, or broad technology sector "
+    "rotation driven by interest rate expectations. The CUDA software ecosystem and dominant "
+    "GPU compute market position create conditions where news affecting the AI infrastructure "
+    "build-out cycle disproportionately impacts NVDA's intraday price action relative to "
+    "the broader technology sector index.\n\n"
+    "From a portfolio risk management perspective, a single-name alert at this magnitude "
+    "with a concentrated portfolio creates elevated tracking error relative to any benchmark. "
+    "The position represents 100% of portfolio value at the time of this alert, meaning the "
+    "portfolio move and the position move are identical by construction. This concentration "
+    "risk underscores the importance of expanding toward the 15-position target to achieve "
+    "meaningful diversification that would dampen the impact of individual position alerts "
+    "on total portfolio volatility.\n\n"
+    "Recommended monitoring actions include reviewing the news flow for NVDA to determine "
+    "whether the 6.00% move is driven by fundamental news or technical momentum factors. "
+    "Check whether any analyst rating changes, earnings guidance updates, or hyperscaler "
+    "AI spending announcements occurred around the time of this alert at 14:30 SGT. If "
+    "the move is driven by sector-wide AI infrastructure sentiment, the portfolio should "
+    "benefit from continued appreciation assuming the thesis for sustained data center "
+    "investment remains intact. If the move is driven by short-term technical factors or "
+    "gamma squeeze dynamics, the position may see mean reversion in subsequent sessions. "
+    "The move monitor will continue running hourly during market hours and will issue a "
+    "further alert if the portfolio move extends materially beyond the current reading or "
+    "reverses sharply. Monitor the daily close carefully for confirmation of directional "
+    "momentum and assess whether the intraday gain holds into the New York session close. "
+    "Any sustained breach above the prior session high on elevated volume would confirm "
+    "the bullish thesis for continued AI infrastructure capital expenditure and support "
+    "maintaining the full position size through the next weekly portfolio review cycle."
+)
+
+_PMMM_ASD = {
+    "email_required":    [_PMMM_ASD_TICKER, _PMMM_ASD_MOVE],
+    "telegram_required": [_PMMM_ASD_TICKER, _PMMM_ASD_MOVE],
+    "shared_fields": [
+        ("ticker",   _PMMM_ASD_TICKER),
+        ("move_pct", _PMMM_ASD_MOVE),
+    ],
+    "min_telegram_words": 500,
+}
+
+_PMMM_WORLD = {
+    "now_sgt": _pmmm_dtt.datetime(
+        2026, 6, 9, 14, 30, 0,
+        tzinfo=_pmmm_dtt.timezone(_pmmm_dtt.timedelta(hours=8)),
+    ),
+    "pos_rows":      [("NVDA", "NVIDIA Corporation", 100, "USD")],
+    "baseline_rows": [("NVDA", 500.0, _pmmm_dtt.date(2026, 6, 9), "USD")],
+    "usdhkd_row":    (7.80,),
+    "live_price":    530.0,    # 6% above baseline — triggers both portfolio_alert and position_alert
+    "narrative":     _PMMM_ASD_NARRATIVE,
+}
+
+
+def _load_portfolio_move_monitor_module():
+    import importlib.util, pathlib
+    from unittest.mock import MagicMock
+    for _pkg in ("pytz", "openai", "yfinance"):
+        sys.modules.setdefault(_pkg, MagicMock())
+    path = (pathlib.Path(__file__).parent.parent.parent
+            / "windmill" / "u" / "admin" / "portfolio_move_monitor.py")
+    spec = importlib.util.spec_from_file_location("portfolio_move_monitor", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _render_portfolio_move_monitor_artifacts(world: dict):
+    """Run portfolio_move_monitor.main() with mocked I/O, return (email_html, md_content, tg_msg)."""
+    import re, json
+    import importlib.util, pathlib
+    from datetime import datetime as real_datetime, timezone, timedelta
+    from unittest.mock import MagicMock, patch
+
+    mod = _load_portfolio_move_monitor_module()
+    _validate_world_vs_asd(world, _PMMM_ASD)
+
+    # datetime stub — now() returns fixed world time
+    _now_sgt = world["now_sgt"]
+    class _DatetimeStub:
+        @classmethod
+        def now(cls, tz=None):
+            return _now_sgt
+
+    # DB mock: 2 fetchall calls (pos_rows, baseline_rows) + 1 fetchone (usdhkd)
+    mock_cursor = MagicMock()
+    mock_cursor.fetchall.side_effect = [world["pos_rows"], world["baseline_rows"]]
+    mock_cursor.fetchone.return_value = world["usdhkd_row"]
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value.__enter__.return_value = mock_cursor
+    mock_psycopg2 = MagicMock()
+    mock_psycopg2.connect.return_value = mock_conn
+
+    # yfinance stub — returns fixed live_price
+    mock_fi = MagicMock()
+    mock_fi.last_price = world["live_price"]
+    mock_yf = MagicMock()
+    mock_yf.Ticker.return_value.fast_info = mock_fi
+
+    captured = {}
+
+    def _fake_send_email(gmail_smtp, recipient_email, subject, html):
+        captured["email_html"]    = html
+        captured["email_subject"] = subject
+
+    def _fake_write_md(content, path):
+        captured["md_content"] = content
+
+    with patch.object(mod, "psycopg2",             mock_psycopg2), \
+         patch.object(mod, "yf",                   mock_yf), \
+         patch.object(mod, "datetime",              _DatetimeStub), \
+         patch.object(mod, "_build_move_narrative", return_value=world["narrative"]), \
+         patch.object(mod, "_send_email",           side_effect=_fake_send_email), \
+         patch.object(mod, "_write_canonical_md",   side_effect=_fake_write_md), \
+         patch.object(mod, "_dispatch_formatter",   return_value=""), \
+         patch("os.makedirs"), \
+         patch("time.sleep"):
+        mod.main(
+            portfolio_db={
+                "host": "localhost", "port": 5432,
+                "dbname": "portfolio", "user": "user", "password": "pw",
+            },
+            gmail_smtp={
+                "host": "smtp.gmail.com", "port": 587,
+                "username": "test@gmail.com", "password": "pw",
+            },
+            recipient_email="test@test.com",
+            telegram_bot_token="fake_token",
+            telegram_owner_id="12345",
+            deepseek_key="",
+            wm_token="",
+        )
+
+    assert "email_html" in captured,  "_send_email was not called — _send_email seam missing"
+    assert "md_content" in captured,  "_write_canonical_md was not called — seam missing"
+
+    email_html = captured["email_html"]
+    md_content = captured["md_content"]
+
+    # Parse canonical_md → build Telegram via real formatter (pure function, no I/O)
+    fm_match = re.search(r"```json\s*\n([\s\S]*?)\n```", md_content)
+    front_matter  = json.loads(fm_match.group(1)) if fm_match else {}
+    after_fm      = md_content[fm_match.end():] if fm_match else md_content
+    detail_idx    = after_fm.find("<!-- DETAIL -->")
+    narrative_txt = after_fm[:detail_idx].strip() if detail_idx != -1 else after_fm.strip()
+
+    tg_path = (pathlib.Path(__file__).parent.parent.parent
+               / "windmill" / "u" / "admin" / "portfolio_move_monitor_telegram.py")
+    tg_spec = importlib.util.spec_from_file_location("portfolio_move_monitor_telegram", tg_path)
+    tg_mod  = importlib.util.module_from_spec(tg_spec)
+    tg_spec.loader.exec_module(tg_mod)
+    tg_msg = tg_mod._build_message(front_matter, narrative_txt)
+
+    return email_html, md_content, tg_msg
+
+
+_PMMM_ARTIFACTS_CACHE = {}
+
+
+def _get_pmmm_artifacts():
+    if not _PMMM_ARTIFACTS_CACHE:
+        email_html, md_content, tg_msg = _render_portfolio_move_monitor_artifacts(_PMMM_WORLD)
+        _PMMM_ARTIFACTS_CACHE["email_html"] = email_html
+        _PMMM_ARTIFACTS_CACHE["md_content"] = md_content
+        _PMMM_ARTIFACTS_CACHE["tg_msg"]     = tg_msg
+    return (
+        _PMMM_ARTIFACTS_CACHE["email_html"],
+        _PMMM_ARTIFACTS_CACHE["md_content"],
+        _PMMM_ARTIFACTS_CACHE["tg_msg"],
+    )
+
+
+def test_portfolio_move_monitor_email_and_telegram_agree():
+    """Every ASD shared_field must appear in both email_html and tg_msg."""
+    email_html, _, tg_msg = _get_pmmm_artifacts()
+    assert email_html is not None, "email_html is None"
+    assert tg_msg     is not None, "tg_msg is None"
+    for field_name, value in _PMMM_ASD["shared_fields"]:
+        assert value in email_html, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in email_html"
+        )
+        assert value in tg_msg, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in tg_msg"
+        )
+
+
+def test_portfolio_move_monitor_telegram_min_word_count():
+    """Telegram message must be ≥500 words."""
+    _, _, tg_msg = _get_pmmm_artifacts()
+    word_count = len(tg_msg.split())
+    assert word_count >= _PMMM_ASD["min_telegram_words"], (
+        f"Telegram has {word_count} words — must be ≥{_PMMM_ASD['min_telegram_words']}"
+    )
+
+
+def test_portfolio_move_monitor_email_not_none():
+    """_send_email must be called and produce a non-empty HTML body."""
+    email_html, _, _ = _get_pmmm_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert len(email_html) > 100,  "email_html is too short to be valid"
+
+
+def test_portfolio_move_monitor_md_content_valid():
+    """_write_canonical_md must produce a well-formed .md with front-matter and separator."""
+    _, md_content, _ = _get_pmmm_artifacts()
+    assert md_content is not None,              "_write_canonical_md was never called"
+    assert "```json"        in md_content,      ".md must contain a JSON front-matter block"
+    assert "<!-- DETAIL -->" in md_content,     ".md must include <!-- DETAIL --> separator"
+
+
+def test_portfolio_move_monitor_has_seams():
+    """portfolio_move_monitor.py must define both _send_email and _write_canonical_md seams."""
+    pmmm = _load_portfolio_move_monitor_module()
+    assert callable(getattr(pmmm, "_send_email", None)), \
+        "portfolio_move_monitor must define _send_email seam"
+    assert callable(getattr(pmmm, "_write_canonical_md", None)), \
+        "portfolio_move_monitor must define _write_canonical_md seam"

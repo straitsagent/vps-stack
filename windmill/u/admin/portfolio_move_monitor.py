@@ -45,6 +45,26 @@ def _dispatch_formatter(formatter_name: str, md_path: str,
         return ""
 
 
+def _send_email(gmail_smtp: dict, recipient_email: str, subject: str, html: str) -> None:
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = gmail_smtp["username"]
+    msg["To"]      = recipient_email
+    msg.attach(MIMEText(html, "html"))
+    server = smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"])
+    server.ehlo()
+    server.starttls()
+    server.login(gmail_smtp["username"], gmail_smtp["password"])
+    server.sendmail(gmail_smtp["username"], [recipient_email], msg.as_string())
+    server.quit()
+    log.info(f"Alert sent to {recipient_email}")
+
+
+def _write_canonical_md(content: str, path: str) -> None:
+    with open(path, "w") as f:
+        f.write(content)
+
+
 def _build_move_narrative(portfolio_move: float, total_impact: float,
                            pct_threshold: float, position_alerts: list,
                            pos_threshold: float, time_str: str,
@@ -356,20 +376,7 @@ def main(
     # ── 6. Send ────────────────────────────────────────────────────────────
     if gmail_smtp:
         subject = f"Portfolio Alert — {move_str} — {time_str}"
-        msg = MIMEMultipart("alternative")
-        msg["Subject"] = subject
-        msg["From"]    = gmail_smtp["username"]
-        msg["To"]      = recipient_email
-        msg.attach(MIMEText(html, "html"))
-
-        server = smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"])
-        server.ehlo()
-        server.starttls()
-        server.login(gmail_smtp["username"], gmail_smtp["password"])
-        server.sendmail(gmail_smtp["username"], [recipient_email], msg.as_string())
-        server.quit()
-
-        log.info(f"Alert sent: {subject}")
+        _send_email(gmail_smtp, recipient_email, subject, html)
 
     if telegram_bot_token and telegram_owner_id:
         import os as _os, json as _json
@@ -399,8 +406,7 @@ def main(
             f"{narrative}\n\n"
             "<!-- DETAIL -->\n"
         )
-        with open(md_path, "w") as f:
-            f.write(md_content)
+        _write_canonical_md(md_content, md_path)
         log.info(f"[md] Written {md_path}")
         _dispatch_formatter(
             "portfolio_move_monitor_telegram", md_path,
