@@ -198,8 +198,14 @@ def _collect_24h_reports(now: datetime, research_root: str = "/research") -> lis
         "macro": "macro", "portfolio": "portfolio", "youtube": "youtube",
         "news": "news", "health": "health",
     }
+    # portfolio subdir contains files from multiple scripts; detect by filename prefix
+    _portfolio_prefix_types = {
+        "move_": "portfolio_move",
+        "rationalization_": "portfolio_rationalization",
+        "review_": "portfolio_review",
+    }
     reports = []
-    for subdir, type_name in subdir_types.items():
+    for subdir, base_type in subdir_types.items():
         dir_path = _os.path.join(research_root, subdir)
         if not _os.path.isdir(dir_path):
             continue
@@ -211,6 +217,14 @@ def _collect_24h_reports(now: datetime, research_root: str = "/research") -> lis
             mtime = datetime.fromtimestamp(mtime_ts, tz=timezone.utc)
             if mtime < cutoff:
                 continue
+            # Narrow portfolio sub-type so SPEC_RULES["portfolio"] only fires on email files
+            if base_type == "portfolio":
+                type_name = next(
+                    (t for pfx, t in _portfolio_prefix_types.items() if fname.startswith(pfx)),
+                    "portfolio",
+                )
+            else:
+                type_name = base_type
             front_matter = {}
             narrative = ""
             try:
@@ -381,7 +395,7 @@ SCHEDULES = [
     {"path": "u/admin/portfolio_email_daily",           "label": "Portfolio Email (AM)",         "max_age_h": 26, "has_llm": False, "llm_aggregate": False, "weekday_only": True,  "email_match": ["Portfolio", "US Close"],     "email_expect": 1},
     {"path": "u/admin/portfolio_price_fetcher_evening", "label": "Portfolio Price Fetcher (PM)", "max_age_h": 26, "has_llm": False, "llm_aggregate": False, "weekday_only": True,  "email_match": None,                         "email_expect": None},
     {"path": "u/admin/portfolio_email_evening",         "label": "Portfolio Email (PM)",         "max_age_h": 26, "has_llm": False, "llm_aggregate": False, "weekday_only": True,  "email_match": ["Portfolio", "Asia Close"],   "email_expect": 1},
-    {"path": "u/admin/youtube_monitor_hourly",          "label": "YouTube Monitor (hourly)",     "max_age_h": 2,  "has_llm": True,  "llm_aggregate": True,  "weekday_only": False, "email_match": ["YouTube Digest"],            "email_expect": None},
+    {"path": "u/admin/youtube_monitor_hourly",          "label": "YouTube Monitor (6-hourly)",   "max_age_h": 8,  "has_llm": True,  "llm_aggregate": True,  "weekday_only": False, "email_match": ["YouTube Digest"],            "email_expect": None},
 ]
 
 # Additional sent-mail categories shown in the Sent Mail summary (not tied to a schedule)
