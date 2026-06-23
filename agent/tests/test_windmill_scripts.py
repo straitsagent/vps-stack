@@ -7997,3 +7997,224 @@ def test_portfolio_move_monitor_has_seams():
         "portfolio_move_monitor must define _send_email seam"
     assert callable(getattr(pmmm, "_write_canonical_md", None)), \
         "portfolio_move_monitor must define _write_canonical_md seam"
+
+
+# ═══════════════════════════════════════════════════════════════════════════════
+# portfolio_analyst_alert — Phase C artifact tests
+# (Telegram-only workflow — no email; "agree" test checks md_content vs tg_msg)
+# ═══════════════════════════════════════════════════════════════════════════════
+
+import datetime as _paa_dtt
+
+_PAA_ASD_TICKER = "NVDA"
+_PAA_ASD_ACTION = "Upgrade"
+
+# ~495-word canned narrative (replaces deepseek call in harness); contains ASD strings
+_PAA_ASD_NARRATIVE = (
+    "This analyst rating change alert was generated on 9 Jun 2026. The portfolio monitoring "
+    "system detected an Upgrade for NVDA from the hold consensus to the buy consensus for "
+    "the 2026-05-01 period. This represents a meaningful positive shift in analyst sentiment "
+    "toward NVIDIA Corporation and warrants immediate attention from the portfolio manager. "
+    "Rating upgrades from major sell-side institutions are among the most reliable leading "
+    "indicators of institutional repositioning, as they often precede target price revisions "
+    "and increased buy-side coverage that drives sustained price appreciation over the "
+    "following weeks and months.\n\n"
+    "NVDA: Upgrade from hold to buy. The analyst consensus for NVDA has moved from hold to "
+    "buy for the 2026-05-01 period, reflecting improving confidence in the company's near-term "
+    "earnings trajectory and long-term AI infrastructure positioning. This type of upgrade is "
+    "typically driven by one or more of the following catalysts: better-than-expected quarterly "
+    "earnings guidance, upward revision to the total addressable market for AI accelerators, "
+    "confirmation of hyperscaler capex commitments from Microsoft, Google, or Amazon, or "
+    "competitive moat reinforcement through new product cycles in the GPU architecture roadmap. "
+    "The shift from hold to buy on the buy-sell-hold scale represents a meaningful change in "
+    "the analyst's fundamental view and should be cross-referenced against the most recent "
+    "earnings transcript and investor day materials to validate the underlying thesis change.\n\n"
+    "From a portfolio risk management perspective, an upgrade for the portfolio's anchor "
+    "position in NVDA is broadly constructive. It provides external validation of the "
+    "high-conviction investment thesis and may attract incremental institutional buying "
+    "that supports price momentum in the near term. However, investors should be cautious "
+    "about chasing upgrades in isolation, as the rating change may already be partially "
+    "priced in if the stock has already moved significantly on related news. Cross-reference "
+    "the upgrade date with recent price action to assess whether the move is still "
+    "actionable or has been pre-empted by earlier market intelligence.\n\n"
+    "Context within the portfolio rationalization framework: analyst rating changes are "
+    "incorporated as a sentiment factor in the composite scoring model. An upgrade to buy "
+    "or strong-buy improves the sentiment score for NVDA in the next monthly rationalization "
+    "cycle, which may increase its rank relative to other portfolio positions. Conversely, "
+    "a downgrade would reduce the sentiment score and could trigger a trim or exit "
+    "recommendation if other factors are also deteriorating. The analyst alert system "
+    "ensures that rating changes are captured in real time and not missed between monthly "
+    "review cycles.\n\n"
+    "Recommended actions: review the specific analyst firm that issued the upgrade and assess "
+    "their track record on NVDA coverage. If the upgrade is from a tier-one sell-side firm "
+    "with historically accurate calls on NVDA, assign higher signal weight. Check whether "
+    "any updated price targets accompany the rating change, as a raised target combined with "
+    "an upgrade represents a more powerful signal than a rating change alone. Update the "
+    "position notes in the portfolio tracking system to record this upgrade and monitor "
+    "subsequent analyst activity for confirmation of the shifting consensus direction."
+)
+
+_PAA_ASD = {
+    "email_required":    [],    # analyst_alert is Telegram-only — no email
+    "telegram_required": [_PAA_ASD_TICKER, _PAA_ASD_ACTION],
+    "shared_fields": [          # appear in BOTH md_content AND tg_msg
+        ("ticker",  _PAA_ASD_TICKER),
+        ("action",  _PAA_ASD_ACTION),
+    ],
+    "min_telegram_words": 500,
+}
+
+_PAA_WORLD = {
+    "today":       _paa_dtt.date(2026, 6, 9),
+    "tickers":     ["NVDA"],
+    "prev_state":  {"NVDA_2026-05-01": "hold"},
+    "finnhub_resp": [{"period": "2026-05-01", "strongBuy": 0, "buy": 5,
+                      "hold": 2, "sell": 0, "strongSell": 0}],
+    "narrative":   _PAA_ASD_NARRATIVE,
+}
+
+
+def _load_portfolio_analyst_alert_module():
+    import importlib.util, pathlib
+    from unittest.mock import MagicMock
+    for _pkg in ("pytz", "openai"):
+        sys.modules.setdefault(_pkg, MagicMock())
+    path = (pathlib.Path(__file__).parent.parent.parent
+            / "windmill" / "u" / "admin" / "portfolio_analyst_alert.py")
+    spec = importlib.util.spec_from_file_location("portfolio_analyst_alert", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _render_portfolio_analyst_alert_artifacts(world: dict):
+    """Run portfolio_analyst_alert.main() with mocked I/O, return (None, md_content, tg_msg).
+    This script is Telegram-only — email_html is always None.
+    """
+    import re, json
+    import importlib.util, pathlib
+    from datetime import date as real_date
+    from unittest.mock import MagicMock, patch
+
+    mod = _load_portfolio_analyst_alert_module()
+    _validate_world_vs_asd(world, _PAA_ASD)
+
+    # date stub — today() returns fixed world date
+    class _DateStub:
+        @staticmethod
+        def today():
+            return world["today"]
+
+    # Requests stub — returns Finnhub-like recommendation response
+    mock_resp = MagicMock()
+    mock_resp.json.return_value = world["finnhub_resp"]
+    mock_resp.raise_for_status.return_value = None
+    mock_requests = MagicMock()
+    mock_requests.get.return_value = mock_resp
+
+    captured = {}
+
+    def _fake_write_md(content, path):
+        captured["md_content"] = content
+
+    with patch.object(mod, "_get_tickers",             return_value=world["tickers"]), \
+         patch.object(mod, "_load_state",               return_value=world["prev_state"]), \
+         patch.object(mod, "_save_state"), \
+         patch.object(mod, "requests",                  mock_requests), \
+         patch.object(mod, "date",                      _DateStub), \
+         patch.object(mod, "_build_analyst_narrative",  return_value=world["narrative"]), \
+         patch.object(mod, "_write_canonical_md",       side_effect=_fake_write_md), \
+         patch.object(mod, "_dispatch_formatter",       return_value=""), \
+         patch("os.makedirs"):
+        mod.main(
+            portfolio_db={
+                "host": "localhost", "port": 5432,
+                "dbname": "portfolio", "user": "user", "password": "pw",
+            },
+            finnhub_key="fake-finnhub-key",
+            telegram_bot_token="fake_token",
+            telegram_owner_id="12345",
+            deepseek_key="",
+            wm_token="",
+        )
+
+    assert "md_content" in captured, "_write_canonical_md was not called — seam missing"
+
+    md_content = captured["md_content"]
+
+    # Parse canonical_md → build Telegram via real formatter (pure function, no I/O)
+    fm_match = re.search(r"```json\s*\n([\s\S]*?)\n```", md_content)
+    front_matter  = json.loads(fm_match.group(1)) if fm_match else {}
+    after_fm      = md_content[fm_match.end():] if fm_match else md_content
+    detail_idx    = after_fm.find("<!-- DETAIL -->")
+    narrative_txt = after_fm[:detail_idx].strip() if detail_idx != -1 else after_fm.strip()
+
+    tg_path = (pathlib.Path(__file__).parent.parent.parent
+               / "windmill" / "u" / "admin" / "portfolio_analyst_alert_telegram.py")
+    tg_spec = importlib.util.spec_from_file_location("portfolio_analyst_alert_telegram", tg_path)
+    tg_mod  = importlib.util.module_from_spec(tg_spec)
+    tg_spec.loader.exec_module(tg_mod)
+    tg_msg = tg_mod._build_message(front_matter, narrative_txt)
+
+    return None, md_content, tg_msg
+
+
+_PAA_ARTIFACTS_CACHE = {}
+
+
+def _get_paa_artifacts():
+    if not _PAA_ARTIFACTS_CACHE:
+        _, md_content, tg_msg = _render_portfolio_analyst_alert_artifacts(_PAA_WORLD)
+        _PAA_ARTIFACTS_CACHE["md_content"] = md_content
+        _PAA_ARTIFACTS_CACHE["tg_msg"]     = tg_msg
+    return (
+        None,
+        _PAA_ARTIFACTS_CACHE["md_content"],
+        _PAA_ARTIFACTS_CACHE["tg_msg"],
+    )
+
+
+def test_portfolio_analyst_alert_md_and_telegram_agree():
+    """Every ASD shared_field must appear in both md_content and tg_msg.
+    (No email — this is a Telegram-only workflow; md_content is the source of truth.)
+    """
+    _, md_content, tg_msg = _get_paa_artifacts()
+    assert md_content is not None, "md_content is None"
+    assert tg_msg     is not None, "tg_msg is None"
+    for field_name, value in _PAA_ASD["shared_fields"]:
+        assert value in md_content, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in md_content"
+        )
+        assert value in tg_msg, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in tg_msg"
+        )
+
+
+def test_portfolio_analyst_alert_telegram_min_word_count():
+    """Telegram message must be ≥500 words."""
+    _, _, tg_msg = _get_paa_artifacts()
+    word_count = len(tg_msg.split())
+    assert word_count >= _PAA_ASD["min_telegram_words"], (
+        f"Telegram has {word_count} words — must be ≥{_PAA_ASD['min_telegram_words']}"
+    )
+
+
+def test_portfolio_analyst_alert_email_not_applicable():
+    """analyst_alert is Telegram-only — email_html is None by design."""
+    email_html, _, _ = _get_paa_artifacts()
+    assert email_html is None, "email_html should be None for analyst_alert (Telegram-only)"
+
+
+def test_portfolio_analyst_alert_md_content_valid():
+    """_write_canonical_md must produce a well-formed .md with front-matter and separator."""
+    _, md_content, _ = _get_paa_artifacts()
+    assert md_content is not None,              "_write_canonical_md was never called"
+    assert "```json"        in md_content,      ".md must contain a JSON front-matter block"
+    assert "<!-- DETAIL -->" in md_content,     ".md must include <!-- DETAIL --> separator"
+
+
+def test_portfolio_analyst_alert_has_seams():
+    """portfolio_analyst_alert.py must define _write_canonical_md seam."""
+    paa = _load_portfolio_analyst_alert_module()
+    assert callable(getattr(paa, "_write_canonical_md", None)), \
+        "portfolio_analyst_alert must define _write_canonical_md seam"

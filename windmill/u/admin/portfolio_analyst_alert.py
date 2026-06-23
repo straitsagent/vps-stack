@@ -70,6 +70,11 @@ def _dispatch_formatter(formatter_name: str, md_path: str,
         return ""
 
 
+def _write_canonical_md(content: str, path: str) -> None:
+    with open(path, "w") as f:
+        f.write(content)
+
+
 def _build_analyst_narrative(alerts_structured: list, today_str: str,
                               deepseek_key: str = "") -> str:
     """Generate ≥500-word narrative for analyst rating changes."""
@@ -260,8 +265,7 @@ def main(
             f"{narrative}\n\n"
             "<!-- DETAIL -->\n"
         )
-        with open(md_path, "w") as f:
-            f.write(md_content)
+        _write_canonical_md(md_content, md_path)
         log.info(f"[md] Written {md_path}")
         if telegram_bot_token and telegram_owner_id:
             _dispatch_formatter(
