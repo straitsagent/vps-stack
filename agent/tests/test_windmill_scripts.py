@@ -6915,3 +6915,264 @@ def test_macro_research_has_write_canonical_md_seam():
     mr = _load_macro_research_module()
     assert callable(getattr(mr, "_write_canonical_md", None)), \
         "macro_research must define _write_canonical_md(content, path)"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# portfolio_email — Phase C artifact harness
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# World design: 2 USD-only standalone positions (no FX complexity).
+#   NVDA: 100 sh × $525 today / $500 yest → P&L +$2,500, pct +5.00% exactly.
+#   MSFT:  50 sh × $350 today / $354 yest → P&L -$200,  pct ~-1.13%.
+#   Total: $70,000.
+#
+# Shared fields verified in BOTH email HTML and Telegram header/gainers:
+#   "$70,000"  — TOTAL row (email) and val_str header (Telegram)
+#   "NVDA"     — Top Movers mover row (email) and gainers line (Telegram)
+#   "+5.00%"   — fmt_pct(5.0) in mover row (email) and _fmt_pct(5.0) in gainers (Telegram)
+#
+# Narrative is ≥500 words (targets ≥480 so total tg_msg ≥500 with header).
+# Narrative includes all ASD strings to satisfy _validate_world_vs_asd.
+
+import datetime as _pe_dtt
+
+_PE_ASD_TOTAL_VALUE = "$70,000"
+_PE_ASD_TOP_GAINER  = "NVDA"
+_PE_ASD_GAINER_PCT  = "+5.00%"
+
+_PE_ASD_NARRATIVE = (
+    "NVDA advanced five percent this session, marking one of its strongest single-day moves in "
+    "the past quarter and pushing the portfolio's US Close reading to a total value of $70,000. "
+    "The gain was driven by stronger-than-expected order signals from hyperscaler customers, "
+    "with data centre procurement teams accelerating their GPU refresh cycles ahead of anticipated "
+    "supply constraints in the second half of 2026. NVDA's momentum underscores the continuing "
+    "capital intensity of AI infrastructure build-outs, where competitive dynamics among cloud "
+    "providers are compressing the decision window between order placement and delivery. "
+    "Market participants have interpreted the demand signal as durable rather than transient, "
+    "supporting a multiple re-rating that goes beyond short-term earnings beats.\n\n"
+
+    "From a portfolio construction standpoint, NVDA's +5.00% move today added $2,500 to the "
+    "day's P&L, representing the dominant contribution to the session's overall positive result. "
+    "The position size of one hundred shares at a $525 close price implies a concentrated "
+    "single-name exposure that warrants monitoring relative to overall portfolio risk limits. "
+    "At current levels, NVDA represents the majority of total portfolio value, which is high "
+    "by conventional diversification standards but reflects a deliberate high-conviction "
+    "allocation made at an earlier entry point. The unrealised gain since entry is material "
+    "and merits a position review against the rationalization framework's concentration penalty.\n\n"
+
+    "MSFT traded modestly lower, declining from $354 to $350, a move of approximately one "
+    "percent. The modest pullback appears technical in nature with no specific negative catalyst. "
+    "This type of consolidation is characteristic of large-cap technology names that have posted "
+    "strong recent gains and are digesting institutional rebalancing flows. MSFT's fundamental "
+    "position remains intact: recurring cloud revenue from Azure, robust enterprise software "
+    "renewal rates, and expanding margins from Copilot monetisation all support the medium-term "
+    "thesis. The small daily loss is not material in the context of the portfolio's overall "
+    "positive session and does not trigger any move monitor alert thresholds.\n\n"
+
+    "On a macro basis, the session occurred against a backdrop of broadly constructive risk "
+    "sentiment. US equity indices held recent gains, with technology names outperforming the "
+    "broader market. The Federal Reserve's communication tone has stabilised, reducing near-term "
+    "rate uncertainty, and earnings guidance across the semiconductor sector continues to signal "
+    "demand durability through the remainder of 2026. These macro conditions are broadly "
+    "supportive of the portfolio's current positioning, which is heavily weighted toward US "
+    "large-cap technology. Any deterioration in macro conditions — particularly a surprise "
+    "re-acceleration of inflation — would be the primary systematic risk to monitor.\n\n"
+
+    "Risk monitoring flags for today include the concentration of gains in a single name. "
+    "While NVDA's performance is welcome, the move raises the question of whether it is "
+    "sustainable or whether some mean-reversion is likely over the coming sessions. Portfolio "
+    "correlation with NVDA is high given its dominant weight, meaning adverse news specific to "
+    "NVIDIA would disproportionately affect total portfolio value. Regular review of position "
+    "size relative to the move monitor thresholds of plus or minus five percent is warranted, "
+    "and the weekly portfolio review on Saturday should reassess whether the allocation is "
+    "optimal given the changed price levels and evolving macro context.\n\n"
+
+    "Looking ahead, the key risk event for NVDA and the broader semiconductor complex is the "
+    "upcoming earnings report, where guidance for the next quarter will either validate or "
+    "challenge current price momentum. Any downward revision to data centre order timing would "
+    "likely catalyse a sharp correction, given how much of the upside has been priced in at "
+    "current multiples. MSFT faces a similar dynamic around Azure growth rates. For the "
+    "portfolio as a whole, today's session reinforces the thesis but also increases the "
+    "importance of the weekly review process to assess whether the current allocation remains "
+    "appropriate. Total invested value stands at $70,000 based on the two tracked positions, "
+    "producing a net day P&L of $2,300 and a return of approximately 3.40 percent on the "
+    "prior-day base — a well-above-average daily return that should be evaluated in the "
+    "context of the broader weekly and monthly performance trajectory."
+)
+
+_PE_ASD = {
+    "email_required":    [_PE_ASD_TOTAL_VALUE, _PE_ASD_TOP_GAINER, _PE_ASD_GAINER_PCT],
+    "telegram_required": [_PE_ASD_TOTAL_VALUE, _PE_ASD_TOP_GAINER, _PE_ASD_GAINER_PCT],
+    "shared_fields": [
+        ("total value", _PE_ASD_TOTAL_VALUE),
+        ("top gainer",  _PE_ASD_TOP_GAINER),
+        ("gainer pct",  _PE_ASD_GAINER_PCT),
+    ],
+    "min_telegram_words": 500,
+}
+
+# DB row format: (ticker, company_name, shares, currency, consolidation_group,
+#                 price_today, date_today, price_yest, date_yest)
+_PE_WORLD = {
+    "position_rows": [
+        ("NVDA", "NVIDIA Corporation",   100, "USD", None,
+         525.00, _pe_dtt.date(2026, 6, 9), 500.00, _pe_dtt.date(2026, 6, 6)),
+        ("MSFT", "Microsoft Corporation", 50, "USD", None,
+         350.00, _pe_dtt.date(2026, 6, 9), 354.00, _pe_dtt.date(2026, 6, 6)),
+    ],
+    "fx_rows": [],
+    "narrative": _PE_ASD_NARRATIVE,
+    "now_sgt": _pe_dtt.datetime(2026, 6, 9, 8, 0, 0,
+                                tzinfo=_pe_dtt.timezone(_pe_dtt.timedelta(hours=8))),
+}
+
+
+def _load_portfolio_email_module():
+    import importlib.util, pathlib
+    path = (pathlib.Path(__file__).parent.parent.parent
+            / "windmill" / "u" / "admin" / "portfolio_email.py")
+    spec = importlib.util.spec_from_file_location("portfolio_email", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def _render_portfolio_email_artifacts(world):
+    """Run portfolio_email.main() with mocked I/O, return (email_html, md_content, tg_msg)."""
+    import re, json
+    import datetime as _dtt
+    import importlib.util, pathlib
+    from unittest.mock import MagicMock, patch
+
+    mod = _load_portfolio_email_module()
+    _validate_world_vs_asd(world, _PE_ASD)
+
+    # DB mock: first fetchall → position_rows; second fetchall → fx_rows
+    mock_cur = MagicMock()
+    mock_cur.fetchall.side_effect = [world["position_rows"], world["fx_rows"]]
+    mock_conn = MagicMock()
+    mock_conn.cursor.return_value = mock_cur
+    mock_psycopg2 = MagicMock()
+    mock_psycopg2.connect.return_value = mock_conn
+
+    # pytz stub — timezone() returns a real UTC+8 tzinfo so strftime works
+    _pytz_stub = MagicMock()
+    _pytz_stub.timezone = lambda name: _dtt.timezone(_dtt.timedelta(hours=8))
+
+    # datetime stub — now() returns the fixed world time
+    _dtt_stub = MagicMock()
+    _dtt_stub.now = lambda tz=None: world["now_sgt"]
+
+    captured = {}
+
+    def _fake_send_email(gmail_smtp, recipient_email, subject, html):
+        captured["email_html"] = html
+
+    def _fake_write_md(content, path):
+        captured["md_content"] = content
+
+    with patch.object(mod, "psycopg2", mock_psycopg2), \
+         patch.object(mod, "pytz", _pytz_stub), \
+         patch.object(mod, "datetime", _dtt_stub), \
+         patch.object(mod, "_generate_portfolio_narrative",
+                      return_value=world["narrative"]), \
+         patch.object(mod, "fetch_news", return_value=[]), \
+         patch.object(mod, "_send_email", side_effect=_fake_send_email), \
+         patch.object(mod, "_write_canonical_md", side_effect=_fake_write_md), \
+         patch.object(mod, "_dispatch_formatter", return_value=""):
+
+        mod.main(
+            portfolio_db={"host": "localhost", "port": 5432, "dbname": "portfolio",
+                          "user": "user", "password": "pw"},
+            gmail_smtp={"host": "smtp.gmail.com", "port": 587,
+                        "username": "test@gmail.com", "password": "pw"},
+            recipient_email="test@test.com",
+            telegram_bot_token="fake_token",
+            telegram_owner_id="12345",
+            deepseek_key="",
+            wm_token="",
+        )
+
+    assert "email_html" in captured, "_send_email was not called — _send_email seam missing"
+    assert "md_content" in captured, "_write_canonical_md was not called — seam missing"
+
+    email_html = captured["email_html"]
+    md_content = captured["md_content"]
+
+    # Parse md_content for front_matter and narrative (mirrors _parse_md_report logic)
+    fm_match = re.search(r"```json\s*\n([\s\S]*?)\n```", md_content)
+    front_matter = json.loads(fm_match.group(1)) if fm_match else {}
+    after_fm = md_content[fm_match.end():] if fm_match else md_content
+    detail_idx = after_fm.find("<!-- DETAIL -->")
+    narrative_text = after_fm[:detail_idx].strip() if detail_idx != -1 else after_fm.strip()
+
+    # Build Telegram message using the real formatter (pure function, no I/O)
+    tg_path = (pathlib.Path(__file__).parent.parent.parent
+               / "windmill" / "u" / "admin" / "portfolio_email_telegram.py")
+    tg_spec = importlib.util.spec_from_file_location("portfolio_email_telegram", tg_path)
+    tg_mod = importlib.util.module_from_spec(tg_spec)
+    tg_spec.loader.exec_module(tg_mod)
+    tg_msg = tg_mod._build_message(front_matter, narrative_text)
+
+    return email_html, md_content, tg_msg
+
+
+_PE_ARTIFACTS_CACHE = {}
+
+
+def _get_pe_artifacts():
+    if not _PE_ARTIFACTS_CACHE:
+        email_html, md_content, tg_msg = _render_portfolio_email_artifacts(_PE_WORLD)
+        _PE_ARTIFACTS_CACHE["email_html"] = email_html
+        _PE_ARTIFACTS_CACHE["md_content"] = md_content
+        _PE_ARTIFACTS_CACHE["tg_msg"] = tg_msg
+    return (_PE_ARTIFACTS_CACHE["email_html"],
+            _PE_ARTIFACTS_CACHE["md_content"],
+            _PE_ARTIFACTS_CACHE["tg_msg"])
+
+
+def test_portfolio_email_email_and_telegram_agree():
+    """Every ASD shared_field must appear in both email_html and tg_msg (Hard Rule 20 pt5)."""
+    email_html, _, tg_msg = _get_pe_artifacts()
+    assert email_html is not None, "email_html is None"
+    assert tg_msg is not None, "tg_msg is None"
+    for field_name, value in _PE_ASD["shared_fields"]:
+        assert value in email_html, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in email_html"
+        )
+        assert value in tg_msg, (
+            f"ASD shared field '{field_name}' ({value!r}) not found in tg_msg"
+        )
+
+
+def test_portfolio_email_telegram_min_word_count():
+    """Telegram message must be ≥500 words (Hard Rule 15 / 16)."""
+    _, _, tg_msg = _get_pe_artifacts()
+    word_count = len(tg_msg.split())
+    assert word_count >= _PE_ASD["min_telegram_words"], (
+        f"Telegram has {word_count} words — must be ≥{_PE_ASD['min_telegram_words']}"
+    )
+
+
+def test_portfolio_email_email_not_none():
+    """_send_email must be called and produce a non-empty HTML body."""
+    email_html, _, _ = _get_pe_artifacts()
+    assert email_html is not None, "_send_email was never called"
+    assert len(email_html) > 100, "email_html is too short to be valid"
+
+
+def test_portfolio_email_md_content_valid():
+    """_write_canonical_md must produce a well-formed .md with front-matter and separator."""
+    _, md_content, _ = _get_pe_artifacts()
+    assert md_content is not None, "_write_canonical_md was never called"
+    assert "```json" in md_content, ".md must contain a JSON front-matter block"
+    assert "<!-- DETAIL -->" in md_content, ".md must include <!-- DETAIL --> separator"
+
+
+def test_portfolio_email_has_seams():
+    """portfolio_email.py must define both _send_email and _write_canonical_md seams."""
+    pe = _load_portfolio_email_module()
+    assert callable(getattr(pe, "_send_email", None)), \
+        "portfolio_email must define _send_email(gmail_smtp, recipient_email, subject, html)"
+    assert callable(getattr(pe, "_write_canonical_md", None)), \
+        "portfolio_email must define _write_canonical_md(content, path)"

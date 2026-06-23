@@ -56,6 +56,25 @@ def _dispatch_formatter(formatter_name: str, md_path: str,
         return ""
 
 
+def _send_email(gmail_smtp: dict, recipient_email: str, subject: str, html: str) -> None:
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"]    = gmail_smtp["username"]
+    msg["To"]      = recipient_email
+    msg.attach(MIMEText(html, "html"))
+    server = smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"])
+    server.ehlo()
+    server.starttls()
+    server.login(gmail_smtp["username"], gmail_smtp["password"])
+    server.sendmail(gmail_smtp["username"], [recipient_email], msg.as_string())
+    server.quit()
+
+
+def _write_canonical_md(content: str, path: str) -> None:
+    with open(path, "w") as f:
+        f.write(content)
+
+
 def _generate_portfolio_narrative(positions: list, top_up: list, top_down: list,
                                    total_value: float, total_pnl: float,
                                    total_pnl_pct: float, session: str,
@@ -535,18 +554,7 @@ def main(
 </body></html>"""
 
     # ── Send ────────────────────────────────────────────────────────────
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"]    = gmail_smtp["username"]
-    msg["To"]      = recipient_email
-    msg.attach(MIMEText(html, "html"))
-
-    server = smtplib.SMTP(gmail_smtp["host"], gmail_smtp["port"])
-    server.ehlo()
-    server.starttls()
-    server.login(gmail_smtp["username"], gmail_smtp["password"])
-    server.sendmail(gmail_smtp["username"], [recipient_email], msg.as_string())
-    server.quit()
+    _send_email(gmail_smtp, recipient_email, subject, html)
 
     log.info(f"Sent: {subject}")
     log.info(f"{len(positions)} positions | {fmt_usd(total_value)} | P&L: {fmt_pnl(total_pnl)} ({fmt_pct(total_pnl_pct)})")
@@ -613,8 +621,7 @@ def main(
         f"_{date_line}_" + (f"  ·  _{fx_line}_" if fx_line else "") + "\n\n"
         f"{detail_table}\n"
     )
-    with open(md_path, "w") as f:
-        f.write(md_content)
+    _write_canonical_md(md_content, md_path)
     log.info(f"[md] Written {md_path}")
 
     # ── Dispatch Telegram formatter ──────────────────────────────────────────
