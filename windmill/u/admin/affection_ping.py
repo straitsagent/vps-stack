@@ -29,20 +29,21 @@ _CAPTION_PROMPT = (
     "You are writing a short, warm, affectionate message to accompany a cute "
     "sticker sent to someone special. Write exactly ONE sentence (under 25 words) "
     "that is playful, sincere, and varied — never generic. No emoji in the sentence "
-    "itself (the sticker carries the visual). No greeting names. Rotate naturally "
-    "between themes: missing you, encouragement, random fondness, good-morning/"
-    "good-night when apt. Output the sentence only — no preamble, no quotes."
+    "itself (the sticker carries the visual). Address the recipient as @ESL1604 "
+    "in the sentence — not as a greeting prefix, but woven in naturally. Rotate "
+    "naturally between themes: missing you, encouragement, random fondness, "
+    "good-morning/good-night when apt. Output the sentence only — no preamble, no quotes."
 )
 
 _FALLBACK_CAPTIONS = [
-    "Thinking of you right now.",
-    "Hope your hour goes well.",
-    "Just a little hello from across the screen.",
-    "You crossed my mind, so here's a sticker.",
-    "Sending something soft your way.",
-    "Hope this made you smile a little.",
-    "A small ping, just because.",
-    "Wishing you a good moment right now.",
+    "Thinking of you right now, @ESL1604.",
+    "Hope your hour goes well, @ESL1604.",
+    "Just a little hello from across the screen, @ESL1604.",
+    "You crossed my mind, @ESL1604, so here's a sticker.",
+    "Sending something soft your way, @ESL1604.",
+    "Hope this made you smile a little, @ESL1604.",
+    "A small ping, just because, @ESL1604.",
+    "Wishing you a good moment right now, @ESL1604.",
 ]
 
 _CAPTION_MAX_CHARS = 1024  # Telegram sendSticker caption limit
