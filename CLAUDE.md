@@ -130,6 +130,48 @@ cd /root/windmill && wmill sync pull --yes
 
 ---
 
+## Planning Workflow
+
+Substantive work is specified in a **plan file** before any code is written — a durable artifact capturing the design so it can be executed in a later pass (possibly by a cheaper model) from a clean checkout, without the planning conversation.
+
+**When required:** any new workflow, any change to an existing working workflow, or any multi-file / multi-step change. Trivial work (typo, one-line fix, single rename) needs only an inline description and verbal approval.
+
+**Location & naming:** `docs/plans/YYYY-MM-DD_<slug>.md`, committed to git. When planning in Claude Code plan mode, the working file lives at `.claude/plans/<slug>.md`; **on approval, persist it to `docs/plans/` with `Status: approved` and commit** — that committed copy is the cross-tool handoff artifact (opencode/Deepseek read it from the checkout; they never see `.claude/plans/`).
+
+**Front-matter (required):**
+```
+---
+Subject: <one-line description>
+Date: YYYY-MM-DD
+Status: draft | approved | executing | done | abandoned
+---
+```
+
+**Body:** Context (why) → files to create/modify/delete → step-by-step `- [ ]` checklist with success criteria → verification section → an `## Execution` footer (below).
+
+**`## Execution` footer (every plan carries this, so it is portable to any tool/model):**
+```
+1. Set front-matter Status: executing, commit.
+2. Work the checklist top to bottom; tick each `- [ ]` when its success criteria are met.
+3. Run the Verification section.
+4. Set Status: done, commit.
+Do not redesign. If the plan is ambiguous or wrong, stop and report — do not improvise.
+```
+
+**Status lifecycle:**
+
+| Status | Set by | When |
+|---|---|---|
+| `draft` | planner | on writing the plan |
+| `approved` | planner, after explicit user approval | user says go (persist to `docs/plans/`, commit) |
+| `executing` | executor | when it starts the checklist |
+| `done` | executor | all steps complete and committed |
+| `abandoned` | either | plan shelved; file kept for record |
+
+**Session start:** scan `docs/plans/` for any file with `Status: approved` or `executing` and surface it (Subject + checklist progress) before other work.
+
+---
+
 ## Claude Code Configuration
 
 Claude Code is configured with hooks and permissions that enforce the Hard Rules at the tool layer — not just as prose instructions.
@@ -173,12 +215,12 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
 4. Log all errors — don't silently fail
 5. Never commit `shared/keys.md` or `shared/windmill-sa-key.json` to git
 6. Always ask which API, model, or resource to use — never assume
-7. **Before writing any code for a workflow, describe the full design in plain English / pseudocode and get explicit approval.** Cover: what it does step by step, what data it reads and writes, which APIs/resources it calls, and what the output email looks like. Only start coding after explicit confirmation.
+7. **For substantive work, document the design as a plan file in `docs/plans/` (see Planning Workflow) and get explicit approval before coding. For trivial work (typo, one-line fix, single rename), describe inline and get verbal approval.** Either way, only start coding after explicit confirmation.
 8. **Never delete or overwrite existing Windmill resources** (especially `u/admin/gmail_smtp`) without explicit confirmation. When rewriting a workflow, only touch the script file — leave all resources/variables intact. `gmail_smtp` was accidentally deleted during a Morning Digest rewrite on 2026-06-03 and had to be manually recreated.
 9. **Use `wmill script push <path>` for all script deployments.** Never use `wmill sync push` for routine changes — it has caused resource/variable deletion and stale-version deployments. Always run wmill commands from `/root/windmill/`.
 10. **Always show the exact LLM prompt text and get explicit approval before coding it.** Domain-specific framing (e.g. "for an infra finance professional") can cause the model to silently skip content — keep prompts generic unless specifically requested.
 11. **In Windmill schedule args, always use string format for resource/variable references.** Correct: `"$res:u/admin/portfolio_db"`, `"$var:u/admin/deepseek_key"`. Wrong: `{"$res": "u/admin/portfolio_db"}` (dict form — Windmill does not resolve this and the script receives an unresolved dict, causing KeyError at runtime).
-12. **Before modifying any existing working workflow, describe the proposed change and get explicit approval.** Do not rebuild, restructure, or redesign a working script on your own judgment — this has caused regressions and a botched revert that wiped Windmill scripts. Rule 7 covers new workflows; this rule covers changes to existing ones.
+12. **Before modifying any existing working workflow, write a plan file describing the proposed change and get explicit approval.** Do not rebuild, restructure, or redesign a working script on your own judgment — this has caused regressions and a botched revert that wiped Windmill scripts. Rule 7 covers new workflows; this rule covers changes to existing ones.
 13. **Google OAuth always requires a browser action — state this upfront before attempting any workaround.** gcloud auth, rclone, FIFO tricks, and service account flows all have this limitation in some form. If a task depends on browser-based auth and a browser is not available, say so immediately and propose an alternative rather than silently burning time on doomed workarounds.
 14. **When fetching news or time-series data, always apply a recency date cutoff.** Never return articles older than 48 hours unless explicitly requested. Validate the actual date values of returned articles before declaring a news fetch successful — stale January articles have shipped through tests that only checked for non-empty results.
 15. **Artifact-driven TDD is mandatory for ALL code. No exceptions. See `docs/TESTING.md` for the full philosophy.**
@@ -215,7 +257,7 @@ See `docs/ROADMAP.md` for the full build status, live workflows, and next-up pri
 ## Documentation Workflow
 
 ### What to read at session start
-Always read this file (`CLAUDE.md`) and `docs/ROADMAP.md`. Read `docs/TESTING.md` before writing any test or modifying a sending script — it is the canonical testing philosophy and harness pattern. Read `docs/WORKFLOW_ARCHITECTURE.md` when building or modifying a specific workflow — it has the full pseudocode spec for every workflow in the stack.
+Always read this file (`CLAUDE.md`) and `docs/ROADMAP.md`. Read `docs/TESTING.md` before writing any test or modifying a sending script — it is the canonical testing philosophy and harness pattern. Read `docs/WORKFLOW_ARCHITECTURE.md` when building or modifying a specific workflow — it has the full pseudocode spec for every workflow in the stack. Also scan `docs/plans/` for any plan with `Status: approved` or `executing` and surface it (Subject + checklist progress) before other work.
 
 ### When to update docs
 Update docs at logical stopping points, not just at end of session:
@@ -228,6 +270,7 @@ Update docs at logical stopping points, not just at end of session:
 | Phase completed / end of session | `ROADMAP.md` (Current Status + Next Up) |
 | Hard rule exception or manual override | `/root/shared/override_log.md` |
 | Keys file updated | Update "Last synced" date in `shared/keys.md` |
+| Plan file created/approved/executed/abandoned | `docs/plans/` (Status field is the source of truth; commit the file) |
 
 ### What never goes in docs
 - Raw API keys or passwords (use `shared/keys.md` for that)
