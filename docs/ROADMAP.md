@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-23 (testing framework gap analysis applied — ASD convention, Testing Critic Hard Rule 20, Tier 0 production artifact verification — 625 tests passing)
+**Last updated:** 2026-06-25 (docs refactored: OPERATIONS.md+TESTING_TEMPLATE.md created, CLAUDE.md→context+rules, ROADMAP.md→single status source — 680 tests passing, 11 affection ping tests)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -65,6 +65,7 @@ Everything below is live and running unattended.
 |---|---|
 | 6.1 Daily Health Check | **8:00 AM SGT** — 3-layer notifications: (A) Deepseek per-schedule diagnosis on STALE/FAILED, (B) error_alert Telegram+Deepseek on any crash, (C) host deadman (08:30 SGT, systemd, direct Telegram). Content engine: 24h .md collector, per-type spec validators (macro/portfolio/youtube), Grok-4 holistic daily digest (700-1000w, Deepseek fallback). |
 | 6.2 Windmill Error Alert | On failure — email + **Telegram** + Deepseek 1-line diagnosis |
+| Affection Ping | **Hourly 8AM–10PM SGT** — Random sticker from 11 packs (BubuDudu, Kittylove, PusheenTheCat, etc.) + Deepseek one-sentence affectionate caption (35-emoji whitelist) sent to Telegram group. Logs to `affection_outbox`. Rule 16 exempt (non-report). Script: `u/admin/affection_ping`. |
 
 ### Telegram Agent W1
 | Component | Status |
@@ -82,7 +83,7 @@ Everything below is live and running unattended.
 | Research tool | ✅ Tiered cache (stock only): <30d serve cached directly (no job); 30–90d dispatch standard; no cache dispatch deep. General commands (/research, /deepresearch) skip cache. Date shown in result header. |
 | Message splitting | ✅ Replies >4,000 chars split into ≤4,000-char chunks at newline boundaries |
 | Telegram command menu | ✅ 13 commands registered at startup via `set_my_commands()`: stockresearch (deep stock, tiered cache), research (general standard), deepresearch (general deep), earnings, portfolio, prices, news, youtube, macro, thesis, health, search, digest |
-| Unit tests | ✅ 353 passing — `agent/tests/` (classifier, telegram, tools, routing, planner, db, schema, windmill scripts). TDD mandatory for ALL code — tests before implementation, live test after deployment. PostToolUse hook prints TDD reminder on every Python edit. |
+| Unit tests | ✅ 680 passing — `agent/tests/` (classifier, telegram, tools, routing, planner, db, schema, windmill scripts, 11 affection ping artifact tests). TDD mandatory for ALL code — tests before implementation, live test after deployment. PostToolUse hook prints TDD reminder on every Python edit. |
 | Env template | `/root/agent.env.example` (actual `agent.env` gitignored) |
 
 ---
@@ -365,7 +366,7 @@ Every Windmill notification now uses a **canonical markdown → dedicated format
 | Telegram bot | ✅ Live | Token in `agent.env`, webhook registered with secret token |
 | Slash command support | ✅ Live | `/portfolio`, `/research NVDA` etc. — leading `/` stripped before classification |
 | DB schema (8 agent tables) | ✅ Applied | `agent_*` tables + `portfolio_thesis` + `agent_kv` in `portfolio` DB |
-| Unit tests (pytest) | ✅ 521 passing | `agent/tests/` — classifier, telegram, tools, db.py (16 ops), schema (14 tables), Windmill scripts, W3/W4 coverage, 8 formatter behavioral tests |
+| Unit tests (pytest) | ✅ 680 passing | `agent/tests/` — classifier, telegram, tools, db.py (16 ops), schema (14 tables), Windmill scripts (11 affection ping), W3/W4 coverage, 8 formatter behavioral tests |
 | Telegram command menu | ✅ Live | 13 commands: stockresearch, research, deepresearch, earnings, portfolio, prices, news, youtube, macro, thesis, health, search, digest |
 | W2 tools: portfolio_snapshot, prices, news_search, macro_indicators, news/youtube/portfolio digest | ✅ Live | FAST class |
 | W2 tools: portfolio_thesis (read/write) | ✅ Live | thesis_read (FAST), thesis_write (GATED_WRITE) |
