@@ -19,9 +19,10 @@ ${OWNER_NAME}. ${OWNER_TITLE}, ${OWNER_EMPLOYER}. ${OWNER_BACKGROUND}. Building 
 SSH sessions on this VPS are kept alive via a persistent tmux session that survives disconnects and restarts automatically on boot.
 
 | Component | Location | Notes |
-|---|---|---|
+|---|---|---|---|
 | tmux config | `~/.tmux.conf` | Ctrl+A prefix, mouse on, 10k scrollback, status bar, `|`/`-` splits |
-| Attach script | `~/scripts/start-claude-remote.sh` | Attaches if session exists, creates fresh if not |
+| Attach script (claude-remote) | `~/scripts/start-claude-remote.sh` | systemd-managed, restarts on boot |
+| Attach script (gemini-workspace) | `~/scripts/start-gemini-workspace.sh` | Primary work session — created manually, no systemd |
 | systemd service | `~/.config/systemd/user/claude-remote.service` | Enabled, starts `claude-remote` session on boot with Restart=on-failure |
 | Shell alias | `cr` in `~/.bashrc` | Shorthand: attach to `claude-remote` or create it |
 
@@ -29,13 +30,14 @@ SSH sessions on this VPS are kept alive via a persistent tmux session that survi
 
 ```bash
 cr                            # attach to claude-remote session (or create it)
+~/scripts/start-gemini-workspace.sh  # attach to or create gemini-workspace session
 tmux ls                       # list all sessions
 Ctrl+A d                      # detach cleanly — session stays alive
 Ctrl+A |                      # split pane vertically
 Ctrl+A -                      # split pane horizontally
 ```
 
-After any SSH login, run `cr` to re-enter the persistent session.
+After any SSH login, use `tmux ls` to see active sessions, then attach to the appropriate one. The `claude-remote` session restarts on boot via systemd; `gemini-workspace` is the primary interactive work session.
 
 ### Running Services
 
