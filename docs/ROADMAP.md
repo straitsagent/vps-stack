@@ -331,7 +331,7 @@ All variables and resources are in the `u/admin` workspace. Credentials come fro
 | `u/admin/recipient_email` | variable | Default report recipient email |
 | `u/admin/telegram_owner_id` | variable | Owner Telegram chat ID |
 | `u/admin/affection_group_id` | variable | Telegram group chat_id for hourly affection sticker pings (negative int) |
-| `u/admin/affection_sticker_packs` | variable | Comma-separated Telegram sticker pack names (default: `BubuDudu`) |
+| `u/admin/affection_sticker_packs` | variable | Comma-separated Telegram sticker pack names (11 packs: `BubuDudu`, `Kittylove`, `PusheenTheCat`, etc.) |
 
 ### Telegram Formatter Architecture (md-driven)
 

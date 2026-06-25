@@ -1,4 +1,4 @@
-schedule: '0 0 23 * * 1-5'
+schedule: '0 0 7 * * 1-5'
 timezone: Asia/Singapore
 enabled: true
 script_path: u/admin/macro_research

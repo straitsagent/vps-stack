@@ -8,7 +8,7 @@
 
 Two requirements from the owner:
 
-1. **Hourly affection ping** — send a random cute sticker with a short LLM-generated affectionate caption to a Telegram group containing the owner and `@ESL1604`. This is a personal automation, not a financial report — Hard Rule 16 (≥500-word self-contained report) does not apply.
+1. **Hourly affection ping** — send a random cute sticker with a short LLM-generated affectionate caption to a Telegram group containing the owner and `lissybaby`. This is a personal automation, not a financial report — Hard Rule 16 (≥500-word self-contained report) does not apply.
 2. **Group silence** — the bot must not respond to casual messages in that group (no draft-approval notifications, no auto-replies). It should only respond to `/`-commands or messages prefixed with `@StraitsAgentBot`.
 
 The second requirement was necessary because the agent's existing routing sends all non-owner messages to `handle_contact`, which generates a draft reply and notifies the owner for approval. Without a silence mechanism, every casual message in the affection group would clutter the drafts queue.

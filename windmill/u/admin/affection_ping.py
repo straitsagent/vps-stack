@@ -29,28 +29,28 @@ _CAPTION_PROMPT = (
     "You are writing a short, warm, affectionate message to accompany a cute "
     "sticker sent to someone special. Write exactly ONE sentence (under 25 words) "
     "that is playful, sincere, and varied — never generic. No emoji in the sentence "
-    "itself (the sticker carries the visual). Address the recipient as @ESL1604 "
+    "itself (the sticker carries the visual). Address the recipient as lissybaby "
     "in the sentence — not as a greeting prefix, but woven in naturally. Rotate "
     "naturally between themes: missing you, encouragement, random fondness, "
     "good-morning/good-night when apt. Output the sentence only — no preamble, no quotes."
 )
 
 _FALLBACK_CAPTIONS = [
-    "Thinking of you right now, @ESL1604.",
-    "Hope your hour goes well, @ESL1604.",
-    "Just a little hello from across the screen, @ESL1604.",
-    "You crossed my mind, @ESL1604, so here's a sticker.",
-    "Sending something soft your way, @ESL1604.",
-    "Hope this made you smile a little, @ESL1604.",
-    "A small ping, just because, @ESL1604.",
-    "Wishing you a good moment right now, @ESL1604.",
+    "Thinking of you right now, lissybaby.",
+    "Hope your hour goes well, lissybaby.",
+    "Just a little hello from across the screen, lissybaby.",
+    "You crossed my mind, lissybaby, so here's a sticker.",
+    "Sending something soft your way, lissybaby.",
+    "Hope this made you smile a little, lissybaby.",
+    "A small ping, just because, lissybaby.",
+    "Wishing you a good moment right now, lissybaby.",
 ]
 
 _CAPTION_MAX_CHARS = 1024  # Telegram sendSticker caption limit
 
 # Only pick stickers whose emoji marker is affectionate/positive.
-# BubuDudu has 77 stickers — many are angry (😡), sad (😢), crying (😭),
-# anxious (😰), devil (😈), etc. Filter to warm/cute emojis only.
+# This whitelist approach keeps variety high while ensuring every
+# sticker expresses warmth, cuteness, or affection.
 _AFFECTIONATE_EMOJIS = {
     "🥰", "😍", "🥺", "😇", "😊", "☺️", "🤗", "😘", "😚", "❤️",
     "😋", "😌", "😄", "😁", "😃", "😆", "😎", "🙂", "😉", "😛",
@@ -60,7 +60,7 @@ _AFFECTIONATE_EMOJIS = {
 
 
 def _fetch_stickers(bot_token: str, pack_names: list) -> list:
-    """Return flat list of affectionate sticker dicts (filtered by emoji) from all packs."""
+    """Return flat list of affectionate sticker dicts (whitelist-filtered) from all packs."""
     out = []
     for name in pack_names:
         name = name.strip()

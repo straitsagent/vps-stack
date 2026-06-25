@@ -6532,11 +6532,11 @@ def test_affection_ping_outbox_row_written(monkeypatch):
     import psycopg2 as _real_pg
     monkeypatch.setattr(_real_pg, "connect", lambda **kw: _FakeConn())
     db = {"host": "h", "port": 5432, "dbname": "d", "user": "u", "password": "p"}
-    mod._log_affection(db, "-4830227987", "BubuDudu", "FILE123", "hi caption",
+    mod._log_affection(db, "-4830227987", "MultiPack", "FILE123", "hi caption",
                        "deepseek-chat", True, None)
     assert "INSERT INTO affection_outbox" in captured["sql"]
     assert captured["params"] == (
-        "-4830227987", "BubuDudu", "FILE123", "hi caption",
+        "-4830227987", "MultiPack", "FILE123", "hi caption",
         "deepseek-chat", True, None,
     )
 
@@ -6574,7 +6574,7 @@ def test_affection_ping_skips_outside_window(monkeypatch):
         telegram_bot_token="tok",
         telegram_owner_id="123",
         affection_group_id="-4830227987",
-        affection_sticker_packs="BubuDudu",
+        affection_sticker_packs="MultiPack",
         deepseek_key="key",
         portfolio_db={},
     )
