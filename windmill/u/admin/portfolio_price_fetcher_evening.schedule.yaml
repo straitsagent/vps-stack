@@ -1,9 +1,9 @@
-schedule: '0 45 17 * * 1-5'
+schedule: '0 45 17 * * *'
 timezone: Asia/Singapore
 enabled: true
 script_path: u/admin/portfolio_price_fetcher
 is_flow: false
-summary: 'Portfolio Price Fetcher — PM (5:45 PM SGT, Mon-Fri)'
+summary: 'Portfolio Price Fetcher — PM (5:45 PM SGT, daily)'
 permissioned_as: u/admin
 no_flow_overlap: true
 args:

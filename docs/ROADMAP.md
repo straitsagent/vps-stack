@@ -35,7 +35,7 @@ What gets built next, in priority order:
 
 Everything below is live and running unattended unless noted.
 
-> **⚠️ Known drift:** At least 5 Windmill schedules have server-side cron / script path that differs from the disk `.yaml` file. Noted inline where confirmed. Full reconciliation is a Part 5 hygiene item.
+> **Schedules reconciled 2026-06-25** — git filenames now match live server paths; cron values verified. `earnings_post_check` canonicalized to 7 AM SGT; `price_fetcher` confirmed 7 days/week.
 
 ### Foundation
 
@@ -57,17 +57,17 @@ Everything below is live and running unattended unless noted.
 
 | Component | Schedule | Notes |
 |---|---|---|
-| Daily Price Fetcher | 5:45 AM + 5:45 PM SGT *(⚠️ server runs 7 days/wk; disk `.yaml` says Mon–Fri)* | yfinance EOD prices + USDHKD FX rate → `price_history`, `fx_rates` |
+| Daily Price Fetcher | 5:45 AM + 5:45 PM SGT, 7 days/week | yfinance EOD prices + USDHKD FX rate → `price_history`, `fx_rates` |
 | Portfolio Email | 6:00 AM + 6:00 PM SGT | ADR consolidation, top movers, Google News per mover. Email + Telegram. |
 | Weekly Portfolio Review | Saturday 8:00 AM SGT | Week P&L, Finnhub news, Deepseek commentary. Email + Telegram. |
 | Move Monitor | Hourly, Mon–Fri (HK + US sessions) | Alert on portfolio ±1.5% or position ±5%. Telegram. |
-| Fundamentals Fetcher | Sunday 6:00 PM SGT *(⚠️ server schedule differs — see Part 5)* | Finnhub + yfinance → `fundamental_data` (P/E, targets, margins, ROE, ROIC) |
+| Fundamentals Fetcher | Sunday 6:00 PM SGT | Finnhub + yfinance → `fundamental_data` (P/E, targets, margins, ROE, ROIC) |
 | Portfolio Rationalization | Weekly Monday 9PM SGT (+ on-demand via Telegram) | ✅ Live. 5-factor scoring × 4 scenarios, Grok-4.3 + Deepseek fallback. Writes `portfolio_scores`. |
 | Portfolio Candidate Eval | On-demand (Telegram: `evaluate TICKER`) | ✅ Live. 3-gate ADD/WATCH/PASS. Auto-fetches quant data + research. Writes `portfolio_candidate_evals`. |
 | Portfolio Earnings Alert | 9:00 PM SGT Mon–Fri | EPS surprise alerts; dispatches pre-earnings analysis job. Telegram. |
 | Portfolio Analyst Alert | 7:45 AM SGT daily | Analyst rating upgrades/downgrades, dedup via `agent_kv`. Telegram. |
 | Portfolio Earnings Analysis | Dispatched by alert or agent | Pre/post-earnings briefing: EDGAR 8-K + Exa transcripts + Grok-4.3. Writes `/research/earnings/`. |
-| Portfolio Earnings Post-Check | *(⚠️ server: 1AM SGT; disk/docs: 7AM SGT)* | Checks Finnhub for epsActual; dispatches post-earnings analysis if needed. |
+| Portfolio Earnings Post-Check | 7:00 AM SGT daily | Checks Finnhub for epsActual; dispatches post-earnings analysis if needed. |
 
 ### Research & Tools
 
@@ -256,20 +256,9 @@ Steps:
 4. Add new bot to the affection Telegram group
 5. Push schedule via `wmill script push u/admin/affection_ping.schedule.yaml`
 
-### Schedule-Drift Reconciliation 🔲
+### Schedule-Drift Reconciliation ✅ done (2026-06-25)
 
-**Effort:** ~2 hours (dedicated audit session)
-
-At least 5 schedules have server-side cron / path that differs from disk `.yaml`:
-
-| Script | Server (known) | Disk `.yaml` |
-|---|---|---|
-| `portfolio_earnings_post_check` | 1:00 AM SGT | 7:00 AM SGT |
-| `portfolio_price_fetcher` | 7 days/wk | Mon–Fri only |
-| `fundamentals_fetcher` | hour + day differ | varies |
-| 2+ others | server path ≠ disk filename | — |
-
-**Action:** Compare `wmill schedule list` output against each `.schedule.yaml` on disk, then align using the schedule API (see `docs/OPERATIONS.md`). **Never use `wmill sync push`.**
+Resolved: see `docs/logs/2026-06-25_schedule-drift-reconcile.md`.
 
 ### Empty Table Decisions
 

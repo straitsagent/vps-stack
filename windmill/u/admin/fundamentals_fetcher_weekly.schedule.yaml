@@ -1,5 +1,6 @@
-schedule: '0 0 18 * * 0'
-timezone: Asia/Singapore
+# 0 0 10 * * 7 UTC == Sunday 18:00 SGT. Stored in UTC to match the live server schedule.
+schedule: '0 0 10 * * 7'
+timezone: UTC
 enabled: true
 script_path: u/admin/fundamentals_fetcher
 is_flow: false
