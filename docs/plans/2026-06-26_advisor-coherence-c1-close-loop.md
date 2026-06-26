@@ -1,7 +1,7 @@
 ---
 Subject: Advisor Coherence Phase 1 — Close the Loop (show candidate eval verdicts in rationalization report)
 Date: 2026-06-26
-Status: draft
+Status: executing
 Planner model: claude-sonnet-4-6 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [7, 9, 15, 17]
