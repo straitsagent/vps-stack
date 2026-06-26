@@ -1676,6 +1676,55 @@ def test_stock_data_fetcher_no_portfolio_positions_read():
     )
 
 
+# ── earnings_surprises extraction (regression: yfinance 'Reported EPS' column) ──
+_EARNINGS_DATES_COLUMNS = ["EPS Estimate", "Reported EPS", "Surprise(%)"]
+
+
+def _load_sdf_stubbed():
+    from unittest.mock import MagicMock
+    for _m in ("requests", "psycopg2", "yfinance", "bs4", "pandas", "numpy"):
+        sys.modules.setdefault(_m, MagicMock())
+    sys.modules.setdefault("windmill_http_client", MagicMock())
+    spec = importlib.util.spec_from_file_location("_sdf_stub", STOCK_DATA_FETCHER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test_pick_col_detects_reported_eps_actual_column():
+    sdf = _load_sdf_stubbed()
+    assert sdf._pick_col(_EARNINGS_DATES_COLUMNS, ["reported", "actual"]) == "Reported EPS"
+    assert sdf._pick_col(_EARNINGS_DATES_COLUMNS, ["estimate"]) == "EPS Estimate"
+    assert sdf._pick_col(_EARNINGS_DATES_COLUMNS, ["actual"]) is None
+
+
+def test_extract_surprises_from_real_yfinance_records():
+    sdf = _load_sdf_stubbed()
+    nan = float("nan")
+    records = [
+        {"period_date": "2026-07-30", "eps_estimate": 1.89, "eps_actual": nan,  "native_surprise_pct": nan},
+        {"period_date": "2026-04-30", "eps_estimate": 1.94, "eps_actual": 2.01, "native_surprise_pct": 3.46},
+        {"period_date": "2026-01-29", "eps_estimate": 2.67, "eps_actual": 2.84, "native_surprise_pct": 6.25},
+        {"period_date": "2025-10-30", "eps_estimate": 1.77, "eps_actual": 1.85, "native_surprise_pct": 4.52},
+        {"period_date": "2025-07-31", "eps_estimate": 1.43, "eps_actual": 1.57, "native_surprise_pct": 9.48},
+    ]
+    out = sdf._extract_surprises(records)
+    assert len(out) == 4, f"expected 4 past surprises, got {len(out)}"
+    periods = [s["period_date"] for s in out]
+    assert "2026-07-30" not in periods, "future (NaN-actual) row must be excluded"
+    first = out[0]
+    assert first["period_date"] == "2026-04-30"
+    assert first["eps_estimate"] == 1.94 and first["eps_actual"] == 2.01
+    assert abs(first["surprise_pct"] - 3.608) < 0.01, first["surprise_pct"]
+
+
+def test_extract_surprises_empty_when_no_actuals():
+    sdf = _load_sdf_stubbed()
+    nan = float("nan")
+    records = [{"period_date": "2026-07-30", "eps_estimate": 1.89, "eps_actual": nan, "native_surprise_pct": nan}]
+    assert sdf._extract_surprises(records) == []
+
+
 # ── research_tool: DB-read path (separation of concerns) ─────────────────────
 
 def test_research_tool_main_has_wm_token_param():

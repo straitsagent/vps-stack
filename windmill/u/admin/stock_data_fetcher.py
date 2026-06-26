@@ -3,6 +3,7 @@
 # requests>=2.31
 # yfinance>=0.2.40
 # beautifulsoup4>=4.12
+# lxml>=5.0
 
 """
 Stock Data Fetcher — fetch structured data for a single ticker and persist to DB.
@@ -482,6 +483,51 @@ def _fetch_insider_transactions(ticker):
         return "", {}
 
 
+def _pick_col(columns, keywords):
+    """First column whose lowercased name contains any of `keywords`, else None."""
+    for c in columns:
+        name = str(c).lower()
+        if any(k in name for k in keywords):
+            return c
+    return None
+
+
+def _is_blank(v):
+    """True for None or NaN (NaN != NaN) — lets pure logic stay pandas-free."""
+    return v is None or (isinstance(v, float) and v != v)
+
+
+def _extract_surprises(records, limit=4):
+    """records: list of dicts {period_date, eps_estimate, eps_actual, native_surprise_pct}.
+    Returns up to `limit` PAST-earnings surprises (eps_actual present), in input order,
+    surprise_pct recomputed from est/actual, falling back to native_surprise_pct."""
+    out = []
+    for r in records:
+        act = r.get("eps_actual")
+        if _is_blank(act):
+            continue
+        est = r.get("eps_estimate")
+        surp = None
+        if not _is_blank(est) and not _is_blank(act):
+            try:
+                e_f, a_f = float(est), float(act)
+                if e_f != 0:
+                    surp = (a_f - e_f) / abs(e_f) * 100.0
+            except Exception:
+                surp = None
+        if surp is None and not _is_blank(r.get("native_surprise_pct")):
+            surp = float(r.get("native_surprise_pct"))
+        out.append({
+            "period_date":  r.get("period_date"),
+            "eps_estimate": float(est) if not _is_blank(est) else None,
+            "eps_actual":   float(act),
+            "surprise_pct": surp,
+        })
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _fetch_earnings_calendar(ticker):
     try:
         t = yf.Ticker(ticker)
@@ -516,37 +562,27 @@ def _fetch_earnings_calendar(ticker):
         try:
             ed_df = t.earnings_dates
             if ed_df is not None and not ed_df.empty:
-                actual_col = next((c for c in ed_df.columns if "actual" in str(c).lower()), None)
-                est_col    = next((c for c in ed_df.columns if "estimate" in str(c).lower()), None)
-                if actual_col:
-                    recent = ed_df[ed_df[actual_col].notna()].head(4)
-                    if not recent.empty:
-                        lines.append("\n### Recent EPS Surprises")
-                        lines.append("| Period | EPS Estimate | EPS Actual | Surprise |")
-                        lines.append("|---|---|---|---|")
-                        for idx, row in recent.iterrows():
-                            period   = str(idx)[:10]
-                            est      = row.get(est_col)    if est_col    else None
-                            act      = row.get(actual_col)
-                            surp_pct = None
-                            surprise = ""
-                            if est is not None and act is not None:
-                                try:
-                                    e_f, a_f = float(est), float(act)
-                                    if e_f != 0:
-                                        surp_pct = (a_f - e_f) / abs(e_f) * 100
-                                        surprise = f"{surp_pct:+.1f}%"
-                                except Exception as _exc:
-                                    log.warning("Suppressed: %s", _exc)
-                            e_fmt = f"${float(est):.2f}" if est is not None else "N/A"
-                            a_fmt = f"${float(act):.2f}" if act is not None else "N/A"
-                            lines.append(f"| {period} | {e_fmt} | {a_fmt} | {surprise} |")
-                            surprises.append({
-                                "period_date":  period,
-                                "eps_estimate": float(est) if est is not None else None,
-                                "eps_actual":   float(act) if act is not None else None,
-                                "surprise_pct": surp_pct,
-                            })
+                est_col = _pick_col(ed_df.columns, ["estimate"])
+                act_col = _pick_col(ed_df.columns, ["reported", "actual"])
+                sur_col = _pick_col(ed_df.columns, ["surprise"])
+                records = []
+                for idx, row in ed_df.iterrows():
+                    records.append({
+                        "period_date":         str(idx)[:10],
+                        "eps_estimate":        row.get(est_col) if est_col else None,
+                        "eps_actual":          row.get(act_col) if act_col else None,
+                        "native_surprise_pct": row.get(sur_col) if sur_col else None,
+                    })
+                surprises = _extract_surprises(records)
+                if surprises:
+                    lines.append("\n### Recent EPS Surprises")
+                    lines.append("| Period | EPS Estimate | EPS Actual | Surprise |")
+                    lines.append("|---|---|---|---|")
+                    for s in surprises:
+                        e_fmt = f"${s['eps_estimate']:.2f}" if s['eps_estimate'] is not None else "N/A"
+                        a_fmt = f"${s['eps_actual']:.2f}"   if s['eps_actual']   is not None else "N/A"
+                        sp    = f"{s['surprise_pct']:+.1f}%" if s['surprise_pct'] is not None else ""
+                        lines.append(f"| {s['period_date']} | {e_fmt} | {a_fmt} | {sp} |")
         except Exception as e:
             log.info(f"[calendar] earnings dates: {e}")
 

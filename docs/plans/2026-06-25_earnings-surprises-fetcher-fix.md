@@ -1,7 +1,7 @@
 ---
 Subject: earnings_surprises Fetcher Fix — repair the yfinance column-detection bug that kept the table empty
 Date: 2026-06-25
-Status: executing
+Status: done
 Planner model: claude-opus-4 (Claude Code)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [7, 9, 11, 15, 17, 19, 20, 21, 22]

@@ -256,7 +256,7 @@ Resolved: see `docs/logs/2026-06-25_schedule-drift-reconcile.md`.
 | Table | Rows | Recommended action |
 |---|---|---|
 | `portfolio_thesis` | 0 | Keep — used by the `Thesis 10%` factor in rationalization scoring. Seed with a few entries via the `thesis_write` agent command, or auto-seed from `research_reports`. |
-| `earnings_surprises` | 0 | Evaluate: does `earnings_analyses` supersede this? If so, leave empty or drop. Decide in a hygiene session. |
+| `earnings_surprises` | 132 rows / 33 tickers | ✅ Resolved 2026-06-26 — yfinance column-detection bug fixed; `lxml` added to lock; backfilled. See log. |
 
 ### Macro Daily Push — Formal Disposition
 
@@ -375,7 +375,7 @@ The authoritative schema is `/root/portfolio/schema.sql`. Groups below are appro
 | Advisor / scoring (2) | `portfolio_scores`, `portfolio_candidate_evals` |
 | Research (2) | `research_reports`, `research_metadata` |
 | Stock quant data (13) | `company_profiles`, `financial_statements`, `valuation_data`, `ownership_data`, `insider_transactions`, `earnings_calendar`, `management_data`, `peer_comparisons`, `stock_snapshots`, `income_statements`, `balance_sheets`, `cash_flow_statements`, `financial_health` |
-| Earnings (2) | `earnings_analyses`, `earnings_surprises` *(0 rows — see Part 5)* |
+| Earnings (2) | `earnings_analyses`, `earnings_surprises` |
 | Agent (8) | `agent_conversation_history`, `agent_kv`, `portfolio_thesis` *(0 rows — see Part 5)*, `telegram_outbox`, `affection_outbox`, `watchlist_candidates`, `agent_memory`, `agent_sessions` |
 | Macro (2) | `macro_summaries`, `macro_research` *(or similar — verify against schema.sql)* |
 | Planned (not yet created) | `watchlist_ideas` (Part 2A/C), `valuation_percentiles` (Part 2D), `risk_matrix` (Part 2D), `factor_exposures` (Part 2D) |
