@@ -313,7 +313,7 @@ branch), the script:
 
 ## Checklist
 
-- [ ] **Step 0 — Refactor scoring into shared module.** Create `windmill/u/admin/factor_scorer.py`.
+- [x] **Step 0 — Refactor scoring into shared module.** Create `windmill/u/admin/factor_scorer.py`.
   Move the 7 real functions from `portfolio_rationalization.py` (see §Step 0 above for the exact
   names and line numbers):
   `_cagr`, `_evaluate_red_flags`, `_norm`, `_compute_factor_scores`, `_apply_thesis_scores`,
@@ -322,7 +322,7 @@ branch), the script:
   Push rationalization. Run full test suite — all green (same tests, same behavior).
   **This must be green before any new code is written.**
 
-- [ ] **Step 1 — Schema: `watchlist_ideas` table.** Apply the migration SQL to the live DB.
+- [x] **Step 1 — Schema: `watchlist_ideas` table.** Apply the migration SQL to the live DB.
   Append the `CREATE TABLE` statement to `portfolio/schema.sql`.
 
 - [ ] **Step 2 — Write `idea_extractor.py`.** Create the script with a pure `_parse_extraction_response`

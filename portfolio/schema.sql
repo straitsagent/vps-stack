@@ -591,3 +591,18 @@ CREATE TABLE IF NOT EXISTS position_signals (
     alerted       BOOLEAN DEFAULT FALSE,
     created_at    TIMESTAMPTZ DEFAULT NOW()
 );
+
+-- ── Watchlist Ideas (Plan A — Idea Pipeline, 2026-06-26) ────────────────────
+CREATE TABLE IF NOT EXISTS watchlist_ideas (
+    id            SERIAL PRIMARY KEY,
+    ticker        TEXT NOT NULL,
+    source        TEXT NOT NULL,
+    source_ref    TEXT,
+    reason        TEXT,
+    added_at      TIMESTAMPTZ DEFAULT NOW(),
+    status        TEXT NOT NULL DEFAULT 'pending',
+    eval_date     DATE,
+    prescreen_rank   INTEGER,
+    prescreen_score  NUMERIC(6,4),
+    UNIQUE (ticker, source)
+);
