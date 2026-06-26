@@ -7,8 +7,11 @@ import os
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
+from threading import Lock
 
 import httpx
+import psycopg2
+import psycopg2.extras
 from fastapi import FastAPI, Request
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -23,6 +26,17 @@ TELEGRAM_URL   = f"https://api.telegram.org/bot{BOT_TOKEN}"
 MODEL          = "deepseek-chat"
 MAX_HISTORY    = 15
 MAX_RESP_TOKENS = 512
+DB_URL         = os.environ.get("DB_URL", "")
+
+_db_conn = None
+_db_lock = Lock()
+
+def _get_db():
+    global _db_conn
+    if _db_conn is None or _db_conn.closed:
+        _db_conn = psycopg2.connect(DB_URL)
+        _db_conn.autocommit = True
+    return _db_conn
 
 SGT = timezone(timedelta(hours=8))
 
@@ -70,12 +84,63 @@ WEB_SEARCH_TOOL = {
     }
 }
 
-# ── Conversation memory (in-memory, volatile) ─────────────────────────────────
+# ── Conversation memory (in-memory cache + Postgres persistence) ──────────────
 memory: dict[str, deque] = {}
+_loaded: set[str] = set()
+
+def _load_memory(chat_id: str):
+    """Load last MAX_HISTORY messages from DB into the in-memory deque."""
+    if not DB_URL:
+        return
+    try:
+        with _db_lock:
+            cur = _get_db().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                "SELECT role, content, tool_calls, tool_call_id "
+                "FROM affection_conversation WHERE chat_id = %s "
+                "ORDER BY created_at DESC LIMIT %s",
+                (chat_id, MAX_HISTORY),
+            )
+            rows = cur.fetchall()
+            cur.close()
+        entries = []
+        for row in reversed(rows):
+            entry = {"role": row["role"]}
+            if row["content"] is not None:
+                entry["content"] = row["content"]
+            if row["tool_call_id"] is not None:
+                entry["tool_call_id"] = row["tool_call_id"]
+            if row["tool_calls"] is not None:
+                entry["tool_calls"] = row["tool_calls"]
+            entries.append(entry)
+        memory[chat_id] = deque(entries, maxlen=MAX_HISTORY)
+    except Exception as e:
+        print(f"[affection] db load error for {chat_id}: {e!r}")
+
+def _persist_message(chat_id: str, role: str, content=None, tool_call_id=None, tool_calls=None):
+    """Insert a message into the DB for long-term persistence."""
+    if not DB_URL:
+        return
+    try:
+        tc_json = json.dumps(tool_calls) if tool_calls else None
+        with _db_lock:
+            cur = _get_db().cursor()
+            cur.execute(
+                "INSERT INTO affection_conversation (chat_id, role, content, tool_calls, tool_call_id) "
+                "VALUES (%s, %s, %s, %s, %s)",
+                (chat_id, role, content, tc_json, tool_call_id),
+            )
+            cur.close()
+    except Exception as e:
+        print(f"[affection] db persist error for {chat_id}: {e!r}")
 
 def remember(chat_id: str, role: str, content=None, tool_call_id=None, tool_calls=None):
     if chat_id not in memory:
-        memory[chat_id] = deque(maxlen=MAX_HISTORY)
+        if chat_id not in _loaded and DB_URL:
+            _load_memory(chat_id)
+            _loaded.add(chat_id)
+        if chat_id not in memory:
+            memory[chat_id] = deque(maxlen=MAX_HISTORY)
     entry = {"role": role}
     if content is not None:
         entry["content"] = content
@@ -84,6 +149,7 @@ def remember(chat_id: str, role: str, content=None, tool_call_id=None, tool_call
     if tool_calls:
         entry["tool_calls"] = tool_calls
     memory[chat_id].append(entry)
+    _persist_message(chat_id, role, content, tool_call_id, tool_calls)
 
 def build_messages(chat_id: str) -> list[dict]:
     return [{"role": "system", "content": build_system_prompt()}] + list(memory.get(chat_id, []))

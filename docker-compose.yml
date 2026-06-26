@@ -250,6 +250,7 @@ services:
     build: ./affection
     restart: unless-stopped
     networks:
+      - default
       - agent_net
     env_file:
       - affection.env
