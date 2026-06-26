@@ -1,9 +1,11 @@
 import html as html_mod
 import imaplib
 import email
+import os
 import re
 import smtplib
 import feedparser
+import requests
 from email.header import decode_header
 from email.utils import parsedate_to_datetime
 from email.mime.multipart import MIMEMultipart
@@ -28,9 +30,40 @@ class smtp(TypedDict):
 SGT = timezone(timedelta(hours=8))
 HEADLINE_LIMIT = 5
 
+WM_BASE_DISPATCH  = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
+WM_WORKSPACE_DISPATCH = "admins"
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):
-    import urllib.request as _urlreq
+
+def _dispatch_idea_extractor(md_path: str, source: str,
+                              portfolio_db: dict, deepseek_key: str,
+                              wm_token: str = "") -> str:
+    """Dispatch idea_extractor fire-and-forget. Returns job_id or ''."""
+    token = wm_token or os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning("[Dispatch] No WM_TOKEN — cannot dispatch idea_extractor")
+        return ""
+    url = f"{WM_BASE_DISPATCH}/api/w/{WM_WORKSPACE_DISPATCH}/jobs/run/p/u/admin/idea_extractor"
+    args = {
+        "md_path": md_path,
+        "source": source,
+        "portfolio_db": portfolio_db,
+        "deepseek_key": deepseek_key,
+    }
+    try:
+        resp = requests.post(
+            url, headers={"Authorization": f"Bearer {token}",
+                          "Content-Type": "application/json"},
+            json=args, timeout=10,
+        )
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] idea_extractor dispatched job_id={job_id}")
+        return job_id
+    except Exception as e:
+        log.warning(f"[Dispatch] Failed to dispatch idea_extractor: {e}")
+        return ""
+
+
+def _send_telegram(bot_token: str, chat_id: str, text: str):    import urllib.request as _urlreq
     import json as _json
     try:
         data = _json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
@@ -426,6 +459,8 @@ def main(
     recipient_email: str = "",
     telegram_bot_token: str = "",
     telegram_owner_id: str = "",
+    portfolio_db: dict = {},
+    wm_token: str = "",
 ):
     date_str = datetime.now(SGT).strftime("%A, %d %B %Y")
 
@@ -539,6 +574,11 @@ def main(
     with open(md_path, "w") as f:
         f.write("\n".join(md) + "\n")
     log.info(f"[md] Written {md_path}")
+
+    if portfolio_db and wm_token:
+        _dispatch_idea_extractor(
+            md_path, "news", portfolio_db, deepseek_key, wm_token,
+        )
 
     return {
         "status": "sent",

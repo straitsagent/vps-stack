@@ -330,6 +330,34 @@ def _dispatch_formatter(formatter_name: str, md_path: str,
         return ""
 
 
+def _dispatch_idea_extractor(md_path: str, source: str,
+                              portfolio_db: dict, deepseek_key: str,
+                              wm_token: str = "") -> str:
+    """Dispatch idea_extractor fire-and-forget. Returns job_id or ''."""
+    token = wm_token or os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning("[Dispatch] No WM_TOKEN — cannot dispatch idea_extractor")
+        return ""
+    url = f"{WM_BASE_DISPATCH}/api/w/{WM_WORKSPACE_DISPATCH}/jobs/run/p/u/admin/idea_extractor"
+    args = {
+        "md_path": md_path,
+        "source": source,
+        "portfolio_db": portfolio_db,
+        "deepseek_key": deepseek_key,
+    }
+    try:
+        resp = requests.post(
+            url, headers={"Authorization": f"Bearer {token}",
+                          "Content-Type": "application/json"},
+            json=args, timeout=10,
+        )
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] idea_extractor dispatched job_id={job_id}")
+        return job_id
+    except Exception as e:
+        log.warning(f"[Dispatch] Failed to dispatch idea_extractor: {e}")
+
+
 def _send_email(smtp_resource: dict, recipient_email: str, subject: str, html: str) -> None:
     username = smtp_resource["username"]
     password = smtp_resource["password"]
@@ -472,6 +500,11 @@ def main(
     )
     _write_canonical_md(md_content, md_path)
     log.info(f"[md] Written {md_path}")
+
+    if portfolio_db and wm_token:
+        _dispatch_idea_extractor(
+            md_path, "youtube", portfolio_db, deepseek_key, wm_token,
+        )
 
     if telegram_bot_token and telegram_owner_id:
         _dispatch_formatter(
