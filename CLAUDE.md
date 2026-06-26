@@ -149,12 +149,15 @@ Status: draft | approved | executing | done | abandoned
 
 **Body:** Context (why) → files to create/modify/delete → step-by-step `- [ ]` checklist with success criteria → verification section → an `## Execution` footer (below).
 
+**Handoff standard:** every plan must comply with `docs/EXECUTOR_CONTRACT.md` (Hard Rule 22). In addition to the above, the body carries four mandatory sections so any executor model can run it safely: **Locked Oracle Tests** (G1 — frozen assertions in a `# LOCKED ORACLE — copy verbatim` block; planner-authored for high-risk plans), **RED-proof requirement** (G2), **Asserting Verification Script** (G4 — prints + asserts decisive artifacts, exits non-zero on failure, ends in `PASS`), and **Acceptance Gate** (the reviewer checklist that flips Status to done). New plans copy `docs/plans/_TEMPLATE.md`.
+
 **`## Execution` footer (every plan carries this, so it is portable to any tool/model):**
 ```
 1. Set front-matter Status: executing, commit.
 2. Work the checklist top to bottom; tick each `- [ ]` when its success criteria are met.
 3. Run the Verification section.
 4. Set Status: done, commit.
+Satisfy all five gates in `docs/EXECUTOR_CONTRACT.md`; do not modify `# LOCKED ORACLE` assertions; STOP on any deviation.
 Do not redesign. If the plan is ambiguous or wrong, stop and report — do not improvise.
 ```
 
@@ -230,6 +233,7 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
 19. **Lock-file deploy rule.** Confirm `*.script.lock` has resolved packages (not bare `# py: 3.12`). No cross-script imports for formatters; all 8 carry identical `_send_telegram`/`_split_telegram_message` copies.
 20. **Apply Testing Critic checklist before committing artifact tests.** 5 failure modes: empty-artifact, template-string, tautology, ASD-derived, completeness. See `docs/TESTING.md`.
 21. **Verify the response, not the request.** Assert on API response body, not request payload (Telegram silently drops `sendSticker` caption). Applies to all sends.
+22. **Cross-model handoff contract.** Any plan intended for execution must satisfy `docs/EXECUTOR_CONTRACT.md`: a locked oracle (G1), RED-before-GREEN proof (G2), artifact evidence not claims (G3), an asserting verify script (G4), and STOP-on-deviation (G5). Completion is gated by review, not self-report. Never edit a `# LOCKED ORACLE` block.
 
 ---
 

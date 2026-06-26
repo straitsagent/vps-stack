@@ -4,7 +4,9 @@ Date: 2026-06-25
 Status: draft
 Planner model: claude-opus-4 (Claude Code)
 Executor model: deepseek (opencode) or any
-Hard Rules in force: [8, 9]
+Hard Rules in force: [8, 9, 22]
+Risk tier: LOW (mechanical — executor + review, no locked oracle)
+Complies with: docs/EXECUTOR_CONTRACT.md
 Files to read before coding: CLAUDE.md, docs/OPERATIONS.md, docs/ROADMAP.md (Part 1 + Part 5)
 ---
 
@@ -154,6 +156,32 @@ and macro_research tests still pass).
 ## Out of scope
 API health monitor (deferred to its own design session). The `research_tool.py:585` column twin-bug
 (noted in the earnings_surprises plan) is unrelated to macro and handled separately.
+
+## Locked Oracle Tests (G1)
+No locked oracle — this is mechanical (delete a disabled schedule + a disk file; no new code). The
+existing `macro_daily_push` / `macro_research` tests stay green unchanged; reviewer validates.
+
+## RED-proof requirement (G2)
+N/A (no new tests). Instead, paste the existing suite green after the change:
+```bash
+docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py -k "macro_daily_push or macro_research" -q
+```
+
+## Asserting Verification Script (G4)
+```bash
+WM_TOKEN=$(grep "WM_TOKEN" /root/agent.env | cut -d= -f2 | tr -d ' ')
+code=$(curl -s -o /dev/null -w "%{http_code}" "http://localhost:8080/api/w/admins/schedules/get/u%2Fadmin%2Fmacro_daily_push" -H "Authorization: Bearer $WM_TOKEN")
+[ "$code" = "404" ] || { echo "FAIL: schedule still exists ($code)"; exit 1; }
+[ ! -f /root/windmill/u/admin/macro_daily_push.schedule.yaml ] || { echo "FAIL: disk schedule still present"; exit 1; }
+[ -f /root/windmill/u/admin/macro_daily_push_telegram.py ] || { echo "FAIL: formatter was removed (must stay)"; exit 1; }
+echo "PASS"
+```
+Close-out pastes this output ending in `PASS`.
+
+## Acceptance Gate (G3/G5 + review)
+- [ ] Asserting verify script output pasted, ends in `PASS` (G4) — schedule 404, disk gone, formatter kept
+- [ ] `macro_daily_push`/`macro_research` tests pasted green (G3)
+- [ ] Confirmed the formatter `macro_daily_push_telegram` was NOT touched
 
 ## Execution
 1. Set front-matter `Status: executing`, commit.

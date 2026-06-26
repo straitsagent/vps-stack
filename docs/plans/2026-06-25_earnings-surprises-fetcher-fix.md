@@ -4,7 +4,9 @@ Date: 2026-06-25
 Status: draft
 Planner model: claude-opus-4 (Claude Code)
 Executor model: deepseek (opencode) or any
-Hard Rules in force: [7, 9, 11, 15, 17, 19, 20, 21]
+Hard Rules in force: [7, 9, 11, 15, 17, 19, 20, 21, 22]
+Risk tier: HIGH (planner-locked oracle)
+Complies with: docs/EXECUTOR_CONTRACT.md
 Files to read before coding: CLAUDE.md, docs/TESTING.md, docs/OPERATIONS.md, windmill/u/admin/stock_data_fetcher.py
 ---
 
@@ -371,6 +373,40 @@ showed columns ['EPS Estimate','Reported EPS','Surprise(%)'].
 ## Out of scope (subsequent hygiene plans)
 `portfolio_thesis` seeding, `macro_daily_push` disposition, optional API health monitor, and the
 parallel `research_tool.py:585` column bug (report markdown only). Each handled separately.
+
+## Locked Oracle Tests (G1)
+> Planner-authored. The three tests in Step 1 ARE the locked oracle. Wrap them in
+> `# LOCKED ORACLE — copy verbatim, do not modify assertions` in `agent/tests/test_windmill_scripts.py`
+> and reproduce these assertions unchanged. Reviewer diffs the committed file against them:
+> - `_pick_col(['EPS Estimate','Reported EPS','Surprise(%)'], ['reported','actual']) == 'Reported EPS'`
+>   and `_pick_col(..., ['actual']) is None` (documents the bug).
+> - `_extract_surprises(<AAPL records, 1 future NaN + 4 past>)` → `len == 4`, future row excluded,
+>   `out[0]['surprise_pct'] ≈ 3.608` (recomputed, NOT the fixture's native 3.46).
+> - `_extract_surprises(<all-future>) == []` (empty-artifact guard).
+> Do not edit these to pass — fix the code.
+
+## RED-proof requirement (G2)
+Paste BEFORE implementing (must fail with `AttributeError: … _pick_col`), then the GREEN run after:
+```bash
+docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py -k "pick_col or extract_surprises" -q
+```
+
+## Asserting Verification Script (G4)
+```bash
+docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM earnings_surprises WHERE surprise_pct IS NOT NULL" \
+| { read n; [ "${n:-0}" -gt 0 ] && echo "rows_with_surprise=$n" || { echo "FAIL: empty"; exit 1; }; }
+docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM earnings_surprises WHERE ticker='AAPL'" \
+| { read n; [ "${n:-0}" -ge 1 ] && echo "PASS aapl_rows=$n" || { echo "FAIL: no AAPL rows"; exit 1; }; }
+```
+Close-out pastes this output ending in `PASS`.
+
+## Acceptance Gate (G2/G3/G5 + review)
+- [ ] Locked tests diff-clean vs the block above (G1)
+- [ ] RED (AttributeError) + GREEN runs pasted (G2)
+- [ ] Asserting verify script output pasted, ends in `PASS` (G4)
+- [ ] Backfill counts + a sample `earnings_surprises` row pasted (G3)
 
 ## Execution
 1. Set front-matter `Status: executing`, commit.

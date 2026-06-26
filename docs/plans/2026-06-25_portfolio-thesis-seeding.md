@@ -4,7 +4,9 @@ Date: 2026-06-25
 Status: draft
 Planner model: claude-opus-4 (Claude Code)
 Executor model: deepseek (opencode) or any
-Hard Rules in force: [1, 6, 7, 10, 11, 15, 17, 19, 20]
+Hard Rules in force: [1, 6, 7, 10, 11, 15, 17, 19, 20, 22]
+Risk tier: HIGH (planner-locked oracle)
+Complies with: docs/EXECUTOR_CONTRACT.md
 Files to read before coding: CLAUDE.md, docs/TESTING.md, docs/OPERATIONS.md, windmill/u/admin/portfolio_rationalization.py (thesis factor), agent/tools.py (run_thesis_write)
 ---
 
@@ -280,6 +282,39 @@ This step is owner-driven and does not block commit.
 `macro_daily_push` disposition (separate plan), optional API health monitor, the `research_tool.py:585`
 column twin-bug. The downstream rationalization re-run picks up the new convictions automatically — no
 reader change here.
+
+## Locked Oracle Tests (G1)
+> Planner-authored. The Step-2 tests ARE the locked oracle. Wrap them in
+> `# LOCKED ORACLE — copy verbatim, do not modify assertions` and reproduce unchanged:
+> - `_parse_thesis_response('{"conviction":"high",...}')['conviction'] == 'High'` (normalize)
+> - `_parse_thesis_response('{"conviction":"Strong",...}')['conviction'] == 'Medium'` (invalid→default)
+> - `_parse_thesis_response('not json') is None` and blank `investment_thesis` → `None` (never write blank)
+> - `_build_thesis_prompt(...)` contains the JSON keys + "ONLY" and NO persona ("infra"/"banker" absent)
+> Fix the parser/prompt to pass — never weaken an assertion.
+
+## RED-proof requirement (G2)
+Paste BEFORE implementing (fails — module/helpers absent), then GREEN after:
+```bash
+docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py -k "thesis_seeder or thesis_prompt or thesis_response" -q
+```
+
+## Asserting Verification Script (G4)
+```bash
+docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM portfolio_thesis" \
+| { read n; [ "${n:-0}" -ge 30 ] && echo "rows=$n" || { echo "FAIL: only $n thesis rows"; exit 1; }; }
+docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM portfolio_thesis WHERE conviction NOT IN ('High','Medium','Low')" \
+| { read n; [ "${n:-1}" -eq 0 ] && echo "PASS all_conviction_valid" || { echo "FAIL: $n invalid conviction"; exit 1; }; }
+```
+Close-out pastes this output ending in `PASS`, plus the re-run showing the seeded ticker under `skipped_existing` (no-clobber, G3).
+
+## Acceptance Gate (G2/G3/G5 + review)
+- [ ] Locked tests diff-clean vs the block above (G1)
+- [ ] RED + GREEN runs pasted (G2)
+- [ ] Asserting verify script output pasted, ends in `PASS` (G4)
+- [ ] One-ticker live row + no-clobber re-run output pasted (G3)
+- [ ] Sign-off items (model + exact prompt) confirmed before any code (Hard Rules 6/10)
 
 ## Execution
 1. Confirm the two sign-off items (model + prompt). If owner has not approved, STOP.

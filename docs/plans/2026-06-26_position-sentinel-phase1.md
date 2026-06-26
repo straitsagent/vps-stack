@@ -4,7 +4,9 @@ Date: 2026-06-26
 Status: approved
 Planner model: claude-opus-4 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
-Hard Rules in force: [1, 4, 6, 7, 9, 10, 11, 15, 16, 17, 18, 19, 20]
+Hard Rules in force: [1, 4, 6, 7, 9, 10, 11, 15, 16, 17, 18, 19, 20, 22]
+Risk tier: HIGH (planner-locked oracle)
+Complies with: docs/EXECUTOR_CONTRACT.md
 Deliverable: new ROADMAP pillar (the path) + executor-ready Phase 1 build plan
 Files to read before coding: CLAUDE.md, docs/TESTING.md, docs/WORKFLOW_ARCHITECTURE.md, docs/ROADMAP.md, windmill/u/admin/portfolio_move_monitor.py, windmill/u/admin/portfolio_email.py, windmill/u/admin/portfolio_analyst_alert.py, windmill/u/admin/portfolio_earnings_alert.py
 ---
@@ -240,6 +242,44 @@ In `test_windmill_scripts.py`, load via the established `sys.modules` stub patte
 Confluence auto-synthesis + news/confluence pushes (Phase 2), thesis-aware triage (Phase 3, needs the
 thesis-seeding plan), daily briefing + dashboard + ReAct "why is X moving" (Phase 4). Finnhub
 company-news as a second source (Phase 1 uses Google News only).
+
+## Locked Oracle Tests (G1)
+> Planner-authored. The pure-helper tests in the TDD section ARE the locked oracle. Wrap them in
+> `# LOCKED ORACLE — copy verbatim, do not modify assertions` and reproduce unchanged:
+> - `_cumulative_drawdowns(<BABA real closes …,99.80,95.07>)` → `chg_5d ≈ -11.5` and `vs_20d_high ≈ -27.3`
+>   (anchored to real price math — not a fixture echo).
+> - `_price_signal` fires on the BABA series; returns `None` on a flat series (empty-artifact guard).
+> - `_parse_materiality('{"materiality":5,…}')` clamped/rejected; blank/garbage → `None`.
+> - `_confluence(price_only) is False`; `_confluence(price + a ≥2 news item)` is True.
+> - `position_sentinel_telegram._build_message(...)` ≥ 500 words + front-matter round-trip contract.
+> Fix the code to pass — never weaken a locked assertion.
+
+## RED-proof requirement (G2)
+Paste BEFORE implementing (fails — helpers absent), then GREEN after:
+```bash
+docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py -k "cumulative_drawdowns or price_signal or parse_materiality or confluence or position_sentinel" -q
+```
+
+## Asserting Verification Script (G4)
+```bash
+docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM position_signals WHERE signal_type='price_cumulative' AND ticker IN ('BABA','9988.HK') AND (detail->>'chg_5d')::float <= -10" \
+| { read n; [ "${n:-0}" -ge 1 ] && echo "baba_cum_signal=$n" || { echo "FAIL: no BABA cumulative signal"; exit 1; }; }
+docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM position_events WHERE materiality IS NOT NULL" \
+| { read n; [ "${n:-0}" -gt 0 ] && echo "events=$n" || { echo "FAIL: no triaged events"; exit 1; }; }
+docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM telegram_outbox WHERE sent_at > NOW()-INTERVAL '15 min' AND message ILIKE '%BABA%'" \
+| { read n; [ "${n:-0}" -ge 1 ] && echo "PASS alert_sent=$n" || { echo "FAIL: no BABA alert in outbox"; exit 1; }; }
+```
+Close-out pastes this output ending in `PASS`. (Adjust `telegram_outbox` column name to the live schema if it differs — STOP and report if so, do not guess.)
+
+## Acceptance Gate (G2/G3/G5 + review)
+- [ ] Locked tests diff-clean vs the block above (G1)
+- [ ] RED + GREEN runs pasted (G2)
+- [ ] Asserting verify script output pasted, ends in `PASS` (G4)
+- [ ] A BABA `price_signals` row + the rendered Telegram body pasted (G3)
+- [ ] Sign-off items (models, materiality prompt, thresholds) confirmed before code
 
 ## Execution
 1. Confirm the three sign-off items (models, materiality prompt, thresholds). If not approved, STOP.
