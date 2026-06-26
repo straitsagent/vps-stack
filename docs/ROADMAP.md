@@ -62,7 +62,7 @@ Everything below is live and running unattended unless noted.
 | Weekly Portfolio Review | Saturday 8:00 AM SGT | Week P&L, Finnhub news, Deepseek commentary. Email + Telegram. |
 | Move Monitor | Hourly, Mon–Fri (HK + US sessions) | Alert on portfolio ±1.5% or position ±5%. Telegram. |
 | Fundamentals Fetcher | Sunday 6:00 PM SGT | Finnhub + yfinance → `fundamental_data` (P/E, targets, margins, ROE, ROIC) |
-| Portfolio Rationalization | Weekly Monday 9PM SGT (+ on-demand via Telegram) | ✅ Live. 5-factor scoring × 4 scenarios, Grok-4.3 + Deepseek fallback. Writes `portfolio_scores`. |
+| Portfolio Rationalization | Weekly Saturday 6AM SGT (+ on-demand via Telegram) | ✅ Live. 5-factor scoring × 4 scenarios, Grok-4.3 + Deepseek fallback. Writes `portfolio_scores`. |
 | Portfolio Candidate Eval | On-demand (Telegram: `evaluate TICKER`) | ✅ Live. 3-gate ADD/WATCH/PASS. Auto-fetches quant data + research. Writes `portfolio_candidate_evals`. |
 | Portfolio Earnings Alert | 9:00 PM SGT Mon–Fri | EPS surprise alerts; dispatches pre-earnings analysis job. Telegram. |
 | Portfolio Analyst Alert | 7:45 AM SGT daily | Analyst rating upgrades/downgrades, dedup via `agent_kv`. Telegram. |
