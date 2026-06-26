@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-SESSION="gemini-workspace"
+SESSION="google-workspace"
 
 # Function to attach to the session or switch to it if already inside tmux
 attach_or_switch() {
@@ -17,7 +17,7 @@ if tmux has-session -t "$SESSION" 2>/dev/null; then
 fi
 
 # Create a new minimalist session with a single window
-tmux new-session -d -s "$SESSION" -n "gemini"
+tmux new-session -d -s "$SESSION" -n "google"
 
 # Attach/Switch
 attach_or_switch
