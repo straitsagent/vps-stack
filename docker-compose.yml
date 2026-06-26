@@ -246,6 +246,15 @@ services:
       retries: 5
     logging: *default-logging
 
+  affectionbot:
+    build: ./affection
+    restart: unless-stopped
+    networks:
+      - agent_net
+    env_file:
+      - affection.env
+    logging: *default-logging
+
   caddy:
     image: ghcr.io/windmill-labs/caddy-l4:latest
     restart: unless-stopped
