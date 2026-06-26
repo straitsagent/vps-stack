@@ -2855,7 +2855,67 @@ Only written when a rating change fires.
 
 ---
 
-### 9. `affection_ping` (non-report — Hard Rule 16 exempt)
+### 9. `position_sentinel` → `position_sentinel_telegram`
+
+**Script:** `u/admin/position_sentinel`
+**Schedule:** On-demand (Phase 1); hourly `0 0 * * * 1-5` YAML ready for Phase 2 activation
+**Inputs:** `portfolio_db` (postgresql resource), `deepseek_key` ($var), `xai_key` ($var)
+**Trigger families:**
+- **(i-a) Price acute** — single session ≥±5% (existing move monitor threshold)
+- **(i-b) Price cumulative** — ≤-8%/3d, ≤-12%/5d, ≤-20% vs 20d-high (Phase 1 live)
+- **(ii) News materiality** — Deepseek 0–3 score; ≥2 = material; ≥3 = critical/thesis-threatening (logged Phase 1; push Phase 2)
+- **(iii) Confluence** — price signal ∧ materiality ≥2 (Phase 2 activation)
+
+**Pure helpers (unit-tested, locked oracle):**
+- `_cumulative_drawdowns(closes)` → `{chg_3d, chg_5d, vs_20d_high}`
+- `_price_signal(dd, cfg)` → `"price_cumulative"` or `None`
+- `_parse_materiality(llm_str)` → int 0–3, clamped; blank → `None`
+- `_aggregate_materiality(events)` → max score for ticker
+- `_confluence(price_sig, max_materiality)` → bool
+- `_url_hash(url)` → dedup key for `position_events`
+
+**DB tables written:**
+- `position_events` — `(ticker, url_hash, headline, source, materiality_score, fetched_at)` — one row per news item scored
+- `position_signals` — `(ticker, signal_type, detail JSONB, fired_at)` — one row per triggered alert
+
+**Pseudocode:**
+```
+1. fetch portfolio_positions → tickers[]
+2. for each ticker:
+   a. fetch last 20 closes from price_history
+   b. dd = _cumulative_drawdowns(closes)
+   c. price_sig = _price_signal(dd, cfg)
+   d. if price_sig: write position_signals; queue for formatter
+   e. fetch Google News RSS (feedparser) → headlines[]
+   f. for each headline not in position_events (url_hash dedup):
+        score = _triage_news(headline, ticker, deepseek_key)
+        write position_events
+3. for each queued signal: dispatch position_sentinel_telegram
+```
+
+**Front-matter contract (canonical .md):**
+```json
+{
+  "script": "position_sentinel",
+  "ticker": "<str>",
+  "signal_type": "<price_cumulative|price_acute|news_material|confluence>",
+  "chg_3d": <float|null>,
+  "chg_5d": <float|null>,
+  "vs_20d_high": <float|null>,
+  "max_materiality": <int|null>,
+  "top_headline": "<str|null>",
+  "fired_at": "<ISO str>"
+}
+```
+
+**Phase roadmap:**
+- Phase 1 (live): cumulative-price alerts; news materiality logged only
+- Phase 2: confluence push + Grok-4.3 synthesis dispatch on critical signals
+- Phase 3: thesis-aware triage (requires `portfolio_thesis` seeded — now done)
+
+---
+
+### 10. `affection_ping` (non-report — Hard Rule 16 exempt)
 
 **Not part of the md-driven formatter architecture.** This is a standalone hourly sticker ping, not a financial report. Rule 16 (≥500-word report) is exempt — see `shared/override_log.md`.
 

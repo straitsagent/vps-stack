@@ -66,6 +66,7 @@ Everything below is live and running unattended unless noted.
 | Portfolio Candidate Eval | On-demand (Telegram: `evaluate TICKER`) | ✅ Live. 3-gate ADD/WATCH/PASS. Auto-fetches quant data + research. Writes `portfolio_candidate_evals`. |
 | Portfolio Earnings Alert | 9:00 PM SGT Mon–Fri | EPS surprise alerts; dispatches pre-earnings analysis job. Telegram. |
 | Portfolio Analyst Alert | 7:45 AM SGT daily | Analyst rating upgrades/downgrades, dedup via `agent_kv`. Telegram. |
+| Position Sentinel | On-demand (Phase 1); hourly schedule ready for Phase 2 | ✅ Phase 1 live. Cumulative-price alerts (≤-8%/3d, ≤-12%/5d, ≤-20% vs 20d-high). News materiality scored (Deepseek 0–3) + logged. Confluence logic built, awaiting calibration for Phase 2 activation. Formatter: `position_sentinel_telegram` (9th formatter). |
 | Portfolio Earnings Analysis | Dispatched by alert or agent | Pre/post-earnings briefing: EDGAR 8-K + Exa transcripts + Grok-4.3. Writes `/research/earnings/`. |
 | Portfolio Earnings Post-Check | 7:00 AM SGT daily | Checks Finnhub for epsActual; dispatches post-earnings analysis if needed. |
 
