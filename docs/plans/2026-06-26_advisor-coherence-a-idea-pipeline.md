@@ -1,7 +1,7 @@
 ---
 Subject: Advisor Coherence Phase 2 — Idea Pipeline + Rationalization-based Prescreener (watchlist infrastructure)
 Date: 2026-06-26
-Status: executing
+Status: done
 Planner model: claude-sonnet-4-6 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [1, 4, 6, 7, 9, 10, 11, 15, 17, 19, 20, 22]
