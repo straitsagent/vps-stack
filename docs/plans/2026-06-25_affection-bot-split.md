@@ -1,7 +1,7 @@
 ---
 Subject: Affection Bot Split — give the hourly affection ping its own Telegram bot
 Date: 2026-06-25
-Status: approved
+Status: executing
 Planner model: claude-sonnet-4-6 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [7, 8, 9, 11, 17]
