@@ -8774,3 +8774,57 @@ def test_compute_candidate_ranks_sort():
     assert result["NVDA"]["rank"] <= 15
     assert result["CRWV"]["rank"] > 15
 
+
+# ── Replacement Screener tests (Plan B — Replacement Screener) ───────────────
+# LOCKED ORACLE — copy verbatim, do not modify assertions.
+# Plan: docs/plans/2026-06-26_advisor-coherence-b-replacement-screener.md
+# _select_top_replacements is a pure function in replacement_screener.py.
+# Import it using the sys.path.insert + heavy-dep stub pattern in this test file.
+
+def _load_replacement_screener_module():
+    """Load replacement_screener module. Returns module."""
+    import importlib.util, pathlib
+    path = (pathlib.Path(__file__).parent.parent.parent
+            / "windmill" / "u" / "admin" / "replacement_screener.py")
+    spec = importlib.util.spec_from_file_location("replacement_screener", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test__select_top_replacements():
+    """Selects exactly 3 candidates per exit ticker, ranked by prescreen_rank ascending.
+    Held positions excluded. Sector-agnostic (any sector qualifies)."""
+    exit_tickers = ["BABA", "CRM"]
+    shortlisted = [
+        {"ticker": "NVDA", "prescreen_rank": 1, "prescreen_score": 0.88, "sector": "Technology"},
+        {"ticker": "AMD",  "prescreen_rank": 2, "prescreen_score": 0.85, "sector": "Technology"},
+        {"ticker": "MSFT", "prescreen_rank": 3, "prescreen_score": 0.83, "sector": "Technology"},
+        {"ticker": "V",    "prescreen_rank": 4, "prescreen_score": 0.80, "sector": "Financials"},
+        {"ticker": "TSM",  "prescreen_rank": 5, "prescreen_score": 0.79, "sector": "Technology"},
+        {"ticker": "AMZN", "prescreen_rank": 6, "prescreen_score": 0.77, "sector": "Consumer Cyclical"},
+    ]
+    held = {"AMZN"}  # held, must NOT appear as replacement
+    result = _load_replacement_screener_module()._select_top_replacements(exit_tickers, shortlisted, held, top_n=3)
+    assert "BABA" in result and len(result["BABA"]) == 3
+    assert result["BABA"][0]["ticker"] == "NVDA"  # top-ranked
+    assert result["BABA"][1]["ticker"] == "AMD"
+    assert result["BABA"][2]["ticker"] == "MSFT"
+    assert "CRM" in result and len(result["CRM"]) == 3
+    assert result["CRM"][0]["ticker"] == "NVDA"  # same pool
+    # held position excluded
+    for tickers in result.values():
+        for t in tickers:
+            assert t["ticker"] != "AMZN", "held position must not appear as replacement"
+
+
+def test__select_top_replacements_few_candidates():
+    """When fewer than top_n candidates exist, return all available."""
+    exit_tickers = ["BABA"]
+    shortlisted = [
+        {"ticker": "NVDA", "prescreen_rank": 1, "prescreen_score": 0.88, "sector": "Technology"},
+        {"ticker": "AMD",  "prescreen_rank": 2, "prescreen_score": 0.85, "sector": "Technology"},
+    ]
+    result = _load_replacement_screener_module()._select_top_replacements(exit_tickers, shortlisted, set(), top_n=3)
+    assert len(result["BABA"]) == 2  # only 2 available, not 3
+

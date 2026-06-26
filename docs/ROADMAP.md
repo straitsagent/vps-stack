@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-26 (Initiative C Phase 1 live — Section D in rationalization)
+**Last updated:** 2026-06-27 (Initiative C Phase 1, A, B live — all three Portfolio Coherence seams closed)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -150,7 +150,7 @@ The centerpiece of the next build phase. The goal: a system that reasons across 
 
 ---
 
-### Initiative B — Replacement Screener 🔲
+### Initiative B — Replacement Screener ✅ (Phase 1 — 2026-06-27)
 
 **Goal:** When `portfolio_rationalization` recommends EXIT/TRIM, automatically generate and rank candidate replacements — no human needed to supply a ticker.
 

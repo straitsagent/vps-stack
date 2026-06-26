@@ -105,6 +105,36 @@ def _dispatch_prescreener(portfolio_db: dict, wm_token: str) -> str:
         return ""
 
 
+def _dispatch_replacement_screener(md_path: str, portfolio_db: dict,
+                                     telegram_bot_token: str, telegram_owner_id: str,
+                                     wm_token: str) -> str:
+    """Dispatch replacement_screener fire-and-forget. Returns job_id or ''."""
+    token = wm_token or os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning("[Dispatch] No WM_TOKEN — cannot dispatch replacement_screener")
+        return ""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/replacement_screener"
+    args = {
+        "md_path": md_path,
+        "portfolio_db": portfolio_db,
+        "telegram_bot_token": telegram_bot_token,
+        "telegram_owner_id": telegram_owner_id,
+        "wm_token": wm_token,
+    }
+    try:
+        resp = requests.post(
+            url, headers={"Authorization": f"Bearer {token}",
+                          "Content-Type": "application/json"},
+            json=args, timeout=10,
+        )
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] replacement_screener dispatched job_id={job_id}")
+        return job_id
+    except Exception as e:
+        log.warning(f"[Dispatch] Failed to dispatch replacement_screener: {e}")
+        return ""
+
+
 def _fetch_research_reports(tickers: list, portfolio_db: dict) -> dict:
     """Return {ticker: (full_content, date_str)} for the latest stock research per ticker.
     Only called when include_research=True. Empty dict on error or missing DB.
@@ -1122,6 +1152,13 @@ Below are the position verdicts. Generate the executive summary, portfolio const
     # ── 13b. Dispatch candidate prescreener (Plan A — Idea Pipeline) ────────
     if wm_token:
         _dispatch_prescreener(portfolio_db, wm_token)
+
+    # ── 13c. Dispatch replacement screener (Plan B — Replacement Screener) ──
+    if wm_token and file_path:
+        _dispatch_replacement_screener(
+            file_path, portfolio_db,
+            telegram_bot_token, telegram_owner_id, wm_token,
+        )
 
     # ── 13. Upsert portfolio_scores ────────────────────────────────────────────
     upsert_cur = conn.cursor()

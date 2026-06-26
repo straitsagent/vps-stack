@@ -144,6 +144,7 @@ def _build_message(front_matter: dict, narrative: str) -> str:
       top3: [{ticker, score, verdict}, ...],
       bot3: [{ticker, score, verdict}, ...]   ← score is composite (not rank), verdict is EXIT/TRIM
       monitored_candidates: [{ticker, verdict, eval_date, binding_constraint}, ...]   ← optional
+      replacement_candidates: {exit_positions: [...], overweight: [...]}   ← optional (Plan B)
     narrative: full Grok executive summary (≥500 words)
     """
     today_str   = front_matter.get("today_str", "")
@@ -151,6 +152,7 @@ def _build_message(front_matter: dict, narrative: str) -> str:
     top3        = front_matter.get("top3", [])
     bot3        = front_matter.get("bot3", [])
     monitored   = front_matter.get("monitored_candidates", []) or []
+    replacement = front_matter.get("replacement_candidates")
 
     top_str = "  ".join(_ticker_line(t) for t in top3)
     bot_str = "  ".join(_ticker_line(t) for t in bot3)
@@ -178,8 +180,29 @@ def _build_message(front_matter: dict, narrative: str) -> str:
             lines.append(f"{ticker} | {verdict} | {eval_date} | {note}")
         monitored_block = "\n".join(lines)
 
+    replacement_block = ""
+    if replacement:
+        exit_positions = replacement.get("exit_positions", []) or []
+        overweight = replacement.get("overweight", []) or []
+        if exit_positions or overweight:
+            lines = ["", "*Replacements & Overweight (Section E)*", ""]
+            for ep in exit_positions:
+                ticker = ep.get("ticker", "?")
+                rec = ep.get("recommendation", "")
+                rank = ep.get("rank", "?")
+                lines.append(f"• {ticker} ({rec}, rank #{rank}):")
+                for c in ep.get("candidates", []):
+                    ct = c.get("ticker", "?")
+                    cr = c.get("prescreen_rank", "?")
+                    cs = c.get("prescreen_score")
+                    score_str = f" {cs:.2f}" if cs is not None else ""
+                    lines.append(f"  → {ct} (rank #{cr}{score_str})")
+            if overweight:
+                lines.append(f"\n*Overweight:* {', '.join(overweight)}")
+            replacement_block = "\n".join(lines)
+
     body = narrative.strip() if narrative.strip() else ""
-    return f"{header}\n\n{body}{monitored_block}"
+    return f"{header}\n\n{body}{monitored_block}{replacement_block}"
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
