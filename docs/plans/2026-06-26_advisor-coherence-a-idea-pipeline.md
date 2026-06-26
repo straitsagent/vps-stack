@@ -6,14 +6,15 @@ Planner model: claude-sonnet-4-6 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [1, 4, 6, 7, 9, 10, 11, 15, 17, 19, 20, 22]
 Risk tier: HIGH (planner-locked oracle)
+Initiative: A (idea-pipeline) — build order 2 of 3
 Complies with: docs/EXECUTOR_CONTRACT.md
 Sign-off items:
   - Extraction model: deepseek-chat via $var:u/admin/deepseek_key  (owner confirmed 2026-06-26)
   - Extraction prompt: approved text in §Sign-offs section  (Hard Rule 10)
   - Neutral thesis score: 0.5  (owner confirmed 2026-06-26)
   - Refactoring approach: extract factor_scorer.py as Step 0  (owner confirmed 2026-06-26)
-  - Rationalization schedule: Monday 9PM SGT → Saturday 6AM SGT  (owner confirmed 2026-06-26)
-Files to read before coding: CLAUDE.md, docs/TESTING.md, windmill/u/admin/portfolio_rationalization.py (full scoring functions), windmill/u/admin/youtube_monitor.py (dispatch pattern at ~line 475), windmill/u/admin/morning_news_digest.py (md write at ~line 541, main signature), windmill/u/admin/portfolio_candidate_eval.py (main signature at ~line 1364, auto-dispatch at 1426-1450)
+  - Rationalization schedule: Already Saturday 6AM SGT (implemented 2026-06-25 — no change needed)
+Files to read before coding: CLAUDE.md, docs/TESTING.md, windmill/u/admin/portfolio_rationalization.py (full scoring functions — see §Step 0 for real function names), windmill/u/admin/youtube_monitor.py (dispatch pattern at ~line 477), windmill/u/admin/morning_news_digest.py (md write at ~line 539-540, main signature at ~line 423), windmill/u/admin/portfolio_candidate_eval.py (main signature at line 1364, stock_data_fetcher dispatch at lines 1426-1435 via _dispatch_stock_fetcher helper at 124-130, research_tool dispatch at lines 1437-1450 via _dispatch_research_tool helper at 186-192)
 ---
 
 # Plan: Advisor Coherence Phase 2 — Idea Pipeline + Prescreener
@@ -29,10 +30,12 @@ Nothing extracts them, stores them, or feeds them into the portfolio evaluation 
 
 Meanwhile, the rationalization algorithm already runs a battle-tested 5-factor scoring system on all
 33 held positions every Saturday, producing a ranked KEEP / TRIM / EXIT report. The algorithm's
-scoring functions (`_score_valuation`, `_score_quality`, `_score_growth`, `_score_sentiment`,
-`_score_thesis`, and the `_compute_composite` scenario-weighted blend) are pure arithmetic from DB
-tables (`price_history`, `fundamental_data`, `financial_statements`, `valuation_data`). Any ticker
-with quant data can be scored through the same formulas.
+scoring functions (`_compute_factor_scores` for the 4 quant factors, `_apply_thesis_scores` for the
+5th, and `_compute_composites` for the scenario-weighted blend) are pure arithmetic from DB tables
+(`price_history`, `fundamental_data`, `financial_statements`, `valuation_data`). Critically, factor
+scores are **percentile ranks within the pool** — a candidate must be added to the union pool and
+scored together with the 33 holdings, not standalone. Any ticker with quant data can be scored
+through the same formulas this way.
 
 **The core insight:** rather than invent a new quantitative filter to decide which watchlist
 candidates are worth full evaluation, we run each candidate through the **same rationalization
@@ -68,9 +71,9 @@ ADD / WATCH / PASS verdicts with no manual intervention.
               Saturday 6:00 AM SGT
                           │
     ┌─────▼─────────────────────────────────────────────┐
-    │  portfolio_rationalization.swift                    │
+    │  portfolio_rationalization.py                       │
     │  Scores 33 holdings, writes portfolio_scores        │
-    │  (now running Saturday AM, not Monday PM)           │
+    │  (running Saturday 6AM SGT — schedule already live) │
     └────────────────────────────────────────────────────┘
                           │
               Saturday ~6:05 AM SGT (dispatched by rationalization)
@@ -109,21 +112,41 @@ ADD / WATCH / PASS verdicts with no manual intervention.
 
 ## Step 0 — Refactor scoring into a shared module
 
-The currently embedded scoring functions in `portfolio_rationalization.py` —
-`_score_valuation`, `_score_quality`, `_score_growth`, `_score_sentiment`, `_score_thesis`,
-and the `_compute_composite` / scenario-weighting logic — must be available to both rationalization
-AND the new prescreener.
+The scoring functions in `portfolio_rationalization.py` must be available to both rationalization
+AND the new prescreener. **Actual function names (verified by grep):**
 
-**Before any new code is written:** extract these functions into a new file
-`windmill/u/admin/factor_scorer.py`. The extraction is mechanical:
-1. Cut the scoring functions and their helper queries from `portfolio_rationalization.py`.
+| Function | Line | What it does |
+|---|---|---|
+| `_cagr(start, end, years)` | early helper | Compound annual growth rate calc |
+| `_evaluate_red_flags(metrics)` | ~433 | Absolute red-flag checks (pure math) |
+| `_norm(values, v)` | ~458 | Percentile-rank helper used by all 4 quant factors |
+| `_compute_factor_scores(positions, fund)` | ~469 | All 4 quant factors (quality/growth/valuation/sentiment) in one function — no per-factor helpers exist |
+| `_apply_thesis_scores(positions, thesis)` | ~563 | 5th factor (thesis conviction score) |
+| `_compute_composites(positions, factor_scores, thesis_scores)` | ~590 | Blends 4 factors + thesis into 4 scenario composites. Scenarios are keyed `balanced`/`quality`/`growth`/`value` (dict at ~line 596). |
+| `_rank_positions(positions, composites)` | ~653 | Final ranking per scenario |
+
+**None** of these have per-factor names like `_score_valuation`, `_score_quality` — those do not exist.
+The 4 quant factors live as inline labeled blocks inside `_compute_factor_scores`.
+
+**Extraction is straightforward** — all these functions operate purely on passed-in arguments
+(`positions` dict, `fund` dict from `_fetch_fundamentals`). They have no DB reads inside them.
+The field-name contract (`return_on_equity`, `net_debt_to_ebitda`, `analyst_upside_pct`, etc.)
+that `_fetch_fundamentals` produces must be documented in `factor_scorer.py` so the prescreener
+knows what to feed these functions.
+
+**Before any new code is written:** extract these 7 functions into `windmill/u/admin/factor_scorer.py`:
+1. Cut the 7 functions from `portfolio_rationalization.py`.
 2. Paste into `factor_scorer.py`.
-3. Add `from factor_scorer import _score_valuation, _score_quality, ...` to the rationalization
-   script at the top, replacing the now-removed local definitions.
-4. Push rationalization. Run the full test suite. Confirm all existing tests pass with zero
-   behavioral change.
+3. Add `from factor_scorer import _cagr, _evaluate_red_flags, _norm, _compute_factor_scores, _apply_thesis_scores, _compute_composites, _rank_positions` to rationalization at the top.
+4. Push rationalization. Run full test suite — all green (same behavior). **Must be green before any new code is written.**
 
-This step must be complete and GREEN before any new Plan 2 code is written.
+> **Important for prescreener scoring (C2):** `_compute_factor_scores` scores factors as
+> **percentile ranks within the pool** via `_norm(values, v)`. A candidate's factor score is
+> its percentile relative to the pool — it has no standalone composite. The prescreener must
+> score each candidate by calling `_compute_factor_scores` on the **union pool** (33 holdings +
+> candidate) and reading the candidate's row from the result. Ranking then falls out naturally.
+> The `compute_candidate_ranks` helper (see §Locked Oracle) handles only the final sort of
+> already-computed balanced composites — it is not where scoring happens.
 
 ## New schema — `watchlist_ideas` table
 
@@ -188,15 +211,19 @@ Runs every Saturday after rationalization completes (dispatched by rationalizati
      Auto-archives those (we already own them — they are not "candidates").
 4. **For each remaining candidate, dispatches `stock_data_fetcher`** to pull fresh quant data
    (yfinance + Finnhub, both free). Uses the same dispatch + DB-poll pattern as
-   `portfolio_candidate_eval.py:1426-1450`. Processes in batches of 5 to stay under yfinance limits.
-5. **Scores each candidate** using `factor_scorer`:
-   - Valuation score, Quality score, Growth score, Sentiment score — same formulas as rationalization.
-   - Thesis score = 0.5 (neutral placeholder — candidate has no thesis yet).
-   - Blended through the same 4 scenarios (Balanced, Quality-tilted, Growth-tilted, Value-tilted).
-   - Produces 4 composite scores per candidate.
-6. **Inserts candidates into the holding rankings:** takes the 33 holdings' composites from
-   `portfolio_scores` + all candidate composites → sorts by balanced-weighted composite → produces
-   ranks 1–38 or so.
+   `portfolio_candidate_eval.py` — stock dispatch at lines 1426-1435 (via `_dispatch_stock_fetcher`
+   helper at lines 124-130; **the poll loop is in the helper, not in main**). Processes in batches
+   of 5 to stay under yfinance informal throttle.
+5. **Scores each candidate via the union-pool approach:**
+   - Reads 33 holdings' raw fund data from `fundamental_data` / quant tables.
+   - For each candidate, adds its fund data to the pool and calls `_compute_factor_scores(union_pool, fund)` from `factor_scorer`. The candidate's factor scores are its percentile within the union pool (this is how `_norm` works — no standalone score exists).
+   - Thesis score: inject a synthetic thesis row with score 0.5 for the candidate into `_apply_thesis_scores` (neutral placeholder — neither penalised nor credited).
+   - Calls `_compute_composites(union_pool, factor_scores, thesis_scores)` to get the candidate's balanced/quality/growth/value composites.
+   - The 4 scenarios use the real scenario keys: `balanced`, `quality`, `growth`, `value`.
+6. **Inserts candidates into the holding rankings:** the balanced composite score for the candidate
+   (from step 5) is merged with the 33 holdings' `composite_score_balanced` from `portfolio_scores`,
+   sorted descending → produces ranks 1–38 or so. The `compute_candidate_ranks` helper handles this
+   final sort (see §Locked Oracle for its contract).
 7. **Writes results to `watchlist_ideas`:**
    - Candidates ranking ≤15: `status → 'shortlisted'`, `prescreen_rank`, `prescreen_score` set.
    - Candidates ranking >15: `status → 'archived'`, rejection reason logged (e.g., "would rank #22").
@@ -206,36 +233,48 @@ Runs every Saturday after rationalization completes (dispatched by rationalizati
 
 ## Hooks into existing scan scripts
 
-### `youtube_monitor.py` (ready to hook — has params and dispatch helper)
+> **⚠️ C3 — Do NOT use `_dispatch_formatter` for `idea_extractor`.** The existing
+> `_dispatch_formatter` (youtube_monitor.py:304-330) hard-codes these job args:
+> `{md_path, telegram_bot_token, telegram_owner_id, portfolio_db}`. But `idea_extractor` needs
+> `{md_path, source, portfolio_db, deepseek_key}` — it does not want telegram params, and it
+> **requires** `source` (to tag 'youtube' vs 'news') and `deepseek_key` (to call the LLM). These
+> cannot be threaded through `_dispatch_formatter` without changing it. Use a dedicated helper
+> instead (see below).
 
-The YouTube monitor already has `portfolio_db` and `wm_token` params, and already uses the
-`_dispatch_formatter` helper at line ~476 to dispatch `youtube_monitor_telegram`. Add ONE line at
-line ~475 (after `_write_canonical_md`, before the Telegram formatter dispatch):
+### `youtube_monitor.py` (ready to hook — has `portfolio_db` + `wm_token` params)
 
-```python
-_dispatch_formatter("idea_extractor", md_path, telegram_bot_token,
-                     telegram_owner_id, portfolio_db, wm_token)
-```
-
-The `_dispatch_formatter` helper at `youtube_monitor.py:304-330` constructs the correct Windmill
-job-dispatch URL using `WM_BASE_DISPATCH` (line 31). The `idea_extractor` script must accept
-`md_path` as a parameter, matching this dispatch signature.
-
-### `morning_news_digest.py` (needs params added)
-
-The morning news digest lacks both `portfolio_db` and `wm_token` params, and has no formatter-dispatch
-pattern. The dispatch helper from youtube_monitor must be imported. Add to `main()` signature:
-`portfolio_db: dict = {}`, `wm_token: str = ""`. After the `.md` write at ~line 541, add:
+Add a new `_dispatch_idea_extractor(md_path, source, portfolio_db, deepseek_key, wm_token)` helper
+(~12 lines, pattern from `_dispatch_formatter` at lines 304-330 but with the correct args dict).
+Call it just before the Telegram formatter dispatch (after `_write_canonical_md` at line ~473):
 
 ```python
 if portfolio_db and wm_token:
-    _dispatch_formatter("idea_extractor", md_path, telegram_bot_token,
-                         telegram_owner_id, portfolio_db, wm_token)
+    _dispatch_idea_extractor(
+        md_path, "youtube", portfolio_db, deepseek_key, wm_token
+    )
 ```
 
-The dispatch helper code (from `youtube_monitor.py:304-330`) should be copied into the news digest
-script, or extracted to a shared utility. Either approach is acceptable; the plan recommends copying
-to avoid a third import refactor.
+This requires adding `deepseek_key: str = ""` to `youtube_monitor.main()`. If the Windmill
+schedule args do not already pass `deepseek_key`, add `"$var:u/admin/deepseek_key"` to the
+schedule args (Hard Rule 11 — string form only).
+
+### `morning_news_digest.py` (needs params added)
+
+The morning news digest main() (line 423) lacks `portfolio_db`, `wm_token`, and `deepseek_key`.
+Copy the `_dispatch_idea_extractor` helper (same 12 lines) into the news digest script. Add to
+`main()` signature: `portfolio_db: dict = {}`, `wm_token: str = ""`, `deepseek_key: str = ""`.
+After the `.md` write at lines 539-540 (log at 541), add:
+
+```python
+if portfolio_db and wm_token and deepseek_key:
+    _dispatch_idea_extractor(
+        md_path, "news", portfolio_db, deepseek_key, wm_token
+    )
+```
+
+Update the `morning_news_digest` schedule args to include the three new params (string form for
+`$var:` and `$res:` references per Hard Rule 11). The Windmill UI schedule must be updated if the
+schedule yaml args change.
 
 ## `candidate_eval` pull mode
 
@@ -251,21 +290,6 @@ branch), the script:
 4. The existing `replacement_ticker` parameter is passed through (unused in pull mode — candidates
    do not have a replacement_ticker unless set explicitly).
 
-## Schedule amendment — rationalization moves from Monday to Saturday
-
-The `portfolio_rationalization.schedule.yaml` on disk currently has `schedule: '0 0 21 * * 1'`
-(Monday 9 PM SGT). Change to `schedule: '0 0 6 * * 6'` (Saturday 6 AM SGT). Push the new cron
-to the live schedule via curl API (Hard Rule 9 — never sync push):
-
-```bash
-WM_TOKEN=$(grep "WM_TOKEN" /root/agent.env | cut -d= -f2 | tr -d ' ')
-curl -s -X POST "http://localhost:8080/api/w/admins/schedules/update/u%2Fadmin%2Fportfolio_rationalization" \
-  -H "Authorization: Bearer $WM_TOKEN" -H "Content-Type: application/json" \
-  -d '{"schedule":"0 0 6 * * 6","timezone":"Asia/Singapore","no_flow_overlap":true,"args":{...same args...}}'
-```
-
-The ROADMAP.md must also be updated to reflect Saturday 6 AM SGT.
-
 ## Files changed
 
 | Action | Path | Change |
@@ -273,27 +297,29 @@ The ROADMAP.md must also be updated to reflect Saturday 6 AM SGT.
 | Create | `portfolio/migrations/2026-06-26_watchlist_ideas.sql` | `watchlist_ideas` table DDL |
 | Edit | `portfolio/schema.sql` | Append `watchlist_ideas` definition |
 | Create | `windmill/u/admin/factor_scorer.py` | Extracted scoring functions from rationalization into shared module |
-| Edit | `windmill/u/admin/portfolio_rationalization.py` | Import from factor_scorer; add post-run dispatch of candidate_prescreener; add Saturday 6 AM schedule |
+| Edit | `windmill/u/admin/portfolio_rationalization.py` | Import from factor_scorer; add post-run dispatch of candidate_prescreener |
 | Create | `windmill/u/admin/idea_extractor.py` | Reads `.md`, Deepseek extraction → `watchlist_ideas` (status: pending) |
 | Create | `windmill/u/admin/idea_extractor.script.yaml` | Script metadata |
-| Edit | `windmill/u/admin/youtube_monitor.py` | Add one-line dispatch of `idea_extractor` after md write (~line 475) |
-| Edit | `windmill/u/admin/morning_news_digest.py` | Add `portfolio_db` and `wm_token` params; add dispatch of `idea_extractor` after md write (~line 541) |
+| Edit | `windmill/u/admin/youtube_monitor.py` | Add `deepseek_key` param; add `_dispatch_idea_extractor` helper; call after md write (~line 473) |
+| Edit | `windmill/u/admin/morning_news_digest.py` | Add `portfolio_db`, `wm_token`, `deepseek_key` params; copy `_dispatch_idea_extractor` helper; call after md write (~line 539-540) |
 | Create | `windmill/u/admin/candidate_prescreener.py` | Pulls quant data via stock_data_fetcher, scores candidates using factor_scorer, inserts into rankings, shortlists ≤15 |
 | Create | `windmill/u/admin/candidate_prescreener.script.yaml` | Script metadata |
 | Edit | `windmill/u/admin/portfolio_candidate_eval.py` | Add `watchlist_pull: bool = False` param + iteration branch |
-| Edit | `windmill/u/admin/portfolio_rationalization.schedule.yaml` | Change cron from Monday 9 PM → Saturday 6 AM SGT |
-| Edit | `agent/tests/test_windmill_scripts.py` | Pure-logic tests: extraction parser, composite score insertion into rankings, prescreener rank computation |
+| Edit | `agent/tests/test_windmill_scripts.py` | Pure-logic tests: extraction parser, compute_candidate_ranks final-sort, plus executor-authored pooled-scoring test |
 | Create | `docs/logs/2026-06-26_advisor-coherence-a-idea-pipeline.md` | Implementation log |
-| Edit | `/root/docs/ROADMAP.md` | Mark Initiative A done; update rationalization schedule from Monday 9 PM → Saturday 6 AM SGT |
+| Edit | `/root/docs/ROADMAP.md` | Mark Initiative A done |
 | Edit | `docs/WORKFLOW_ARCHITECTURE.md` | Add specs for idea_extractor, candidate_prescreener, factor_scorer |
 
 ## Checklist
 
 - [ ] **Step 0 — Refactor scoring into shared module.** Create `windmill/u/admin/factor_scorer.py`.
-  Move `_score_valuation`, `_score_quality`, `_score_growth`, `_score_sentiment`, `_score_thesis`,
-  `_compute_composite`, `_apply_scenario_weights` from `portfolio_rationalization.py` into the shared
-  module. Add `from factor_scorer import ...` to rationalization. Push rationalization. Run full test
-  suite — all green (same tests, same behavior). **This must be green before any new code is written.**
+  Move the 7 real functions from `portfolio_rationalization.py` (see §Step 0 above for the exact
+  names and line numbers):
+  `_cagr`, `_evaluate_red_flags`, `_norm`, `_compute_factor_scores`, `_apply_thesis_scores`,
+  `_compute_composites`, `_rank_positions`.
+  Add `from factor_scorer import _cagr, _evaluate_red_flags, _norm, _compute_factor_scores, _apply_thesis_scores, _compute_composites, _rank_positions` to rationalization at the top.
+  Push rationalization. Run full test suite — all green (same tests, same behavior).
+  **This must be green before any new code is written.**
 
 - [ ] **Step 1 — Schema: `watchlist_ideas` table.** Apply the migration SQL to the live DB.
   Append the `CREATE TABLE` statement to `portfolio/schema.sql`.
@@ -302,9 +328,14 @@ The ROADMAP.md must also be updated to reflect Saturday 6 AM SGT.
   helper and I/O edges for reading `.md` files, calling Deepseek, and writing to `watchlist_ideas`.
   Deploy to Windmill.
 
-- [ ] **Step 3 — Hook `idea_extractor` into existing scans.** In `youtube_monitor.py`: add one-line
-  dispatch. In `morning_news_digest.py`: add `portfolio_db` and `wm_token` params, add dispatch.
-  Deploy both.
+- [ ] **Step 3 — Hook `idea_extractor` into existing scans.** Add `_dispatch_idea_extractor` helper
+  (~12 lines) to both `youtube_monitor.py` and `morning_news_digest.py` (copy, don't import).
+  In `youtube_monitor.py`: add `deepseek_key` param; call `_dispatch_idea_extractor(md_path, "youtube",
+  portfolio_db, deepseek_key, wm_token)` after the md write at ~line 473, guarded by
+  `if portfolio_db and wm_token and deepseek_key`.
+  In `morning_news_digest.py`: add `portfolio_db`, `wm_token`, `deepseek_key` params to `main()`;
+  call `_dispatch_idea_extractor(md_path, "news", ...)` after the md write at ~line 539-540.
+  Update schedule args for both scripts to include new params (Hard Rule 11 — string form). Deploy both.
 
 - [ ] **Step 4 — Write RED tests.** Add to `test_windmill_scripts.py`: (a) extraction parser valid /
   empty / malformed, (b) prescreener rank insertion (candidate with score 0.85 ranks ≤15; candidate
@@ -322,9 +353,13 @@ The ROADMAP.md must also be updated to reflect Saturday 6 AM SGT.
   after scoring, dispatch `candidate_eval` with `watchlist_pull=True`. In `candidate_eval`: the pull
   mode dispatches `stock_data_fetcher` and `research_tool` per candidate (existing dispatch helpers).
 
-- [ ] **Step 8 — Update rationalization schedule.** Edit `portfolio_rationalization.schedule.yaml`:
-  cron `'0 0 21 * * 1'` (Monday 9 PM) → `'0 0 6 * * 6'` (Saturday 6 AM). Push to server via curl API.
-  Update ROADMAP.md to reflect the new schedule.
+- [ ] **Step 8 — Confirm rationalization schedule.** The schedule is already Saturday 6 AM SGT
+  (implemented 2026-06-25). Verify:
+  ```bash
+  grep -q "0 0 6 \* \* 6" windmill/u/admin/portfolio_rationalization.schedule.yaml && echo "OK" || echo "MISMATCH"
+  ```
+  No curl push needed. If for any reason the on-disk yaml and live server differ, report — do not
+  improvise a fix.
 
 - [ ] **Step 9 — Live-verify the full pipeline.** Run each step manually on-demand (no need to wait
   for Saturday): (a) Run YouTube monitor → confirm `idea_extractor` dispatches and `watchlist_ideas`
@@ -333,9 +368,9 @@ The ROADMAP.md must also be updated to reflect Saturday 6 AM SGT.
   rows update. Verify `portfolio_candidate_evals` has new verdicts. Verify `position_signals` has
   no regressions (sentinel should still work).
 
-- [ ] **Step 10 — Docs.** Update ROADMAP (mark Initiative A done, update rationalization schedule to
-  Saturday 6 AM), update WORKFLOW_ARCHITECTURE (add specs for the three new scripts + factor_scorer),
-  create implementation log. Commit.
+- [ ] **Step 10 — Docs.** Update ROADMAP (mark Initiative A done), update WORKFLOW_ARCHITECTURE
+  (add specs for idea_extractor, candidate_prescreener, factor_scorer), create implementation log.
+  Commit.
 
 ## Sign-offs (Hard Rules 6 + 10)
 
@@ -360,7 +395,7 @@ The following must be confirmed before any code is written:
    *Approved 2026-06-26 by owner.*
 3. **Neutral thesis score:** 0.5 — *confirmed.*
 4. **Refactoring approach:** Extract factor_scorer.py as Step 0 — *confirmed.*
-5. **Schedule timing:** Saturday 6 AM SGT — *confirmed.*
+5. **Schedule timing:** Saturday 6 AM SGT — *already live, confirmed on disk and server 2026-06-25.*
 6. **Pull-mode evaluation runs immediately after prescreener** — *confirmed.*
 
 ## Locked Oracle Tests (G1)
@@ -369,35 +404,48 @@ The following must be confirmed before any code is written:
 
 ```python
 # LOCKED ORACLE — copy verbatim, do not modify assertions
+# Executor: import _parse_extraction_response and compute_candidate_ranks from their respective
+# scripts using the sys.path.insert + heavy-dep stub pattern in this test file.
+#
+# compute_candidate_ranks(holding_composites: list[float], candidate_composites: dict[str, float])
+#   -> dict[str, dict]  (e.g. {"NVDA": {"rank": 3, "composite": 0.85}})
+#   This is the FINAL-SORT helper — it takes already-computed composites (from the union-pool
+#   scoring in step 5) and produces integer ranks. Scoring happens earlier via _compute_composites.
 
-def test_parse_extraction_response_valid():
+def test__parse_extraction_response_valid():
     """Parses valid JSON with ticker + reason pairs."""
     raw = '[{"ticker":"NVDA","reason":"Dominant AI chip provider"},{"ticker":"CRWV","reason":"Leading neocloud"}]'
-    out = parse_extraction_response(raw)
+    out = _parse_extraction_response(raw)
     assert len(out) == 2
     assert out[0]["ticker"] == "NVDA" and out[0]["reason"] == "Dominant AI chip provider"
 
-def test_parse_extraction_response_empty():
+def test__parse_extraction_response_empty():
     """Empty array returns empty list — no crash, no false data."""
-    assert parse_extraction_response("[]") == []
+    assert _parse_extraction_response("[]") == []
 
-def test_parse_extraction_response_malformed():
+def test__parse_extraction_response_malformed():
     """Garbage input returns None — never write garbage to DB."""
-    assert parse_extraction_response("not json") is None
+    assert _parse_extraction_response("not json") is None
 
-def test_prescreener_rank_insertion():
-    """Candidate with composite=0.85 ranks ≤15 in a 33-holding ranking;
-    candidate with composite=0.20 ranks >15."""
-    from unittest.mock import MagicMock
-    # Simulate 33 holding composites (top 10 shown, rest inferred)
+def test_compute_candidate_ranks_sort():
+    """Final-sort helper: candidate with balanced composite 0.85 ranks ≤15 in a 33-holding pool;
+    candidate with composite 0.20 ranks >15. This tests the sort, not the scoring.
+    Scoring is via _compute_composites on the union pool (separate executor-authored test required)."""
+    # Simulate 33 holding balanced composites
     holdings = [0.92, 0.88, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40]
-    # Pad to 33
-    holdings.extend([0.35] * 23)
+    holdings.extend([0.35] * 23)  # pad to 33
     candidates = {"NVDA": 0.85, "CRWV": 0.20}
     result = compute_candidate_ranks(holdings, candidates)
     assert result["NVDA"]["rank"] <= 15
     assert result["CRWV"]["rank"] > 15
 ```
+
+> **Executor requirement (not locked, but mandatory):** Add a test `test_prescreener_pooled_scoring`
+> proving that when a candidate is added to the holdings pool, `_compute_factor_scores(union_pool,
+> fund)` produces a factor score for the candidate that reflects its percentile within the pool
+> (not a standalone value). This is executor-authored and subject to reviewer spot-check (G1 LOW
+> tier for this sub-test). The test should use a minimal mock fund dict with the field names that
+> `_fetch_fundamentals` produces (e.g. `return_on_equity`, `net_debt_to_ebitda`, `analyst_upside_pct`).
 
 ## RED-proof requirement (G2)
 
@@ -409,13 +457,13 @@ docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py 
 
 BEFORE implementing new prescreener + extraction (Step 4 — RED):
 docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py \
-  -k "parse_extraction_response or prescreener_rank_insertion" -q
+  -k "_parse_extraction_response or compute_candidate_ranks" -q
 → FAILS (helpers absent)
 
 AFTER implementation (GREEN):
 docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py \
-  -k "parse_extraction_response or prescreener_rank_insertion" -q
-→ 4 passed
+  -k "_parse_extraction_response or compute_candidate_ranks" -q
+→ 4 passed (3 extraction + 1 rank-sort; plus the executor-authored pooled-scoring test)
 
 Full suite:
 docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py -q
@@ -432,24 +480,33 @@ docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
   "SELECT EXISTS(SELECT 1 FROM information_schema.tables WHERE table_name='watchlist_ideas')" \
 | { read n; [ "$n" = "t" ] && echo "table_exists=$n" || { echo "FAIL: watchlist_ideas missing"; fail=1; }; }
 
-# 2. factor_scorer module is importable
+# 2. factor_scorer module is importable and has the real function names
 python3 -c "
 import sys; sys.path.insert(0, '/root/windmill/u/admin')
-from factor_scorer import _compute_composite
+from factor_scorer import _compute_factor_scores, _compute_composites, _apply_thesis_scores, _norm
 print('PASS factor_scorer_importable')
 " || { echo "FAIL: factor_scorer import failed"; fail=1; }
 
-# 3. idea_extractor ran recently (run youtube_monitor first, then check)
-docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
-  "SELECT count(*) FROM watchlist_ideas WHERE status='pending' AND added_at > NOW() - INTERVAL '2 hours'" \
-| { read n; echo "pending_after_scan=$n (>=0 is expected)"; }
+# 3. Seed a synthetic test candidate and run youtube_monitor to trigger idea_extractor.
+# After idea_extractor runs, the seeded ticker (or real extracted tickers) must appear as pending.
+# (Pre-seed verifies the table + constraint; the real pending count verifies idea_extractor fired.)
+docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -c \
+  "INSERT INTO watchlist_ideas (ticker, source, reason, status) VALUES ('VERIFY_SEED', 'youtube', 'verification seed', 'pending') ON CONFLICT DO NOTHING"
+PEND=$(docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM watchlist_ideas WHERE status='pending' AND ticker='VERIFY_SEED'")
+[ "${PEND:-0}" -ge 1 ] \
+  && echo "PASS seed_pending=$PEND" \
+  || { echo "FAIL: seed not present in pending"; fail=1; }
 
-# 4. prescreener produces shortlisted rows (run rationalization + prescreener, then check)
-docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
-  "SELECT count(*) FROM watchlist_ideas WHERE status='shortlisted'" \
-| { read n; echo "shortlisted=$n (>=0 is expected)"; }
+# 4. Prescreener produces at least 1 shortlisted row after a full pipeline run.
+# Run rationalization → prescreener (can be triggered on-demand) before this check.
+SL=$(docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio -tAc \
+  "SELECT count(*) FROM watchlist_ideas WHERE status='shortlisted' AND prescreen_rank IS NOT NULL")
+[ "${SL:-0}" -ge 1 ] \
+  && echo "PASS shortlisted=$SL with prescreen_rank" \
+  || { echo "FAIL: no shortlisted rows with prescreen_rank (has prescreener run?)"; fail=1; }
 
-# 5. rationalization schedule is Saturday AM
+# 5. Rationalization schedule already Saturday AM (no change needed, but verify disk matches)
 grep -q "0 0 6 \* \* 6" windmill/u/admin/portfolio_rationalization.schedule.yaml \
   && echo "PASS schedule_saturday" || { echo "FAIL: schedule not Saturday AM"; fail=1; }
 
@@ -458,13 +515,13 @@ grep -q "0 0 6 \* \* 6" windmill/u/admin/portfolio_rationalization.schedule.yaml
 
 ## Acceptance Gate (G2/G3/G5 + review)
 
-- [ ] Locked tests diff-clean vs. oracle block above (G1)
+- [ ] Locked tests diff-clean vs. oracle block above (G1); executor-authored `test_prescreener_pooled_scoring` also present and passing (G1 LOW)
 - [ ] RED + GREEN runs pasted for BOTH refactor baseline + new helpers (G2)
 - [ ] Asserting verify script output pasted, ends in `PASS` (G4)
-- [ ] `watchlist_ideas` has `pending` rows after YouTube monitor runs (G3)
-- [ ] `shortlisted` rows appear after prescreener runs with `prescreen_rank` ≤ 15 (G3)
-- [ ] `candidate_eval` pull mode evaluates shortlisted candidates into `portfolio_candidate_evals` (G3)
-- [ ] Rationalization schedule verified as Saturday 6 AM SGT on both disk and server (G3)
+- [ ] `watchlist_ideas` has `pending` rows (including VERIFY_SEED) after idea_extractor runs (G3)
+- [ ] `shortlisted` rows appear with `prescreen_rank IS NOT NULL` after prescreener runs (G3 — paste psql output)
+- [ ] `candidate_eval` pull mode evaluates at least 1 shortlisted candidate into `portfolio_candidate_evals` (G3 — paste the row)
+- [ ] Rationalization schedule confirmed Saturday 6 AM SGT on disk (grep output pasted) (G3)
 - [ ] All 6 sign-off items confirmed before coding (Hard Rules 6 + 10)
 - [ ] Step 0 (factor_scorer refactor) is GREEN with no behavioral change before any new code is written
 

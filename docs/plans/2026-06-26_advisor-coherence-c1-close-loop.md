@@ -5,7 +5,8 @@ Status: draft
 Planner model: claude-sonnet-4-6 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [7, 9, 15, 17]
-Risk tier: MEDIUM (executor + frontier review)
+Risk tier: HIGH (planner-locked oracle — simple assertions, but oracle is planner-authored per contract)
+Initiative: C (close-the-loop) — build order 1 of 3
 Complies with: docs/EXECUTOR_CONTRACT.md
 Files to read before coding: CLAUDE.md, docs/TESTING.md, windmill/u/admin/portfolio_rationalization.py (lines 1193-1278, 1240-1252), windmill/u/admin/portfolio_rationalization_telegram.py, portfolio/schema.sql (portfolio_candidate_evals table)
 ---
@@ -86,23 +87,30 @@ No new tables. No new scripts. No LLM calls. No schedule changes.
     (section omitted cleanly)
   - Rebuild the agent container, run the tests, confirm RED (helper absent).
 
-- [ ] **Step 3 — Implement the helper.** Add `_render_monitored_candidates(cur, since_days=60) -> str`
-  to the rationalization script. Queries:
+- [ ] **Step 3 — Implement the helpers.** Add TWO functions to the rationalization script:
+
+  **`_query_monitored_candidates(cur, since_days=60) -> list[dict]`** — query helper:
   ```sql
-  SELECT ticker, verdict, eval_date, binding_constraint
+  SELECT DISTINCT ON (ticker) ticker, verdict, eval_date, binding_constraint
   FROM portfolio_candidate_evals
   WHERE verdict IN ('ADD', 'WATCH')
     AND eval_date >= CURRENT_DATE - INTERVAL '60 days'
-  ORDER BY eval_date DESC
+  ORDER BY ticker, eval_date DESC
   ```
-  Renders as a markdown table with the exact format shown above. Returns empty string `""` if no rows.
+  Returns a list of dicts (one per ticker, latest verdict only — `DISTINCT ON (ticker)` prevents a
+  ticker evaluated twice in 60 days from appearing twice).
+
+  **`_render_monitored_candidates(rows: list[dict]) -> str`** — pure renderer, no DB:
+  Takes the list of dicts from the query helper. Renders as a markdown table with the exact format
+  shown above. Returns empty string `""` if rows is empty.
   Confirm GREEN — run the tests from Step 2 inside the agent container. Run full test suite — no
   regressions.
 
 - [ ] **Step 4 — Wire into the report assembly.** In `portfolio_rationalization.py`, after the
   per-position scorecards block and before the `---` footer / report assembly:
   ```python
-  monitored = _render_monitored_candidates(cur)
+  monitored_rows = _query_monitored_candidates(cur)
+  monitored = _render_monitored_candidates(monitored_rows)
   if monitored:
       report_md += f"\n\n{monitored}"
   ```
@@ -142,21 +150,22 @@ No new tables. No new scripts. No LLM calls. No schedule changes.
 
 > Planner-authored. The assertions below are frozen. Executor reproduces them VERBATIM — do not weaken
 > or alter any assertion to make a test pass. Fix the implementation code, not the test.
+>
+> **Executor note:** `_render_monitored_candidates(rows)` is the **pure renderer** — no DB cursor,
+> no side-effects. `_query_monitored_candidates(cur)` is the separate query helper. Import the pure
+> renderer into the test using the same `sys.path.insert` + heavy-dep stub pattern already used by
+> other windmill-script tests in this file.
 
 ```python
-def _render_monitored_candidates_stub(cur=None):
-    """Stub for testing — takes rows directly, not a cursor.
-    Import the REAL _render_monitored_candidates and test via this wrapper."""
-    from unittest.mock import MagicMock
-    return None  # Replace with actual import in committed code
-
+# LOCKED ORACLE — copy verbatim, do not modify assertions
 
 def test_render_monitored_candidates_renders_table():
+    # _render_monitored_candidates(rows) is the pure renderer; import it from portfolio_rationalization.
     rows = [
         {"ticker": "NVDA", "verdict": "ADD", "eval_date": "2026-06-24", "binding_constraint": None},
         {"ticker": "CRWV", "verdict": "WATCH", "eval_date": "2026-06-22", "binding_constraint": "High D/E ratio"},
     ]
-    out = _render_monitored_candidates_stub(rows)
+    out = _render_monitored_candidates(rows)
     assert out != "", "non-empty input must produce non-empty output"
     assert "NVDA" in out and "ADD" in out and "2026-06-24" in out
     assert "CRWV" in out and "WATCH" in out and "High D/E ratio" in out
@@ -164,7 +173,7 @@ def test_render_monitored_candidates_renders_table():
 
 
 def test_render_monitored_candidates_empty():
-    assert _render_monitored_candidates_stub([]) == ""
+    assert _render_monitored_candidates([]) == ""
 ```
 
 ## RED-proof requirement (G2)

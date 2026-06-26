@@ -189,11 +189,11 @@ After evaluation, each `watchlist_ideas` row is updated: `status → 'evaluated'
 If the verdict is ADD or WATCH, `status → 'watchlist'` (meaning it will appear in Plan 1's
 Section D in the next Saturday's rationalization report).
 
-#### Part D — Rationalization schedule amendment
+#### Part D — Rationalization schedule (already Saturday 6 AM SGT)
 
-The rationalization schedule moves from **Monday 9 PM SGT to Saturday 6 AM SGT.** This is set by
-the owner, who wants the portfolio review on Saturday morning. All three plan components follow
-this lead:
+> **Done 2026-06-25.** The rationalization schedule was migrated from Monday 9 PM SGT to
+> Saturday 6 AM SGT (commits `2563fc9`, `514f3a1`, `04c16b9`). No schedule change is needed
+> in Plan A. The Saturday dispatch chain is:
 
 | Saturday SGT | What runs | Trigger |
 |---|---|---|
@@ -202,26 +202,35 @@ this lead:
 | 6:05 AM | `replacement_screener` | Dispatched by rationalization's post-run hook (parallel with prescreener) |
 | 6:30 AM | `portfolio_candidate_eval` (pull mode) | Dispatched by prescreener's post-run hook |
 
-The schedule `.yaml` file and the live server schedule are both updated. The ROADMAP is also
-updated to reflect Saturday 6 AM.
-
 #### Part E — The `factor_scorer` refactor (Step 0)
 
-Before any Plan 2 code is built, the scoring functions currently embedded in
-`portfolio_rationalization.py` must be extracted into a shared module `factor_scorer.py`. These
-functions are:
-- `_score_valuation` — P/E, P/B, EV/EBITDA percentile vs. own history
-- `_score_quality` — ROE, margins, debt ratios, earnings consistency
-- `_score_growth` — revenue growth, earnings growth, estimate revisions
-- `_score_sentiment` — analyst ratings, price momentum, short interest
-- `_score_thesis` — conviction from `portfolio_thesis`
-- `_compute_composite` — blends the 5 factors through 4 weighting scenarios
-- `_apply_scenario_weights` — the scenario-weighting logic
+Before any Plan A code is built, the scoring functions currently embedded in
+`portfolio_rationalization.py` must be extracted into a shared module `factor_scorer.py`.
+
+**Actual function names** (verified against the real file — the per-factor `_score_*` names do not
+exist; all four quant factors live inside one function):
+
+| Function | Line | Purpose |
+|---|---|---|
+| `_cagr` | early | CAGR calculation (pure math) |
+| `_evaluate_red_flags(metrics)` | ~433 | Absolute red-flag checks |
+| `_norm(values, v)` | ~458 | Percentile-rank helper for all factors |
+| `_compute_factor_scores(positions, fund)` | ~469 | All 4 quant factors inline (quality/growth/valuation/sentiment) |
+| `_apply_thesis_scores(positions, thesis)` | ~563 | 5th factor (thesis conviction) |
+| `_compute_composites(positions, factor_scores, thesis_scores)` | ~590 | Blends into 4 scenario composites keyed `balanced`/`quality`/`growth`/`value` |
+| `_rank_positions(positions, composites)` | ~653 | Final ranking per scenario |
+
+All 7 operate purely on passed-in arguments — no DB reads inside them. The field-name contract
+from `_fetch_fundamentals` (e.g. `return_on_equity`, `net_debt_to_ebitda`, `analyst_upside_pct`)
+must be documented in `factor_scorer.py`.
+
+**Key scoring constraint:** `_compute_factor_scores` scores factors as **percentile ranks within
+the pool** via `_norm`. Candidates cannot be scored standalone — they must be added to the union
+pool (33 holdings + candidate) and `_compute_factor_scores` called on the full pool.
 
 The extraction is mechanical: cut from rationalization, paste into `factor_scorer.py`, add
-`from factor_scorer import ...` to rationalization. No behavioral change. The full test suite
-must pass identically before and after this refactor. This is enforced by running the suite
-before the extraction (baseline) and after (verification) — any difference is a regression.
+`from factor_scorer import _cagr, _evaluate_red_flags, _norm, _compute_factor_scores, _apply_thesis_scores, _compute_composites, _rank_positions` to rationalization. No behavioral change. The full test suite
+must pass identically before and after this refactor.
 
 Both `candidate_prescreener.py` and `portfolio_rationalization.py` import from `factor_scorer.py`
 after the refactor.
@@ -305,6 +314,12 @@ CREATE TABLE IF NOT EXISTS watchlist_ideas (
 );
 ```
 
+**Idempotency:** The `UNIQUE (ticker, source)` constraint + `ON CONFLICT DO NOTHING` means a ticker
+previously extracted from `youtube` will never be re-added, even if it resurfaces in a later scan.
+Once archived (failed prescreen or PASS verdict within 30 days), it stays archived until manually
+reset. This is an intentional design decision — the system avoids re-evaluating recently-rejected
+ideas automatically.
+
 **Status lifecycle:**
 
 ```
@@ -355,7 +370,7 @@ CREATE TABLE IF NOT EXISTS watchlist_ideas (
 ```
 Saturday 6:00 AM SGT — Windmill cron fires
     │
-    ├── portfolio_rationalization.swift
+    ├── portfolio_rationalization.py
     │   - Scores 33 holdings via factor_scorer
     │   - Produces KEEP / TRIM / EXIT (recommendation column)
     │   - Renders Section D: Monitored Candidates (Plan 1)
@@ -363,15 +378,17 @@ Saturday 6:00 AM SGT — Windmill cron fires
     │   - Writes canonical .md to /research/portfolio/
     │   - Dispatches portfolio_rationalization_telegram
     │
-    ├── Dispatches candidate_prescreener (Plan 2)
+    ├── Dispatches candidate_prescreener (Plan A)
     │   - Reads pending watchlist_ideas
     │   - Auto-excludes: PASS within 30 days (rejected); already held
     │   - Dispatches stock_data_fetcher for each candidate (batch of 5)
-    │   - Scores via factor_scorer (same formulas as rationalization)
-    │   - Inserts into holdings ranking → shortlisted if ≤15
+    │   - Scores via union-pool approach: adds candidate to 33-holding pool,
+    │     calls _compute_factor_scores(union_pool, fund) from factor_scorer.
+    │     Factor scores are percentiles within the pool — no standalone composite.
+    │   - Inserts into holdings ranking → shortlisted if balanced composite ≤15th
     │   - Dispatches portfolio_candidate_eval with watchlist_pull=True
     │
-    ├── Dispatches replacement_screener (Plan 3, parallel with prescreener)
+    ├── Dispatches replacement_screener (Initiative B, parallel with prescreener)
     │   - Reads EXIT / TRIM from portfolio_scores
     │   - Reads shortlisted candidates from watchlist_ideas
     │   - Selects top-3 replacements per EXIT/TRIM (sector-agnostic)
@@ -388,9 +405,9 @@ Saturday 6:00 AM SGT — Windmill cron fires
 
 Result: By roughly 7:00 AM SGT, the Saturday rationalization email + Telegram message contain:
   - Section C: Per-position scorecards (existing)
-  - Section D: Monitored Candidates — tickers you've evaluated that got ADD / WATCH (Plan 1)
+  - Section D: Monitored Candidates — tickers you've evaluated that got ADD / WATCH (Initiative C)
   - Section E: Replacement Candidates — top-3 for each EXIT / TRIM + overweight suggestions
-    (Plan 3)
+    (Initiative B)
 
 And `watchlist_ideas` is populated with shortlisted candidates whose full Grok-4.3 evaluations
 are in `portfolio_candidate_evals`, ready for Section D inclusion in next week's report.
@@ -448,16 +465,18 @@ immediately after.
 
 ## 7. Implementation order and dependencies
 
-| Order | Plan | Depends on | Can parallelise? |
-|---|---|---|---|
-| 1 | Plan 1 (Close the Loop) | Nothing | Yes — standalone |
-| 2 | Plan 2 (Idea Pipeline + Prescreener) | Nothing (factor_scorer refactor is internal to Plan 2) | No — Plan 3 needs its output |
-| 3 | Plan 3 (Replacement Screener) | Plan 2's `watchlist_ideas` table + `factor_scorer` module | No — needs Plan 2's output |
+| Build order | Initiative | Plan file | Depends on | Can parallelise? |
+|---|---|---|---|---|
+| 1 | C — Close the Loop | `…c1-close-loop.md` | Nothing | Yes — standalone |
+| 2 | A — Idea Pipeline + Prescreener | `…a-idea-pipeline.md` | Nothing (`factor_scorer` refactor is internal) | No — Initiative B needs its output |
+| 3 | B — Replacement Screener | `…b-replacement-screener.md` | Initiative A's `watchlist_ideas` table + prescreener output | No — needs Initiative A's output |
 
-**Recommended execution:** Plan 1 first (quickest, produces immediate value, no schema change,
-unblocks the display surface for Plans 2 and 3). Plan 2 second (largest, establishes the
-`watchlist_ideas` infrastructure and `factor_scorer` shared module). Plan 3 third (thin,
-mechanical, reads Plan 2's output).
+**Recommended execution:** Initiative C first (quickest, produces immediate value, no schema change,
+unblocks the display surface for A and B). Initiative A second (largest, establishes the
+`watchlist_ideas` infrastructure and `factor_scorer` shared module). Initiative B third (thin,
+mechanical, reads Initiative A's output). **Note:** Initiative B does not need to import
+`factor_scorer` — it only reads `prescreen_rank`/`prescreen_score` as plain dict keys from
+`watchlist_ideas` rows.
 
 All three plans use the existing planning convention: `docs/plans/YYYY-MM-DD_*.md`, with
 front-matter, EXECUTOR_CONTRACT compliance (locked oracle tests, RED→GREEN, asserting
@@ -498,12 +517,12 @@ At the low end (3–5 candidates), it is about $0.15. The extraction cost (~$0.0
 | File | Plan | Change |
 |---|---|---|
 | `portfolio/schema.sql` | 2 | Append `watchlist_ideas` definition |
-| `windmill/u/admin/portfolio_rationalization.py` | 1, 2, 3 | Section D renderer (Plan 1), import from factor_scorer + dispatch prescreener + dispatch replacement screener (Plan 2, 3) |
-| `windmill/u/admin/portfolio_rationalization_telegram.py` | 1, 3 | Surface Section D and Section E in Telegram message |
-| `windmill/u/admin/portfolio_rationalization.schedule.yaml` | 2 | Monday 9 PM → Saturday 6 AM SGT |
-| `windmill/u/admin/youtube_monitor.py` | 2 | One-line dispatch of `idea_extractor` |
-| `windmill/u/admin/morning_news_digest.py` | 2 | Add params + dispatch of `idea_extractor` |
-| `windmill/u/admin/portfolio_candidate_eval.py` | 2 | Add `watchlist_pull` param + iteration branch |
-| `agent/tests/test_windmill_scripts.py` | 1, 2, 3 | Pure-logic tests for all new helpers |
-| `docs/ROADMAP.md` | 1, 2, 3 | Mark initiatives done; update rationalization schedule |
+| `windmill/u/admin/portfolio_rationalization.py` | C, A, B | Section D renderer (C), import from factor_scorer + dispatch prescreener + dispatch replacement screener (A, B) |
+| `windmill/u/admin/portfolio_rationalization_telegram.py` | C, B | Surface Section D and Section E in Telegram message |
+| `windmill/u/admin/portfolio_rationalization.schedule.yaml` | — | Already Saturday 6 AM SGT (done 2026-06-25, no change) |
+| `windmill/u/admin/youtube_monitor.py` | A | Add `deepseek_key` param + `_dispatch_idea_extractor` helper + call |
+| `windmill/u/admin/morning_news_digest.py` | A | Add `portfolio_db`, `wm_token`, `deepseek_key` params + `_dispatch_idea_extractor` |
+| `windmill/u/admin/portfolio_candidate_eval.py` | A | Add `watchlist_pull` param + iteration branch |
+| `agent/tests/test_windmill_scripts.py` | C, A, B | Pure-logic tests for all new helpers |
+| `docs/ROADMAP.md` | C, A, B | Mark initiatives done |
 | `docs/WORKFLOW_ARCHITECTURE.md` | 2, 3 | Add specs for new scripts |

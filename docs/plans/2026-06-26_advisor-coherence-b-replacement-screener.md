@@ -6,9 +6,10 @@ Planner model: claude-sonnet-4-6 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [7, 9, 15, 17]
 Risk tier: LOW (mechanical — no LLM, no new table, no scoring)
+Initiative: B (replacement-screener) — build order 3 of 3
 Complies with: docs/EXECUTOR_CONTRACT.md
-Depends on: Plan 2 (watchlist_ideas table + factor_scorer module + prescreener output)
-Files to read before coding: CLAUDE.md, docs/TESTING.md, windmill/u/admin/portfolio_rationalization.py (report assembly, dispatch pattern at ~line 1273-1278), Plan 2 output (watchlist_ideas schema, prescreener output format)
+Depends on: Plan A (watchlist_ideas table + prescreener output with prescreen_rank/prescreen_score populated). Does NOT import factor_scorer — only reads dict keys from watchlist_ideas rows.
+Files to read before coding: CLAUDE.md, docs/TESTING.md, windmill/u/admin/portfolio_rationalization.py (report assembly, dispatch pattern at ~line 1273-1278), Plan A output (watchlist_ideas schema, prescreener output format)
 ---
 
 # Plan: Advisor Coherence Phase 3 — Replacement Screener
@@ -107,16 +108,25 @@ providing natural diversification.
 | Create | `docs/logs/2026-06-26_advisor-coherence-b-replacement-screener.md` | Implementation log |
 | Edit | `/root/docs/ROADMAP.md` | Mark Initiative B done |
 
-No new tables. No new scoring. No LLM calls. The screener imports `factor_scorer` from Plan 2 only
-for reading the prescreener output structure — it does not call any scoring functions.
+No new tables. No new scoring. No LLM calls. No `factor_scorer` import — the screener reads
+`prescreen_rank` and `prescreen_score` as plain dict keys from `watchlist_ideas` rows; no scoring
+module is needed.
 
 ## Checklist
 
 - [ ] **Step 1 — Write the RED test.** Add to `test_windmill_scripts.py`:
-  `test_select_top_replacements` — feeds 2 EXIT tickers + 8 shortlisted candidates with scores and
+  `test__select_top_replacements` — feeds 2 EXIT tickers + 8 shortlisted candidates with scores and
   sectors + 1 held position; asserts exactly 3 candidates per EXIT ticker, ordered by prescreen_rank
   ascending, held position excluded, sector-agnostic (any sector can be selected). Rebuild agent
   container. Confirm RED.
+
+- [ ] **Step 1b — Pre-flight: verify `recommendation` string values.** Before coding the EXIT/TRIM
+  filter, confirm the rationalization writer emits exact-case `'EXIT'`/`'TRIM'`/`'KEEP'`:
+  ```sql
+  SELECT DISTINCT recommendation FROM portfolio_scores ORDER BY 1;
+  ```
+  If values differ (e.g. `'exit'`, `'Exit'`), adjust the filter accordingly. The `recommendation`
+  column is bare TEXT with no CHECK constraint — the schema does not enforce the value set.
 
 - [ ] **Step 2 — Implement `replacement_screener.py`.** The script:
   - Defines a pure `_select_top_replacements(exit_tickers, shortlisted, held_tickers, top_n=3)`
@@ -165,8 +175,10 @@ for reading the prescreener output structure — it does not call any scoring fu
 
 ```python
 # LOCKED ORACLE — copy verbatim, do not modify assertions
+# Executor: _select_top_replacements is a pure function in replacement_screener.py.
+# Import it using the sys.path.insert + heavy-dep stub pattern in this test file.
 
-def test_select_top_replacements():
+def test__select_top_replacements():
     """Selects exactly 3 candidates per exit ticker, ranked by prescreen_rank ascending.
     Held positions excluded. Sector-agnostic (any sector qualifies)."""
     exit_tickers = ["BABA", "CRM"]
@@ -179,7 +191,7 @@ def test_select_top_replacements():
         {"ticker": "AMZN", "prescreen_rank": 6, "prescreen_score": 0.77, "sector": "Consumer Cyclical"},
     ]
     held = {"AMZN"}  # held, must NOT appear as replacement
-    result = select_top_replacements(exit_tickers, shortlisted, held, top_n=3)
+    result = _select_top_replacements(exit_tickers, shortlisted, held, top_n=3)
     assert "BABA" in result and len(result["BABA"]) == 3
     assert result["BABA"][0]["ticker"] == "NVDA"  # top-ranked
     assert result["BABA"][1]["ticker"] == "AMD"
@@ -194,14 +206,14 @@ def test_select_top_replacements():
     # (it would be selected if there were enough shortlisted pool to reach it)
 
 
-def test_select_top_replacements_few_candidates():
+def test__select_top_replacements_few_candidates():
     """When fewer than top_n candidates exist, return all available."""
     exit_tickers = ["BABA"]
     shortlisted = [
         {"ticker": "NVDA", "prescreen_rank": 1, "prescreen_score": 0.88, "sector": "Technology"},
         {"ticker": "AMD",  "prescreen_rank": 2, "prescreen_score": 0.85, "sector": "Technology"},
     ]
-    result = select_top_replacements(exit_tickers, shortlisted, set(), top_n=3)
+    result = _select_top_replacements(exit_tickers, shortlisted, set(), top_n=3)
     assert len(result["BABA"]) == 2  # only 2 available, not 3
 ```
 
@@ -210,12 +222,12 @@ def test_select_top_replacements_few_candidates():
 ```
 BEFORE implementing (RED):
 docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py \
-  -k "select_top_replacements" -q
+  -k "_select_top_replacements" -q
 → FAILS (helper absent)
 
 AFTER implementing (GREEN):
 docker exec root-straitsagent-1 python -m pytest tests/test_windmill_scripts.py \
-  -k "select_top_replacements" -q
+  -k "_select_top_replacements" -q
 → 2 passed
 
 Full suite:
