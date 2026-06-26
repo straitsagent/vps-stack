@@ -27,6 +27,10 @@ green.
   up front. For **mechanical** plans the executor may author tests, but a reviewer validates them.
 - **Enforcement:** the reviewer diffs the committed test file against the plan's `# LOCKED ORACLE`
   block. Any change to a locked assertion ⇒ reject.
+- **Planner requirement:** locked assertions must be embedded as copy-pasteable Python code
+  (assertion + explicit numeric tolerance), not prose approximations ("≈ -11.5"). Prose forces
+  the executor to author the tolerance, defeating "copy verbatim". Reviewers must reject
+  HIGH-tier plans whose `# LOCKED ORACLE` block contains prose rather than executable assertions.
 
 ### G2 — RED before GREEN
 The executor must paste the **failing** test run *before* implementing, and the **passing** run after.
