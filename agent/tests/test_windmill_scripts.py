@@ -8711,3 +8711,66 @@ def test_render_monitored_candidates_renders_table():
 def test_render_monitored_candidates_empty():
     assert _load_prat_for_c1()._render_monitored_candidates([]) == ""
 
+
+# ── Idea Pipeline tests (Plan A — Idea Pipeline) ─────────────────────────────
+# LOCKED ORACLE — copy verbatim, do not modify assertions.
+# Plan: docs/plans/2026-06-26_advisor-coherence-a-idea-pipeline.md
+# _parse_extraction_response is the pure parser (no I/O) imported from idea_extractor.
+# compute_candidate_ranks is the FINAL-SORT helper imported from candidate_prescreener.
+
+def _load_idea_extractor_module():
+    """Load idea_extractor module. Returns module."""
+    import importlib.util, pathlib
+    path = (pathlib.Path(__file__).parent.parent.parent
+            / "windmill" / "u" / "admin" / "idea_extractor.py")
+    spec = importlib.util.spec_from_file_location("idea_extractor", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def test__parse_extraction_response_valid():
+    """Parses valid JSON with ticker + reason pairs."""
+    raw = '[{"ticker":"NVDA","reason":"Dominant AI chip provider"},{"ticker":"CRWV","reason":"Leading neocloud"}]'
+    out = _load_idea_extractor_module()._parse_extraction_response(raw)
+    assert len(out) == 2
+    assert out[0]["ticker"] == "NVDA" and out[0]["reason"] == "Dominant AI chip provider"
+
+
+def test__parse_extraction_response_empty():
+    """Empty array returns empty list — no crash, no false data."""
+    assert _load_idea_extractor_module()._parse_extraction_response("[]") == []
+
+
+def test__parse_extraction_response_malformed():
+    """Garbage input returns None — never write garbage to DB."""
+    assert _load_idea_extractor_module()._parse_extraction_response("not json") is None
+
+
+def test_compute_candidate_ranks_sort():
+    """Final-sort helper: candidate with balanced composite 0.85 ranks ≤15 in a 33-holding pool;
+    candidate with composite 0.20 ranks >15. This tests the sort, not the scoring.
+    Scoring is via _compute_composites on the union pool (separate executor-authored test required)."""
+    import importlib.util, pathlib
+    # Pre-load factor_scorer (required by candidate_prescreener)
+    if "factor_scorer" not in sys.modules:
+        fs_path = (pathlib.Path(__file__).parent.parent.parent
+                   / "windmill" / "u" / "admin" / "factor_scorer.py")
+        fs_spec = importlib.util.spec_from_file_location("factor_scorer", fs_path)
+        fs_mod = importlib.util.module_from_spec(fs_spec)
+        fs_spec.loader.exec_module(fs_mod)
+        sys.modules["factor_scorer"] = fs_mod
+    ps_path = (pathlib.Path(__file__).parent.parent.parent
+               / "windmill" / "u" / "admin" / "candidate_prescreener.py")
+    ps_spec = importlib.util.spec_from_file_location("candidate_prescreener", ps_path)
+    ps_mod = importlib.util.module_from_spec(ps_spec)
+    ps_spec.loader.exec_module(ps_mod)
+    compute_candidate_ranks = ps_mod.compute_candidate_ranks
+    # Simulate 33 holding balanced composites
+    holdings = [0.92, 0.88, 0.75, 0.70, 0.65, 0.60, 0.55, 0.50, 0.45, 0.40]
+    holdings.extend([0.35] * 23)  # pad to 33
+    candidates = {"NVDA": 0.85, "CRWV": 0.20}
+    result = compute_candidate_ranks(holdings, candidates)
+    assert result["NVDA"]["rank"] <= 15
+    assert result["CRWV"]["rank"] > 15
+

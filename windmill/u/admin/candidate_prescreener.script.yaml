@@ -1,0 +1,21 @@
+summary: Candidate Prescreener — rationalization-based ranking of watchlist candidates
+description: Runs after portfolio_rationalization every Saturday. Scores
+  pending watchlist_ideas candidates using the same 5-factor union-pool
+  scoring (factor_scorer), inserts them into the holdings ranking, and
+  shortlists candidates ranking ≤15 for full candidate_eval evaluation.
+lock: '!inline u/admin/candidate_prescreener.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    portfolio_db:
+      type: object
+      description: PostgreSQL portfolio database
+      default: $res:u/admin/portfolio_db
+    wm_token:
+      type: string
+      description: Windmill API token for dispatching jobs
+      default: $var:u/admin/wm_token
+  required:
+    - portfolio_db
