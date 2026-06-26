@@ -51,7 +51,16 @@ SYSTEM_PROMPT_BASE = (
     "needed for readability.\n\n"
     "CRITICAL — When you use web_search results, you MUST cite sources inline with [1], [2], etc. "
     "and append a numbered Sources section at the very end of your message, like:\n"
-    "Sources:\n[1] https://...\n[2] https://..."
+    "Sources:\n[1] https://...\n[2] https://...\n\n"
+    "You are in a Telegram group and can see all messages (prefixed with the sender's name, "
+    "e.g. 'Kev: ...' or 'lissy: ...'). Only respond when someone mentions @StraitsAffectionBot "
+    "directly. You observe ambient conversation passively — it helps you understand the group's "
+    "context and personalities.\n\n"
+    "Use the search_memory tool to recall past conversations, including group discussions you've "
+    "observed. When asked to summarize recent topics or recall something from days/weeks ago, "
+    "search by keywords and/or date range. The current date/time in your system prompt tells you "
+    "what 'last month' or '2 weeks ago' maps to in YYYY-MM-DD format. When asked for a broad "
+    "summary, leave the query empty and set the date range — this returns all messages in that window."
 )
 
 def build_system_prompt() -> str:
@@ -83,6 +92,38 @@ WEB_SEARCH_TOOL = {
         }
     }
 }
+
+SEARCH_MEMORY_TOOL = {
+    "type": "function",
+    "function": {
+        "name": "search_memory",
+        "description": (
+            "Search our past conversation history, including group discussions I've observed. "
+            "Use this when the user asks about something discussed before, wants a summary of "
+            "recent topics, or references a past conversation. Search by keywords, date range, or both."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "query": {
+                    "type": "string",
+                    "description": "Keywords to search for (1-5 words). Leave empty to match ALL messages — use for date-range summaries like 'what have we talked about this week?'."
+                },
+                "from_date": {
+                    "type": "string",
+                    "description": "Start date in YYYY-MM-DD format. Use when the user asks about a period like 'last month', 'since Monday', or 'in May'. Omit for no lower bound."
+                },
+                "to_date": {
+                    "type": "string",
+                    "description": "End date in YYYY-MM-DD format. Use with from_date for bounded searches. Omit for no upper bound."
+                }
+            },
+            "required": ["query"]
+        }
+    }
+}
+
+ALL_TOOLS = [WEB_SEARCH_TOOL, SEARCH_MEMORY_TOOL]
 
 # ── Conversation memory (in-memory cache + Postgres persistence) ──────────────
 memory: dict[str, deque] = {}
@@ -188,7 +229,7 @@ async def perplexity_search(query: str) -> dict:
             "Authorization": f"Bearer {PERPLEXITY_KEY}",
             "Content-Type": "application/json",
         },
-        json={"query": query, "max_results": 5},
+        json={"query": query, "max_results": 10},
     )
     if r.status_code != 200:
         print(f"[affection] Perplexity error {r.status_code}: {r.text[:300]}")
@@ -200,13 +241,49 @@ def format_search_results(data: dict) -> str:
     if not results:
         return "No search results found."
     lines = []
-    for i, r in enumerate(results[:5], 1):
+    for i, r in enumerate(results[:10], 1):
         date = r.get("date", "") or ""
         title = r.get("title", "Untitled")
         url   = r.get("url", "")
         snippet = (r.get("snippet", "") or "")[:300]
         lines.append(f"[{i}] {title}\n    URL: {url}\n    Date: {date}\n    {snippet}")
     return "\n\n".join(lines)
+
+def search_conversation(chat_id: str, query: str, from_date: str, to_date: str) -> list[dict]:
+    """Search affection_conversation by keywords and/or date range."""
+    if not DB_URL:
+        return []
+    try:
+        with _db_lock:
+            cur = _get_db().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            sql = (
+                "SELECT role, content, created_at AT TIME ZONE 'Asia/Singapore' AS sgt "
+                "FROM affection_conversation "
+                "WHERE chat_id = %s "
+                "  AND role IN ('user', 'assistant') "
+                "  AND (%s = '' OR content ILIKE '%%' || %s || '%%') "
+                "  AND (%s = '' OR created_at >= %s::timestamptz) "
+                "  AND (%s = '' OR created_at < (%s::date + interval '1 day')::timestamptz) "
+                "ORDER BY created_at DESC LIMIT 10"
+            )
+            cur.execute(sql, (chat_id, query, query, from_date, from_date, to_date, to_date))
+            rows = cur.fetchall()
+            cur.close()
+        return rows
+    except Exception as e:
+        print(f"[affection] memory search error: {e!r}")
+        return []
+
+def format_memory_results(rows: list[dict]) -> str:
+    if not rows:
+        return "No matching messages found in our conversation history."
+    lines = []
+    for row in rows:
+        ts = row["sgt"].strftime("%Y-%m-%d %H:%M") if row.get("sgt") else "unknown"
+        role = row["role"]
+        content = (row.get("content") or "")[:400]
+        lines.append(f"[{ts} SGT] {role}: {content}")
+    return "\n".join(lines)
 
 async def send_telegram(chat_id: str, text: str) -> bool:
     chunks = []
@@ -247,12 +324,13 @@ async def send_telegram(chat_id: str, text: str) -> bool:
 async def chat_with_search(chat_id: str) -> str:
     messages = build_messages(chat_id)
 
-    resp = await deepseek_chat(messages, tools=[WEB_SEARCH_TOOL])
+    resp = await deepseek_chat(messages, tools=ALL_TOOLS)
     if not resp:
         return "Sorry, I'm having a moment — try me again in a bit?"
 
     choice = resp.get("choices", [{}])[0]
     msg = choice.get("message", {})
+    search_urls = []  # [(num, title, url), ...]
 
     if msg.get("tool_calls"):
         tool_calls = msg["tool_calls"]
@@ -260,19 +338,33 @@ async def chat_with_search(chat_id: str) -> str:
 
         for tc in tool_calls:
             fn = tc.get("function", {})
-            if fn.get("name") != "web_search":
-                continue
+            name = fn.get("name", "")
             try:
                 args = json.loads(fn.get("arguments", "{}"))
             except json.JSONDecodeError:
                 args = {}
-            query = args.get("query", "")
-            if not query:
-                continue
-            print(f"[affection] searching: {query[:80]}")
-            results = await perplexity_search(query)
-            tool_content = format_search_results(results)
-            remember(chat_id, "tool", tool_content, tool_call_id=tc.get("id", ""))
+
+            if name == "web_search":
+                query = args.get("query", "")
+                if not query:
+                    continue
+                print(f"[affection] searching: {query[:80]}")
+                results = await perplexity_search(query)
+                tool_content = format_search_results(results)
+                remember(chat_id, "tool", tool_content, tool_call_id=tc.get("id", ""))
+                for i, r in enumerate(results.get("results", [])[:10], 1):
+                    url = r.get("url", "")
+                    if url:
+                        search_urls.append((i, r.get("title", ""), url))
+
+            elif name == "search_memory":
+                q = args.get("query", "")
+                fd = args.get("from_date", "")
+                td = args.get("to_date", "")
+                print(f"[affection] memory: q='{q[:60]}' {fd}→{td}")
+                rows = search_conversation(chat_id, q, fd, td)
+                tool_content = format_memory_results(rows)
+                remember(chat_id, "tool", tool_content, tool_call_id=tc.get("id", ""))
 
         messages = build_messages(chat_id)
         resp = await deepseek_chat(messages, tools=[])
@@ -285,6 +377,11 @@ async def chat_with_search(chat_id: str) -> str:
     reply = msg.get("content", "")
     if not reply or not reply.strip():
         return "..."
+
+    if search_urls:
+        reply += "\n\nSources:"
+        for num, title, url in search_urls:
+            reply += f"\n[{num}] [{title}]({url})"
 
     remember(chat_id, "assistant", reply)
     return reply
@@ -342,18 +439,18 @@ async def handle_affection(request: Request):
 
     text = msg["text"]
     chat_id = msg["chat_id"]
+    mentioned = "@straitsaffectionbot" in text.lower()
 
-    if msg["is_group"] and "@straitsaffectionbot" not in text.lower():
-        return {"status": "silent"}
+    if msg["is_group"]:
+        display = msg["display_name"] or "someone"
+        clean = text.replace("@StraitsAffectionBot", "").replace("@straitsaffectionbot", "").strip()
+        if clean:
+            remember(chat_id, "user", f"{display}: {clean}")
 
-    clean = text.replace("@StraitsAffectionBot", "").replace("@straitsaffectionbot", "").strip()
-    if not clean:
-        clean = text.strip()
+    if not mentioned:
+        return {"status": "lurking"}
 
-    print(f"[affection] {chat_id} ({msg['display_name']}): {clean[:80]}")
-    remember(chat_id, "user", clean)
-
+    print(f"[affection] {chat_id} ({msg['display_name']}): {text[:80]}")
     reply = await chat_with_search(chat_id)
     await send_telegram(chat_id, reply)
-
     return {"status": "ok"}
