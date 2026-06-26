@@ -7,7 +7,7 @@ summary: 'Affection Ping — hourly 8AM–10PM SGT, sticker + caption to group'
 permissioned_as: u/admin
 no_flow_overlap: true
 args:
-  telegram_bot_token: "$var:u/admin/telegram_bot_token"
+  telegram_bot_token: "$var:u/admin/affection_bot_token"
   telegram_owner_id: "$var:u/admin/telegram_owner_id"
   affection_group_id: "$var:u/admin/affection_group_id"
   affection_sticker_packs: "$var:u/admin/affection_sticker_packs"

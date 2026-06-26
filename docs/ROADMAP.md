@@ -243,18 +243,9 @@ The Telegram agent's dynamic reasoning layer. Sequenced **after** Parts 2–3 so
 
 Fast, low-risk items. Run these before or in parallel with the main build sequence.
 
-### Affection Bot Separation 🔲
+### Affection Bot Separation ✅ done (2026-06-26)
 
-**Effort:** ~1 hour | **Code change:** None
-
-The affection ping currently uses the shared `u/admin/telegram_bot_token`. Separation gives the affection messages a distinct bot identity and removes the coupling.
-
-Steps:
-1. Create a new bot via BotFather → copy token
-2. Add Windmill variable: `u/admin/affection_bot_token`
-3. Update `affection_ping.schedule.yaml`: `telegram_bot_token` → `affection_bot_token`
-4. Add new bot to the affection Telegram group
-5. Push schedule via `wmill script push u/admin/affection_ping.schedule.yaml`
+The hourly affection ping now runs on its own Telegram bot (`StraitsAffectionBot`) via `u/admin/affection_bot_token`. No code change — one schedule-arg edit live-verified with a one-off run. See `docs/logs/2026-06-26_affection-bot-split.md`.
 
 ### Schedule-Drift Reconciliation ✅ done (2026-06-25)
 
@@ -362,7 +353,8 @@ All variables and resources are in the `u/admin` workspace. Credentials from `/r
 | `u/admin/perplexity_key` | variable | Perplexity Search API key |
 | `u/admin/xai_key` | variable | xAI/Grok API key (grok-4.3) |
 | `u/admin/exa_key` | variable | Exa neural search API key |
-| `u/admin/telegram_bot_token` | variable | Main agent + affection ping shared token (affection split planned — Part 5) |
+| `u/admin/telegram_bot_token` | variable | Main agent Telegram bot token |
+| `u/admin/affection_bot_token` | variable | Affection ping bot token (separate from main agent) |
 | `u/admin/wm_token` | variable | Windmill API token — job dispatch |
 | `u/admin/serper_key` | variable | Serper.dev API key |
 | `u/admin/tavily_key` | variable | Tavily Search API key |
