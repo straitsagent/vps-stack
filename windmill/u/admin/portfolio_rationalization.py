@@ -83,6 +83,28 @@ def _conn(portfolio_db: dict):
     )
 
 
+def _dispatch_prescreener(portfolio_db: dict, wm_token: str) -> str:
+    """Dispatch candidate_prescreener fire-and-forget. Returns job_id or ''."""
+    token = wm_token or os.environ.get("WM_TOKEN", "")
+    if not token:
+        log.warning("[Dispatch] No WM_TOKEN — cannot dispatch candidate_prescreener")
+        return ""
+    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/candidate_prescreener"
+    args = {"portfolio_db": portfolio_db, "wm_token": wm_token}
+    try:
+        resp = requests.post(
+            url, headers={"Authorization": f"Bearer {token}",
+                          "Content-Type": "application/json"},
+            json=args, timeout=10,
+        )
+        job_id = resp.text.strip().strip('"')
+        log.info(f"[Dispatch] candidate_prescreener dispatched job_id={job_id}")
+        return job_id
+    except Exception as e:
+        log.warning(f"[Dispatch] Failed to dispatch candidate_prescreener: {e}")
+        return ""
+
+
 def _fetch_research_reports(tickers: list, portfolio_db: dict) -> dict:
     """Return {ticker: (full_content, date_str)} for the latest stock research per ticker.
     Only called when include_research=True. Empty dict on error or missing DB.
@@ -1096,6 +1118,10 @@ Below are the position verdicts. Generate the executive summary, portfolio const
             telegram_bot_token, telegram_owner_id,
             portfolio_db, wm_token,
         )
+
+    # ── 13b. Dispatch candidate prescreener (Plan A — Idea Pipeline) ────────
+    if wm_token:
+        _dispatch_prescreener(portfolio_db, wm_token)
 
     # ── 13. Upsert portfolio_scores ────────────────────────────────────────────
     upsert_cur = conn.cursor()

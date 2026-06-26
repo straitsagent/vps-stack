@@ -1359,6 +1359,64 @@ def _send_email(gmail_smtp: dict, subject: str, body_md: str, to_email: str):
         s.sendmail(gmail_smtp["username"], to_email, msg.as_string())
 
 
+def _run_watchlist_pull(portfolio_db: dict, today, wm_token: str = "") -> dict:
+    """Read shortlisted candidates from watchlist_ideas and evaluate each.
+    Calls main() recursively for each ticker with watchlist_pull=False."""
+    conn = _conn(portfolio_db)
+    conn.autocommit = True
+    cur = conn.cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+    try:
+        cur.execute("""
+            SELECT id, ticker, source, reason
+            FROM watchlist_ideas
+            WHERE status = 'shortlisted'
+            ORDER BY prescreen_rank ASC
+        """)
+        rows = cur.fetchall()
+    finally:
+        conn.close()
+
+    if not rows:
+        log.info("[CandidateEval] Pull mode: no shortlisted candidates found")
+        return {"evaluated": 0}
+
+    log.info(f"[CandidateEval] Pull mode: {len(rows)} shortlisted candidates to evaluate")
+    results = []
+    for row in rows:
+        t = row["ticker"]
+        wid = row["id"]
+        log.info(f"[CandidateEval] Pull mode: evaluating {t}")
+        try:
+            # Reuse the single-ticker flow via recursive call
+            # (watchlist_pull=False ensures it evaluates the ticker normally)
+            main(
+                ticker=t,
+                portfolio_db=portfolio_db,
+                gmail_smtp={},
+                xai_key="",
+                deepseek_key="",
+                watchlist_pull=False,
+            )
+            # Update status to evaluated
+            conn2 = _conn(portfolio_db)
+            conn2.autocommit = True
+            cur2 = conn2.cursor()
+            try:
+                cur2.execute("""
+                    UPDATE watchlist_ideas
+                    SET status = 'evaluated', eval_date = %s
+                    WHERE id = %s
+                """, (today, wid))
+            finally:
+                conn2.close()
+            results.append({"ticker": t, "status": "evaluated"})
+        except Exception as e:
+            log.error(f"[CandidateEval] Pull mode: failed to evaluate {t}: {e}")
+            results.append({"ticker": t, "status": "error", "error": str(e)})
+
+    return {"evaluated": len(results), "results": results}
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main(
@@ -1378,11 +1436,18 @@ def main(
     tavily_key: str = "",
     exa_key: str = "",
     brave_key: str = "",
+    watchlist_pull: bool = False,
 ):
     ticker = ticker.strip().upper()
     replacement_ticker = (replacement_ticker or "").strip().upper() or None
     today = date.today()
     sgt = pytz.timezone("Asia/Singapore")
+
+    # ── Pull mode — evaluate shortlisted watchlist candidates ──────────────
+    if watchlist_pull:
+        log.info("[CandidateEval] Pull mode — evaluating shortlisted watchlist candidates")
+        return _run_watchlist_pull(portfolio_db, today, wm_token)
+
     log.info(f"[CandidateEval] Starting evaluation for {ticker}")
 
     conn = _conn(portfolio_db)
