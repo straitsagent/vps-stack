@@ -1,35 +1,38 @@
-summary: 'Portfolio Rationalization — Monthly Deep Analysis'
-description: 'Scores ~31 positions across 5 factors and 4 scenarios with red-flag checks, completeness penalty, delta tracking, and two Grok-4.3 synthesis calls.'
+summary: Portfolio Rationalization — Monthly Deep Analysis
+description: Scores ~31 positions across 5 factors and 4 scenarios with red-flag
+  checks, completeness penalty, delta tracking, and two Grok-4.3 synthesis
+  calls.
 lock: '!inline u/admin/portfolio_rationalization.script.lock'
 kind: script
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   type: object
   properties:
-    portfolio_db:
-      description: PostgreSQL portfolio database
-      type: object
-      default: "$res:u/admin/portfolio_db"
-    gmail_smtp:
-      description: Gmail SMTP credentials
-      type: object
-      default: "$res:u/admin/gmail_smtp"
-    xai_key:
-      description: xAI / Grok API key
-      type: string
-      default: "$var:u/admin/xai_key"
     deepseek_key:
+      type: string
       description: Deepseek API key (fallback synthesiser)
-      type: string
-      default: "$var:u/admin/deepseek_key"
-    recipient_email:
-      description: Email address to send the rationalization report to
-      type: string
-      default: "$var:u/admin/recipient_email"
+      default: $var:u/admin/deepseek_key
+    gmail_smtp:
+      type: object
+      description: Gmail SMTP credentials
+      default: $res:u/admin/gmail_smtp
     include_research:
-      description: "Include full research reports in Grok Call 2 synthesis. Default false (fast quant-only run). Set true for deep review sessions."
       type: boolean
+      description: Include full research reports in Grok Call 2 synthesis. Default
+        false (fast quant-only run). Set true for deep review sessions.
       default: false
+    portfolio_db:
+      type: object
+      description: PostgreSQL portfolio database
+      default: $res:u/admin/portfolio_db
+    recipient_email:
+      type: string
+      description: Email address to send the rationalization report to
+      default: $var:u/admin/recipient_email
+    xai_key:
+      type: string
+      description: xAI / Grok API key
+      default: $var:u/admin/xai_key
   required:
     - portfolio_db
     - gmail_smtp

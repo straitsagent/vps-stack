@@ -3,6 +3,7 @@
 .env.*
 !.env.example
 agent.env
+affection.env
 shared/keys.md
 shared/windmill-sa-key.json
 

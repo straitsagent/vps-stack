@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-25 (full structural redraft — reframed around coherent portfolio advisor; Professional Intelligence deleted; dashboard + affection-bot split + ReAct sequencing added; reality-synced against live Windmill audit)
+**Last updated:** 2026-06-26 (Initiative C Phase 1 live — Section D in rationalization)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -162,7 +162,7 @@ The centerpiece of the next build phase. The goal: a system that reasons across 
 
 ---
 
-### Initiative C — Close the Loop 🔲
+### Initiative C — Close the Loop ✅ (Phase 1 — 2026-06-26)
 
 **Goal:** `portfolio_candidate_evals` verdicts feed back into the advisor cycle rather than terminating there.
 

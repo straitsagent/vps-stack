@@ -854,6 +854,62 @@ def _build_per_position_block(pos, metrics, thesis_data, composites_data, ranks_
     return "\n".join(block)
 
 
+# ── Monitored candidates (C1 — Close the Loop) ───────────────────────────────
+# Reads recent ADD / WATCH verdicts from portfolio_candidate_evals so the
+# rationalization report's Section D can surface what the owner is actively
+# evaluating. One row per ticker (latest verdict only) via DISTINCT ON.
+
+def _query_monitored_candidates(cur, since_days: int = 60) -> list[dict]:
+    """Return [{ticker, verdict, eval_date, binding_constraint}, ...] for
+    ADD / WATCH verdicts within the last `since_days`. Latest verdict per ticker
+    (DISTINCT ON) so a ticker evaluated twice in the window appears once.
+    Accepts either a RealDictCursor (rows are already dicts) or a plain cursor
+    (rows are tuples — built into dicts here)."""
+    cur.execute(
+        """
+        SELECT DISTINCT ON (ticker) ticker, verdict, eval_date, binding_constraint
+        FROM portfolio_candidate_evals
+        WHERE verdict IN ('ADD', 'WATCH')
+          AND eval_date >= CURRENT_DATE - INTERVAL '%s days'
+        ORDER BY ticker, eval_date DESC
+        """ % int(since_days),
+    )
+    cols = ("ticker", "verdict", "eval_date", "binding_constraint")
+    rows = cur.fetchall()
+    out = []
+    for row in rows:
+        if isinstance(row, dict):
+            out.append({k: row.get(k) for k in cols})
+        else:
+            out.append(dict(zip(cols, row)))
+    return out
+
+
+def _render_monitored_candidates(rows: list[dict]) -> str:
+    """Render the monitored-candidates table as a markdown Section D.
+    Empty input → empty string (section is cleanly omitted)."""
+    if not rows:
+        return ""
+    lines = [
+        "## Section D — Monitored Candidates",
+        "",
+        "These are tickers you have evaluated via candidate eval in the last 60 days",
+        "that received an ADD or WATCH verdict. They are not yet held.",
+        "",
+        "| Ticker | Verdict | Evaluated | Reason |",
+        "|--------|---------|-----------|--------|",
+    ]
+    for r in rows:
+        ticker = r.get("ticker", "")
+        verdict = r.get("verdict", "")
+        eval_date = r.get("eval_date", "")
+        reason = r.get("binding_constraint") or "—"
+        if hasattr(eval_date, "isoformat"):
+            eval_date = eval_date.isoformat()
+        lines.append(f"| {ticker} | {verdict} | {eval_date} | {reason} |")
+    return "\n".join(lines)
+
+
 # ── Email ─────────────────────────────────────────────────────────────────────
 
 def _send_email(gmail_smtp: dict, subject: str, body_md: str, body_html: str, to_email: str):
@@ -1190,6 +1246,13 @@ Below are the position verdicts. Generate the executive summary, portfolio const
 
         scorecards.append("\n".join(card))
 
+    # ── Section D — Monitored Candidates (C1 — Close the Loop) ─────────────
+    # Read recent ADD / WATCH verdicts from portfolio_candidate_evals and
+    # render Section D. Empty rows → empty string → section cleanly omitted.
+    monitored_rows = _query_monitored_candidates(cur)
+    monitored_section = _render_monitored_candidates(monitored_rows)
+    monitored_block = f"\n{monitored_section}\n" if monitored_section else ""
+
     report_md = f"""# Portfolio Rationalization Analysis — {today_str}
 
 {executive_summary}
@@ -1213,7 +1276,7 @@ Below are the position verdicts. Generate the executive summary, portfolio const
 ### Individual Scorecards
 
 {chr(10).join(scorecards)}
-
+{monitored_block}
 ---
 
 *Models: Call 1={call1_model}, Call 2={call2_model}*
@@ -1242,6 +1305,15 @@ Below are the position verdicts. Generate the executive summary, portfolio const
         "n_positions": len(tickers),
         "top3":        [_make_entry(t) for t in top3_tickers],
         "bot3":        [_make_entry(t) for t in bot3_tickers],
+        "monitored_candidates": [
+            {
+                "ticker":            r.get("ticker"),
+                "verdict":           r.get("verdict"),
+                "eval_date":         r.get("eval_date").isoformat() if hasattr(r.get("eval_date"), "isoformat") else r.get("eval_date"),
+                "binding_constraint": r.get("binding_constraint"),
+            }
+            for r in monitored_rows
+        ],
     }
     # Canonical md: front-matter JSON + executive_summary as narrative + DETAIL separator + full report
     canonical_md = (

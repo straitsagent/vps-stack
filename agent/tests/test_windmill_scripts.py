@@ -8661,3 +8661,32 @@ def test_youtube_monitor_has_seams():
         "youtube_monitor must define _send_email seam"
     assert callable(getattr(ytm, "_write_canonical_md", None)), \
         "youtube_monitor must define _write_canonical_md seam"
+
+
+# ── _render_monitored_candidates tests (C1 — Close the Loop) ────────────────
+# LOCKED ORACLE — copy verbatim, do not modify assertions.
+# Plan: docs/plans/2026-06-26_advisor-coherence-c1-close-loop.md
+# _render_monitored_candidates is the pure renderer (no DB cursor) imported from
+# portfolio_rationalization. _query_monitored_candidates is the separate DB helper.
+
+def _load_prat_for_c1():
+    """Load portfolio_rationalization module for the C1 tests. Returns module."""
+    return _load_portfolio_rationalization_module()
+
+
+def test_render_monitored_candidates_renders_table():
+    # _render_monitored_candidates(rows) is the pure renderer; import it from portfolio_rationalization.
+    rows = [
+        {"ticker": "NVDA", "verdict": "ADD", "eval_date": "2026-06-24", "binding_constraint": None},
+        {"ticker": "CRWV", "verdict": "WATCH", "eval_date": "2026-06-22", "binding_constraint": "High D/E ratio"},
+    ]
+    out = _load_prat_for_c1()._render_monitored_candidates(rows)
+    assert out != "", "non-empty input must produce non-empty output"
+    assert "NVDA" in out and "ADD" in out and "2026-06-24" in out
+    assert "CRWV" in out and "WATCH" in out and "High D/E ratio" in out
+    assert "Monitored Candidates" in out
+
+
+def test_render_monitored_candidates_empty():
+    assert _load_prat_for_c1()._render_monitored_candidates([]) == ""
+

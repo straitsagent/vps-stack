@@ -143,12 +143,14 @@ def _build_message(front_matter: dict, narrative: str) -> str:
       today_str, n_positions,
       top3: [{ticker, score, verdict}, ...],
       bot3: [{ticker, score, verdict}, ...]   ← score is composite (not rank), verdict is EXIT/TRIM
+      monitored_candidates: [{ticker, verdict, eval_date, binding_constraint}, ...]   ← optional
     narrative: full Grok executive summary (≥500 words)
     """
     today_str   = front_matter.get("today_str", "")
     n_positions = front_matter.get("n_positions", 0)
     top3        = front_matter.get("top3", [])
     bot3        = front_matter.get("bot3", [])
+    monitored   = front_matter.get("monitored_candidates", []) or []
 
     top_str = "  ".join(_ticker_line(t) for t in top3)
     bot_str = "  ".join(_ticker_line(t) for t in bot3)
@@ -159,8 +161,25 @@ def _build_message(front_matter: dict, narrative: str) -> str:
         f"⚠️  {bot_str}"
     )
 
+    monitored_block = ""
+    if monitored:
+        lines = [
+            "",
+            "*Watchlist (recently evaluated — Section D)*",
+            "",
+            "Ticker | Verdict | Evaluated | Note",
+            "--- | --- | --- | ---",
+        ]
+        for m in monitored:
+            ticker = m.get("ticker", "?")
+            verdict = m.get("verdict", "")
+            eval_date = m.get("eval_date", "")
+            note = m.get("binding_constraint") or "—"
+            lines.append(f"{ticker} | {verdict} | {eval_date} | {note}")
+        monitored_block = "\n".join(lines)
+
     body = narrative.strip() if narrative.strip() else ""
-    return f"{header}\n\n{body}"
+    return f"{header}\n\n{body}{monitored_block}"
 
 
 # ── Entry point ─────────────────────────────────────────────────────────────
