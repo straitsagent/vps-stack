@@ -2031,10 +2031,23 @@ PORTFOLIO_RATIONALIZATION = os.path.join(
     os.path.dirname(__file__), "../../windmill/u/admin/portfolio_rationalization.py"
 )
 
+FACTOR_SCORER = os.path.join(
+    os.path.dirname(__file__), "../../windmill/u/admin/factor_scorer.py"
+)
+
 
 def _read_pr_source() -> str:
     with open(PORTFOLIO_RATIONALIZATION) as f:
         return f.read()
+
+
+def _read_pr_combined_source() -> str:
+    """Return combined source of portfolio_rationalization.py + factor_scorer.py."""
+    src = _read_pr_source()
+    if os.path.exists(FACTOR_SCORER):
+        with open(FACTOR_SCORER) as f:
+            src += "\n" + f.read()
+    return src
 
 
 def test_rationalization_script_exists():
@@ -2134,7 +2147,7 @@ def test_rationalization_has_completeness_penalty():
 
 def test_rationalization_min_pool_size_enforced():
     """Script must require ≥8 positions with data before admitting a factor to the composite (Finding 2)."""
-    src = _read_pr_source()
+    src = _read_pr_combined_source()
     assert "8" in src, "Min pool size constant not found in source"
     assert "pool" in src.lower() or "min_pool" in src.lower() or "MIN_POOL" in src, (
         "Pool size guard not found — factor must be excluded if fewer than 8 positions have data (Finding 2)"
@@ -2214,7 +2227,7 @@ def test_rationalization_ranking_table_has_metric_coverage():
 
 def test_rationalization_insider_uses_market_cap_normalisation():
     """Insider sub-component must use market-cap flow ratio, not raw net USD (minimax A4)."""
-    src = _read_pr_source()
+    src = _read_pr_combined_source()
     assert (
         "market_cap" in src and "insider" in src.lower()
         and ("/ market_cap" in src or "insider_flow" in src or "insider_market_cap" in src)
@@ -7768,6 +7781,14 @@ def _load_portfolio_rationalization_module():
     from unittest.mock import MagicMock
     for _pkg in ("pytz", "openai"):
         sys.modules.setdefault(_pkg, MagicMock())
+    # Pre-load factor_scorer so portfolio_rationalization can import from it
+    fs_path = (pathlib.Path(__file__).parent.parent.parent
+               / "windmill" / "u" / "admin" / "factor_scorer.py")
+    fs_spec = importlib.util.spec_from_file_location("factor_scorer", fs_path)
+    fs_mod = importlib.util.module_from_spec(fs_spec)
+    fs_spec.loader.exec_module(fs_mod)
+    sys.modules["factor_scorer"] = fs_mod
+    # Now load portfolio_rationalization
     path = (pathlib.Path(__file__).parent.parent.parent
             / "windmill" / "u" / "admin" / "portfolio_rationalization.py")
     spec = importlib.util.spec_from_file_location("portfolio_rationalization", path)
