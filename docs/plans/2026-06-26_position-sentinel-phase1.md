@@ -1,7 +1,7 @@
 ---
 Subject: Proactive Position Sentinel — automatic catalyst monitoring, materiality triage & critical alerts
 Date: 2026-06-26
-Status: approved
+Status: done
 Planner model: claude-opus-4 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [1, 4, 6, 7, 9, 10, 11, 15, 16, 17, 18, 19, 20, 22]

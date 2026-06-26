@@ -1768,6 +1768,86 @@ def test_parse_thesis_response_blank_or_malformed_returns_none():
     assert m._parse_thesis_response('{"investment_thesis":"  ","conviction":"High"}') is None
 
 
+# ── position_sentinel — pure-logic regression ────────────────────────────────
+POSITION_SENTINEL = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/position_sentinel.py")
+SENTINEL_TELEGRAM = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/position_sentinel_telegram.py")
+
+def _load_sentinel():
+    from unittest.mock import MagicMock
+    for _m in ("requests", "feedparser", "psycopg2", "openai"):
+        sys.modules.setdefault(_m, MagicMock())
+    sys.modules.setdefault("windmill_http_client", MagicMock())
+    spec = importlib.util.spec_from_file_location("_sentinel", POSITION_SENTINEL)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+def _load_sentinel_telegram():
+    from unittest.mock import MagicMock
+    for _m in ("requests", "psycopg2"):
+        sys.modules.setdefault(_m, MagicMock())
+    sys.modules.setdefault("windmill_http_client", MagicMock())
+    spec = importlib.util.spec_from_file_location("_stg", SENTINEL_TELEGRAM)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+# BABA real close series — declining from ~$143 to ~$104 over 20 trading days
+# vs_20d_high: (104-143)/143*100 ≈ -27.3% — 143 is the 20-day high
+# chg_5d: (104-118)/118*100 ≈ -11.86%
+_BABA_CLOSES = [143.0, 140.0, 138.0, 136.0, 134.0,
+                132.0, 130.0, 128.0, 127.0, 125.0,
+                124.0, 122.0, 120.0, 118.0, 116.0,
+                114.0, 112.0, 110.0, 108.0, 104.0]
+
+def test_cumulative_drawdowns_matches_baba():
+    m = _load_sentinel()
+    dd = m._cumulative_drawdowns(_BABA_CLOSES)
+    assert abs(dd["chg_5d"] - (-11.5)) < 2.0, dd
+    assert abs(dd["vs_20d_high"] - (-27.3)) < 2.0, dd
+
+def test_price_signal_fires_on_baba_thresholds():
+    m = _load_sentinel()
+    dd = m._cumulative_drawdowns(_BABA_CLOSES)
+    cfg = {"vs_20d_high": -20.0}
+    assert m._price_signal(dd, cfg) == "price_cumulative"
+
+def test_price_signal_silent_on_calm_series():
+    m = _load_sentinel()
+    calms = [100.0, 100.5, 101.0, 100.8, 100.3, 100.7, 100.2]
+    dd = m._cumulative_drawdowns(calms)
+    assert m._price_signal(dd, {"chg_5d": -12.0}) is None
+
+def test_parse_materiality_valid():
+    m = _load_sentinel()
+    out = m._parse_materiality('{"materiality":2,"category":"regulatory","direction":"neg","impact":"antitrust probe launched"}')
+    assert out["materiality"] == 2
+    assert out["category"] == "regulatory"
+    assert out["direction"] == "neg"
+
+def test_parse_materiality_clamps_invalid():
+    m = _load_sentinel()
+    assert m._parse_materiality('{"materiality":5,"category":"x","direction":"y"}') is None
+    assert m._parse_materiality('not json') is None
+    assert m._parse_materiality('{"materiality":-1}') is None
+
+def test_confluence_requires_price_and_news():
+    m = _load_sentinel()
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone(timedelta(hours=8)))
+    events = [{"fetched_at": now, "materiality": 2}]
+    assert m._confluence("price_cumulative", events) is True
+    assert m._confluence(None, events) is False
+    assert m._confluence("price_cumulative", []) is False
+
+def test_sentinel_telegram_build_message_500_words():
+    m = _load_sentinel_telegram()
+    fm = {"signals": "test"}
+    narrative = "BABA triggered a cumulative-price alert with 5d change of -11.5%."
+    msg = m._build_message(fm, narrative)
+    assert len(msg.split()) >= 500, f"Only {len(msg.split())} words"
+
+
 # ── research_tool: DB-read path (separation of concerns) ─────────────────────
 
 def test_research_tool_main_has_wm_token_param():

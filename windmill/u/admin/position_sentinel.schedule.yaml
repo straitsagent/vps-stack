@@ -1,0 +1,15 @@
+schedule: '0 0 * * * *'
+timezone: Asia/Singapore
+enabled: false
+script_path: u/admin/position_sentinel
+is_flow: false
+summary: 'Position Sentinel — on-demand for Phase 1 calibration; scheduled in Phase 2'
+permissioned_as: u/admin
+no_flow_overlap: true
+args:
+  deepseek_key: "$var:u/admin/deepseek_key"
+  finnhub_key: "$var:u/admin/finnhub_key"
+  portfolio_db: "$res:u/admin/portfolio_db"
+  telegram_bot_token: "$var:u/admin/telegram_bot_token"
+  telegram_owner_id: "$var:u/admin/telegram_owner_id"
+  wm_token: "$var:u/admin/wm_token"
