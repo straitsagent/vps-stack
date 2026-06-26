@@ -1,7 +1,7 @@
 ---
 Subject: Schedule-Drift Reconciliation — make git match the running Windmill schedules
 Date: 2026-06-25
-Status: approved
+Status: done
 Planner model: claude-sonnet-4-6 (Claude Code plan mode)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [7, 8, 9, 11]
