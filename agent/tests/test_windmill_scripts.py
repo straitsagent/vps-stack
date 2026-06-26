@@ -1725,6 +1725,49 @@ def test_extract_surprises_empty_when_no_actuals():
     assert sdf._extract_surprises(records) == []
 
 
+# ── portfolio_thesis_seeder — pure-logic regression ──────────────────────────
+THESIS_SEEDER = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/portfolio_thesis_seeder.py")
+
+def _load_thesis_seeder():
+    from unittest.mock import MagicMock
+    for _m in ("psycopg2", "openai"):
+        sys.modules.setdefault(_m, MagicMock())
+    sys.modules.setdefault("windmill_http_client", MagicMock())
+    spec = importlib.util.spec_from_file_location("_thseed", THESIS_SEEDER)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+def test_thesis_prompt_is_generic_and_has_json_contract():
+    m = _load_thesis_seeder()
+    p = m._build_thesis_prompt("NVDA", "NVDA has strong datacenter demand...")
+    assert "NVDA" in p and "investment_thesis" in p and "conviction" in p
+    assert "ONLY" in p  # research-grounded instruction present
+    assert "infra" not in p.lower() and "banker" not in p.lower()
+
+def test_parse_thesis_response_valid_normalizes_fields():
+    m = _load_thesis_seeder()
+    raw = '```json\n{"investment_thesis":"Owns the AI accelerator stack.","conviction":"high",' \
+          '"key_catalysts":["Blackwell ramp","DC capex"],"risks":["China export limits"],' \
+          '"target_price_usd":190}\n```'
+    out = m._parse_thesis_response(raw)
+    assert out["conviction"] == "High"           # normalized from "high"
+    assert out["investment_thesis"].startswith("Owns")
+    assert out["key_catalysts"] == ["Blackwell ramp", "DC capex"]
+    assert out["target_price_usd"] == 190.0
+
+def test_parse_thesis_response_bad_conviction_defaults_medium():
+    m = _load_thesis_seeder()
+    out = m._parse_thesis_response('{"investment_thesis":"Strong competitive moat and growth.","conviction":"Strong","key_catalysts":[],"risks":[],"target_price_usd":null}')
+    assert out["conviction"] == "Medium"
+    assert out["target_price_usd"] is None
+
+def test_parse_thesis_response_blank_or_malformed_returns_none():
+    m = _load_thesis_seeder()
+    assert m._parse_thesis_response("not json at all") is None
+    assert m._parse_thesis_response('{"investment_thesis":"  ","conviction":"High"}') is None
+
+
 # ── research_tool: DB-read path (separation of concerns) ─────────────────────
 
 def test_research_tool_main_has_wm_token_param():

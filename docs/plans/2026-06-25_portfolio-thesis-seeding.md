@@ -1,7 +1,7 @@
 ---
 Subject: portfolio_thesis Seeding — hybrid auto-draft theses from research_reports, owner reviews
 Date: 2026-06-25
-Status: draft
+Status: done
 Planner model: claude-opus-4 (Claude Code)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [1, 6, 7, 10, 11, 15, 17, 19, 20, 22]
