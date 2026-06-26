@@ -260,13 +260,14 @@ schedule args (Hard Rule 11 — string form only).
 
 ### `morning_news_digest.py` (needs params added)
 
-The morning news digest main() (line 423) lacks `portfolio_db`, `wm_token`, and `deepseek_key`.
-Copy the `_dispatch_idea_extractor` helper (same 12 lines) into the news digest script. Add to
-`main()` signature: `portfolio_db: dict = {}`, `wm_token: str = ""`, `deepseek_key: str = ""`.
-After the `.md` write at lines 539-540 (log at 541), add:
+The morning news digest main() (line 423) already has `deepseek_key` (line 425, required) but
+lacks `portfolio_db` and `wm_token`. Copy the `_dispatch_idea_extractor` helper (same 12 lines)
+into the news digest script. Add to `main()` signature: `portfolio_db: dict = {}`, `wm_token: str = ""`
+(do NOT add a second `deepseek_key` — it already exists). After the `.md` write at lines 539-540
+(log at 541), add:
 
 ```python
-if portfolio_db and wm_token and deepseek_key:
+if portfolio_db and wm_token:
     _dispatch_idea_extractor(
         md_path, "news", portfolio_db, deepseek_key, wm_token
     )
