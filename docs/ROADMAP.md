@@ -51,7 +51,7 @@ Everything below is live and running unattended unless noted.
 | Morning News Digest | 6:30 AM SGT daily | RSS (WSJ/Reuters/NYT) + newsletter AI summaries. Email + Telegram. |
 | YouTube Channel Monitor | Every 6 hours | 37 channels, RapidAPI transcripts, Deepseek summaries, 3-retry logic. |
 | Macro Research | 7:00 AM SGT Mon–Fri | Perplexity macro scan → Deepseek synthesis → `/research/macro/YYYY-MM-DD_HHMM.md` + Telegram push. **Live but previously undocumented.** |
-| Macro Daily Push | — | **⚠️ DISABLED** — script and formatter exist; schedule disabled on server. Superseded by Macro Research push. See Part 5. |
+| Macro Daily Push | — | **Parked 2026-06-26** — main script retained for reference; disabled schedule removed (server + disk). `macro_research` handles the macro push. Its formatter `macro_daily_push_telegram` remains live (used by `macro_research`). |
 
 ### Portfolio System
 
@@ -258,9 +258,9 @@ Resolved: see `docs/logs/2026-06-25_schedule-drift-reconcile.md`.
 | `portfolio_thesis` | 0 | Keep — used by the `Thesis 10%` factor in rationalization scoring. Seed with a few entries via the `thesis_write` agent command, or auto-seed from `research_reports`. |
 | `earnings_surprises` | 132 rows / 33 tickers | ✅ Resolved 2026-06-26 — yfinance column-detection bug fixed; `lxml` added to lock; backfilled. See log. |
 
-### Macro Daily Push — Formal Disposition
+### Macro Daily Push — Formal Disposition ✅ Done (2026-06-26)
 
-`macro_daily_push` and `macro_daily_push_telegram` exist as deployed scripts but the schedule is disabled. `macro_research` (7AM Mon–Fri) handles the macro push. Decision: remove the disabled schedule from Windmill, or formally document it as parked. Action in next hygiene session.
+Parked: schedule removed (server + disk). `macro_daily_push.py` and its tests retained. Formatter `macro_daily_push_telegram.py` stays live — dispatched by `macro_research`. See log.
 
 ### API Health Monitor 🔲 (lower priority)
 

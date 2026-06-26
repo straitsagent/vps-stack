@@ -1,7 +1,7 @@
 ---
 Subject: macro_daily_push Disposition — formally park the superseded main script, remove its dead schedule
 Date: 2026-06-25
-Status: draft
+Status: done
 Planner model: claude-opus-4 (Claude Code)
 Executor model: deepseek (opencode) or any
 Hard Rules in force: [8, 9, 22]
