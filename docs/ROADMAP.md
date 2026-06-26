@@ -82,7 +82,7 @@ Everything below is live and running unattended unless noted.
 |---|---|
 | Daily Health Check | 8:00 AM SGT — Deepseek diagnosis on STALE/FAILED; Telegram alert on crash; host deadman at 08:30 SGT via systemd |
 | Windmill Error Alert | On failure — email + Telegram + Deepseek 1-line diagnosis |
-| Affection Ping | Hourly 8AM–10PM SGT — random sticker (11 packs) + Deepseek caption → Telegram group. Logs to `affection_outbox`. Currently shares bot token with main agent — separation planned in Part 5. |
+| Affection Ping | Hourly 8AM–10PM SGT — random sticker (11 packs) + Deepseek caption → Telegram group. Logs to `affection_outbox`. Runs on its own bot (`StraitsAffectionBot` via `u/admin/affection_bot_token`), separate from the main agent. |
 
 ### Telegram Agent
 
