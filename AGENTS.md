@@ -25,6 +25,11 @@ the plan you were pointed at:
 Do not redesign. If the plan is ambiguous, wrong, or missing detail, stop and report — do not
 improvise. This mirrors each plan's own `## Execution` footer (intentional redundancy).
 
+### Date-prefix all new docs
+Any new file created under `docs/` or its subdirectories must use the date-prefix
+naming convention: `YYYY-MM-DD_<slug>.md`. This matches the existing pattern used in
+`docs/plans/`, `docs/logs/`, `docs/audit/`, and `docs/opencode/`.
+
 ### Deviations include model and prompt changes
 If the owner approves a model or prompt change mid-execution (e.g. swapping Deepseek
 for Grok-4.3), **stop and report it** — do not self-certify the swap in the
