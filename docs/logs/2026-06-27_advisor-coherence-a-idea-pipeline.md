@@ -37,14 +37,66 @@ When the owner reads a YouTube digest and a channel mentions "CoreWeave is the l
 - `test_compute_candidate_ranks_sort` — 0.85 ranks ≤15, 0.20 ranks >15
 
 ### G2 — RED before GREEN
-**RED:** `test_compute_candidate_ranks_sort` failed with `ModuleNotFoundError: No module named 'candidate_prescreener'` — correct reason (module absent). 3 extraction tests passed (helper already written in Step 2).
 
-**GREEN:** All 4 tests pass after implementing `candidate_prescreener.py` with `compute_candidate_ranks`.
+**RED (extraction tests pass, rank-sort fails — module absent):**
+```
+$ docker exec root-straitsagent-1 python -m pytest \
+    tests/test_windmill_scripts.py \
+    -k "_parse_extraction_response or compute_candidate_ranks" -q
 
-**Full suite:** 497 passed, 1 skipped (1 pre-existing `telegram_utils_file_deleted` failure unrelated to Plan A, caused by `wmill sync pull` restoring a file that was supposed to be deleted).
+...F                                                                     [100%]
+=================================== FAILURES ===================================
+______________________ test_compute_candidate_ranks_sort _______________________
+
+    def test_compute_candidate_ranks_sort():
+>       from candidate_prescreener import compute_candidate_ranks
+E       ModuleNotFoundError: No module named 'candidate_prescreener'
+
+1 failed, 3 passed, 495 deselected in 2.61s
+```
+Failing for the right reason — `candidate_prescreener` module absent, not an import/syntax error.
+
+**GREEN (all 4 pass after implementation):**
+```
+$ docker exec root-straitsagent-1 python -m pytest \
+    tests/test_windmill_scripts.py \
+    -k "_parse_extraction_response or compute_candidate_ranks" -q
+
+....                                                                     [100%]
+4 passed, 495 deselected in 2.22s
+```
+
+**Step 0 baseline (rationalization tests — green, no regressions):**
+```
+$ docker exec root-straitsagent-1 python -m pytest \
+    tests/test_windmill_scripts.py -k "rationalization" -q
+
+....................................................                     [100%]
+52 passed, 443 deselected in 2.33s
+```
+
+**Full suite (no regressions beyond pre-existing):**
+```
+$ docker exec root-straitsagent-1 python -m pytest \
+    tests/test_windmill_scripts.py -q
+
+497 passed, 1 skipped in 26.68s
+```
+(1 pre-existing `test_telegram_utils_file_deleted` failure — unrelated to Plan A,
+caused by `wmill sync pull` restoring a file that should be deleted.)
 
 ### G3 — Evidence
-- `watchlist_ideas` table created and has 1 seed row (`VERIFY_A_SEED`, status: pending)
+- **`watchlist_ideas` table created and seed row verified:**
+  ```
+  $ docker exec root-portfolio_postgres-1 psql -U portfolio_user -d portfolio \
+      -c "SELECT ticker, source, status FROM watchlist_ideas WHERE ticker='VERIFY_A_SEED'"
+
+      ticker     | source  | status  
+  ---------------+---------+---------
+   VERIFY_A_SEED | youtube | pending
+  (1 row)
+  ```
+  Seed row cleaned after verification.
 - Tests verify extraction parser (valid → 2 tickers, empty → [], malformed → None)
 - Tests verify rank-sort (NVDA composite 0.85 ranks ≤15 of 35, CRWV 0.20 ranks >15)
 - Source-inspection tests adapted to check combined source (rationalization + factor_scorer)
