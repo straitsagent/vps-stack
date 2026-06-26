@@ -1149,7 +1149,7 @@ CREATE TABLE IF NOT EXISTS fundamental_data (
 ### 3.3 — Portfolio Rationalization ✅ LIVE
 
 **Script:** `u/admin/portfolio_rationalization`  
-**Schedule:** `u/admin/portfolio_rationalization_monthly` — weekly Monday 9PM SGT  
+**Schedule:** `u/admin/portfolio_rationalization` — weekly Saturday 6AM SGT  
 **Trigger:** Also on-demand via Telegram (`portfolio_rationalize` / `deep rationalize`)  
 **Full spec:** `docs/design/2026-06-13_portfolio-rationalization-framework.md` v1.2  
 **Inputs:** `$res:u/admin/portfolio_db`, `$var:u/admin/xai_key`, `$var:u/admin/deepseek_key`, `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`  
