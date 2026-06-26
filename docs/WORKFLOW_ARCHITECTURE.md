@@ -2944,3 +2944,59 @@ Only written when a rating change fires.
 **DB table:** `affection_outbox` (isolated from `telegram_outbox` — no `word_count` column, not audited by `health_check`).
 
 **Windmill variables:** `u/admin/affection_group_id` (negative group chat_id), `u/admin/affection_sticker_packs` (11 packs: `BubuDudu`, `Kittylove`, `PusheenTheCat`, `LoveDove`, `catlove2`, `LoveKitten`, `Cute_couple`, `PenguinsLove`, `BunnyAndBear`, `BearAndBunny`, `HelloKittyLove`).
+
+---
+
+### 11. `idea_extractor` (Idea Pipeline — Plan A, 2026-06-27)
+
+**Script:** `u/admin/idea_extractor`
+**Trigger:** Dispatched by `youtube_monitor` (after every 6h scan) and `morning_news_digest` (daily 6:30 AM SGT).
+**Output:** `watchlist_ideas` rows (status: pending), one per extracted ticker with source='youtube' or 'news'.
+
+**Pseudocode:**
+```
+1. content = read .md file from md_path
+2. if content empty: return
+3. call Deepseek (deepseek-chat) with owner-approved extraction prompt (temp=0, max_tokens=512)
+4. parse JSON response via _parse_extraction_response(raw) → [{ticker, reason}, ...] or None
+5. sanitise tickers (skip non-tickers: single letters, "S&P 500", "tech sector", >5 chars)
+6. for each extracted pair: INSERT INTO watchlist_ideas (ticker, source, source_ref, reason, status='pending')
+   ON CONFLICT (ticker, source) DO NOTHING
+```
+
+**Cost:** ~$0.001/extraction (2000 tokens input, 200 output). ~$0.005/day at current scan rate.
+
+---
+
+### 12. `candidate_prescreener` (Idea Pipeline — Plan A, 2026-06-27)
+
+**Script:** `u/admin/candidate_prescreener`
+**Trigger:** Dispatched by `portfolio_rationalization` after report generation (Saturday 6 AM SGT).
+**Output:** `watchlist_ideas.status` updated → `shortlisted` (rank ≤15) or `archived`.
+
+**Pseudocode:**
+```
+1. read pending candidates from watchlist_ideas WHERE status='pending'
+2. auto-exclude: already-held positions (from portfolio_positions), PASS verdicts within 30 days
+3. for each remaining candidate: dispatch stock_data_fetcher (batches of 5)
+4. for each candidate with quant data:
+   a. build union pool = 33 holdings + candidate
+   b. call _compute_factor_scores(union_pool, fund) from factor_scorer
+   c. inject neutral thesis (score=0.5) → _apply_thesis_scores
+   d. call _compute_composites → get candidate's balanced composite
+5. insert candidates into holdings ranking via compute_candidate_ranks
+6. rank ≤15 → status='shortlisted', rank >15 → status='archived'
+7. if any shortlisted: dispatch candidate_eval with watchlist_pull=True
+```
+
+**Key design:** Uses the same 5-factor scoring formulas as rationalization (via `factor_scorer`). Candidates are scored within the union pool (holdings + candidate), not standalone. Neutral thesis score (0.5) ensures no penalty/credit for unvetted candidates.
+
+---
+
+### 13. `factor_scorer` (shared module — Plan A, 2026-06-27)
+
+**Path:** `u/admin/factor_scorer.py`
+**Used by:** `portfolio_rationalization`, `candidate_prescreener`
+**Exports:** `_cagr`, `_evaluate_red_flags`, `_norm`, `_compute_factor_scores`, `_apply_thesis_scores`, `_compute_composites`, `_rank_positions`
+
+All functions are pure arithmetic — no DB reads, no I/O. Operate only on passed-in dicts/lists.

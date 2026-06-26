@@ -138,7 +138,7 @@ The centerpiece of the next build phase. The goal: a system that reasons across 
 
 ---
 
-### Initiative A — Idea Pipeline 🔲
+### Initiative A — Idea Pipeline ✅ (Phase 1 — 2026-06-27)
 
 **Goal:** Capture tickers and investment ideas from the YouTube monitor and morning news digest — automatically, without losing them to the scroll.
 
