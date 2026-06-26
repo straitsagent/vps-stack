@@ -1151,7 +1151,7 @@ CREATE TABLE IF NOT EXISTS fundamental_data (
 **Script:** `u/admin/portfolio_rationalization`  
 **Schedule:** `u/admin/portfolio_rationalization_monthly` — weekly Monday 9PM SGT  
 **Trigger:** Also on-demand via Telegram (`portfolio_rationalize` / `deep rationalize`)  
-**Full spec:** `docs/portfolio_rationalization_framework.md` v1.2  
+**Full spec:** `docs/design/2026-06-13_portfolio-rationalization-framework.md` v1.2  
 **Inputs:** `$res:u/admin/portfolio_db`, `$var:u/admin/xai_key`, `$var:u/admin/deepseek_key`, `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`  
 **Optional param:** `include_research: bool = False` — when True, loads full `research_reports` content into Grok Call 2 prompt
 
@@ -1204,7 +1204,7 @@ CREATE TABLE IF NOT EXISTS fundamental_data (
 
 **Script:** `u/admin/portfolio_candidate_eval`  
 **Trigger:** On-demand — Telegram: `evaluate TICKER`, `should I add TICKER`, `candidate TICKER`  
-**Full spec:** `docs/portfolio_candidate_eval_framework.md` v1.1  
+**Full spec:** `docs/design/2026-06-15_portfolio-candidate-eval-framework.md` v1.1  
 **Inputs:** `$res:u/admin/portfolio_db`, `$var:u/admin/xai_key`, `$var:u/admin/deepseek_key`, `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`, `$var:u/admin/wm_token`, `$var:u/admin/finnhub_key`, + search/perplexity/brave/exa/serper/tavily keys  
 **Optional params:** `universe_tickers`, `thesis_text`, `replacement_ticker`
 
@@ -2071,12 +2071,12 @@ _Expand to full spec before building. Confirm AV call budget allocation (1–2/d
 
 ### Portfolio Analysis Agent 🚫 PARKED (ideaboard)
 
-**Spec:** `docs/portfolio_analysis_agent_spec.md`
+**Spec:** `docs/design/2026-06-16_portfolio-analysis-agent-spec.md`
 **Trigger:** Weekly, Sunday 7:00 AM SGT (`0 23 * * 6`)
 **Description:** 6-step Windmill Flow. Fetches latest portfolio email, parses positions, researches each material position (>1% alloc) via Tavily web search, runs 3-pass Claude analysis (per-position verdict → self-critique → portfolio synthesis), formats HTML report, delivers via Gmail + stores to `portfolio_analysis` PostgreSQL table.
 **Pre-build:** Resolve Gmail access method; decide DB-direct vs HTML parsing for Step 2; decide whether this replaces F3; add `anthropic_api_key` + `tavily_api_key` to Windmill.
 
-*Expand to full spec before building. Full spec at `docs/portfolio_analysis_agent_spec.md`.*
+*Expand to full spec before building. Full spec at `docs/design/2026-06-16_portfolio-analysis-agent-spec.md`.*
 
 ---
 

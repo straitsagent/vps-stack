@@ -315,8 +315,8 @@ Revisit only after the portfolio advisor track is materially complete:
 | `docs/audit/260605_fundamentals_api_audit.md` | 3.0: confirmed field-by-field source mapping, live test results |
 | `docs/audit/260605_api_endpoint_full_audit.md` | Full endpoint audit: news, earnings, financials, macro, commodities, insider |
 | `docs/audit/260612_search_api_audit.md` | Search API audit — all available APIs, pricing, live tests, recommendations |
-| `docs/portfolio_rationalization_framework.md` | Full design spec: 5-factor scoring model, 4 weighting scenarios, per-position scorecard |
-| `docs/portfolio_candidate_eval_framework.md` | Full design spec v1.1: 3-gate candidate evaluation, ADD/WATCH/PASS verdict |
+| `docs/design/2026-06-13_portfolio-rationalization-framework.md` | Full design spec: 5-factor scoring model, 4 weighting scenarios, per-position scorecard |
+| `docs/design/2026-06-15_portfolio-candidate-eval-framework.md` | Full design spec v1.1: 3-gate candidate evaluation, ADD/WATCH/PASS verdict |
 
 ### Key Paths
 

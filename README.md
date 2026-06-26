@@ -51,8 +51,8 @@ Personal automation stack delivering daily intelligence and productivity workflo
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Full workflow build status, Windmill resources, Telegram agent inventory |
 | [docs/WORKFLOW_ARCHITECTURE.md](docs/WORKFLOW_ARCHITECTURE.md) | Per-workflow pseudocode specs |
 | [docs/earnings_report_standards.md](docs/earnings_report_standards.md) | 6 mandatory standards for earnings analysis reports |
-| [docs/portfolio_rationalization_framework.md](docs/portfolio_rationalization_framework.md) | Portfolio rationalization design (v1.2) — 5-factor scoring, 4 scenarios |
-| [docs/portfolio_candidate_eval_framework.md](docs/portfolio_candidate_eval_framework.md) | Portfolio candidate evaluation design (v1.1) — 3-gate ADD/WATCH/PASS verdict |
+| [docs/design/2026-06-13_portfolio-rationalization-framework.md](docs/design/2026-06-13_portfolio-rationalization-framework.md) | Portfolio rationalization design (v1.2) — 5-factor scoring, 4 scenarios |
+| [docs/design/2026-06-15_portfolio-candidate-eval-framework.md](docs/design/2026-06-15_portfolio-candidate-eval-framework.md) | Portfolio candidate evaluation design (v1.1) — 3-gate ADD/WATCH/PASS verdict |
 
 ---
 
