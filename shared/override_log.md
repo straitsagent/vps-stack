@@ -22,6 +22,14 @@ Fix needed: [yes/no — what needs to change in the script]
 
 ---
 
+Date: 2026-06-27
+Workflow: position_sentinel (Position Sentinel Phase 1)
+Action: Logging G4 live-artifact verification waiver — no live BABA signal was produced during Phase 1 acceptance testing.
+Reason: The plan (docs/plans/2026-06-26_position-sentinel-phase1.md) required a real BABA/9988.HK price_cumulative signal → triaged position_events row → Telegram alert, ending in PASS. The live run on 2026-06-26 scanned 33 tickers but fired 0 signals — BABA prices had recovered from the previous week's drawdown, so no threshold was breached. Fabricating a signal by writing fake closes into price_history was rejected (would pollute the live DB). The arithmetic logic is proven by unit tests: test_cumulative_drawdowns_matches_baba, test_price_signal_fires_on_baba_thresholds, test_price_signal_silent_on_calm_series (492 passed, 1 skipped). Docs gap (CLAUDE.md formatter count, ROADMAP pillar, WORKFLOW_ARCHITECTURE spec) was caught and fixed in cleanup commit 8a8e76e.
+Fix needed: No — the next genuine signal fire (any ticker breaching a threshold) constitutes the live-artifact verification. The sentinel runs on its regular schedule; the first real alert email + Telegram message will close this gap naturally.
+
+---
+
 Date: 2026-06-23
 Workflow: affection_ping (hourly sticker + caption)
 Action: Hard Rule 16 exemption — affection_ping sends a single sticker with a one-sentence caption (~15-25 words), not a ≥500-word self-contained report.

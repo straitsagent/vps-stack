@@ -1831,6 +1831,12 @@ def test_parse_materiality_clamps_invalid():
     assert m._parse_materiality('not json') is None
     assert m._parse_materiality('{"materiality":-1}') is None
 
+def test_parse_materiality_blank_returns_none():
+    """Empty-artifact guard — blank/whitespace input must return None, not raise."""
+    m = _load_sentinel()
+    assert m._parse_materiality('') is None
+    assert m._parse_materiality('   ') is None
+
 def test_confluence_requires_price_and_news():
     m = _load_sentinel()
     from datetime import datetime, timezone, timedelta
