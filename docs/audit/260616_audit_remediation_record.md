@@ -60,7 +60,7 @@
 | D5 (L3) | `260609_codebase_audit_report.md` marked as superseded by `260616_full_codebase_audit.md` | ✅ Done | `c1fcecf` |
 | D6 (L11) | `send_batch_reports.py` archived (hardcoded date `2026-06-13`); `docker-compose.yml` `POSTGRES_PASSWORD: changeme` replaced with `${WM_DB_PASSWORD}`; orphaned `gcp_sa_key` entry removed from `CLAUDE.md` | ✅ Done | `c1fcecf` + `e895882` |
 | L4 | Agent `Dockerfile`: non-root `agent` user added (`useradd -m agent && chown -R agent:agent /app && USER agent`) | ✅ Done | `e895882` |
-| L8 | 4 hardcoded `PGPASSWORD` entries removed from `settings.local.json` (`p7u4ZhnPEKLoSytw` and three `portfolio2026pg` connection strings) | ✅ Done | `e895882` |
+| L8 | 4 hardcoded `PGPASSWORD` entries removed from `settings.local.json` (`[Supabase password — still active]` and three `[Portfolio DB password — still active]` connection strings) | ✅ Done | `e895882` |
 | L10 | UFW enabled: allow 22/tcp, 80/tcp, 443/tcp, 8080/tcp; default deny inbound | ✅ Done | `e895882` |
 | L5 | `chmod 600` on all env files (covered by A3) | ✅ Done | `22d79ba` |
 | D3 first-name leak | `WORKFLOW_ARCHITECTURE.md:2387` first-name reference replaced with "owner" | ✅ Done | `c1fcecf` |
