@@ -1,7 +1,7 @@
 ---
 Subject: Secure OpenClaw deployment (sandboxed assistant) + phased security reorg
 Date: 2026-06-27
-Status: executing
+Status: done
 Planner model: claude-sonnet-4-6 (revised after opencode/Deepseek-V4 review 2026-06-27)
 Risk tier: HIGH (new internet-facing LLM agent with shell capability; touches live stack, DB roles, secrets)
 Hard Rules in force: [1, 5, 6, 7, 8, 10, 12, 20, 21]

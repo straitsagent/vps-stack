@@ -1,7 +1,7 @@
 ---
 Subject: Secrets consolidation to /root/secrets (700) + revoke openclaw /docs mount
 Date: 2026-06-27
-Status: executing
+Status: done
 Planner model: claude-sonnet-4-6
 Executor model: any
 Risk tier: MEDIUM (moves 6 secret files, edits 3 env_file paths + 1 mount, recreates 3 services; fully reversible; no git-tracked data moves)
@@ -142,7 +142,9 @@ test -L /root/.env && test "$(readlink /root/.env)" = "/root/secrets/.env"
 git -C /root check-ignore /root/secrets/keys.md >/dev/null
 
 # O6: 3 env_file references now point at /root/secrets/
-test "$(docker compose -f /root/docker-compose.yml config 2>/dev/null | grep -c '/root/secrets/.*\.env')" -ge 3
+# (read the raw compose file — `docker compose config` resolves env_file into environment:
+#  blocks and drops the paths, so grepping its output is a false negative. Corrected post-exec.)
+test "$(grep -c '/root/secrets/.*\.env' /root/docker-compose.yml)" -ge 3
 
 # O7: openclaw has NO /docs mount but KEEPS /research
 ! docker inspect openclaw --format '{{range .Mounts}}{{.Destination}} {{end}}' | grep -qw /docs
@@ -185,7 +187,8 @@ echo "=== 6. compose parses with moved .env ==="
 docker compose -f /root/docker-compose.yml config >/dev/null 2>&1 && echo "  PASS" || { echo "  FAIL: compose invalid"; fail=1; }
 
 echo "=== 7. env_file -> /root/secrets/ (>=3) ==="
-c=$(docker compose -f /root/docker-compose.yml config 2>/dev/null | grep -c '/root/secrets/.*\.env')
+# raw compose file — `docker compose config` resolves env_file and drops the paths (false negative)
+c=$(grep -c '/root/secrets/.*\.env' /root/docker-compose.yml)
 test "$c" -ge 3 && echo "  PASS ($c)" || { echo "  FAIL ($c)"; fail=1; }
 
 echo "=== 8. openclaw env vars still loaded ==="

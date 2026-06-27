@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-27 (OpenClaw sandboxed assistant — Part 6 — implementation begins; Initiative C Phase 1, A, B live)
+**Last updated:** 2026-06-27 (OpenClaw sandboxed assistant — Part 6 — ✅ live + secrets consolidated to /root/secrets; Initiative C Phase 1, A, B live)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -29,7 +29,7 @@ What gets built next, in priority order:
 4. **Dashboard** — scaffold early (view existing data immediately); enrich as the advisor matures; parallelizable with 2+3 (Part 3)
 5. **ReAct reasoning layer** — dynamic agent reasoning over the fully-wired advisor tools (Part 4)
 
-**Now in progress (out-of-band, security-led):** **OpenClaw sandboxed assistant** (Part 6) — a self-hosted, owner-only agent runtime with read-only access to the research corpus + DB + docs, beginning immediately. Runs independently of the sequence above; its overlap with the Part 4 ReAct layer is to be reconsidered once it is live.
+**✅ Live (out-of-band, security-led):** **OpenClaw sandboxed assistant** (Part 6) — a self-hosted, owner-only agent runtime with read-only access to the research corpus + Postgres. Deployed and secrets-consolidated 2026-06-27. Its overlap with the Part 4 ReAct layer is now ripe to reconsider.
 
 ---
 
@@ -273,25 +273,24 @@ Weekly (Sunday evening). Tests all key external API endpoints. Logs to `api_heal
 
 ---
 
-## Part 6 — OpenClaw Sandboxed Assistant 🔨 (in progress — begins 2026-06-27)
+## Part 6 — OpenClaw Sandboxed Assistant ✅ Live (2026-06-27)
 
-A self-hosted, owner-only AI agent runtime added to the VPS as a **sandboxed assistant**: it can run code and write files only inside its own throwaway container workspace, with **no /root access and no secrets**, **read-only** access to the research corpus + Postgres + docs, reachable only by the owner over Telegram polling. Security is the primary design driver — the container is treated as potentially compromised at all times (LLM-driven shell + indirect-prompt-injection surface), so the worst case is "read research the owner already owns + burn the API key."
+A self-hosted, owner-only AI agent runtime (`openclaw` container, model `openai/gpt-5.4-mini`, bot `@StraitsClawBot`) running as a **sandboxed assistant**: it can run code and write files only inside its own throwaway container workspace, with **no /root access and no secrets**, **read-only** access to the research corpus + Postgres, reachable only by the owner over Telegram polling. Security is the primary design driver — the container is treated as potentially compromised at all times (LLM-driven shell + indirect-prompt-injection surface), so the worst case is "read research the owner already owns + burn the API key."
 
-**Plan:** [`docs/plans/2026-06-27_openclaw-secure-deployment.md`](plans/2026-06-27_openclaw-secure-deployment.md) — Status: approved (HIGH-tier; reviewed by opencode/Deepseek-V4, see `docs/opencode/2026-06-27_openclaw-plan-review.md`).
+**Plans (both `Status: done`):** [`docs/plans/2026-06-27_openclaw-secure-deployment.md`](plans/2026-06-27_openclaw-secure-deployment.md) (HIGH-tier; reviewed by opencode/Deepseek-V4) + [`docs/plans/2026-06-27_secrets-consolidation.md`](plans/2026-06-27_secrets-consolidation.md). Implementation logs in `docs/opencode/2026-06-27_openclaw-implementation-log.md` + `docs/logs/2026-06-27_secrets-consolidation.md`. Independently re-verified live: LOCKED ORACLE 5/5, verify script all-PASS, DB privilege enforcement confirmed.
 
-**Containment design (the security spine):**
-- **Network isolation** — two dedicated networks: `openclaw_egress` (internet for LLM/Telegram/web) + `openclaw_db` (`internal: true`, shared only with `portfolio_postgres`). Never joins `root_default` → never reaches the privileged `dind:2375` container-escape vector or the Windmill control plane.
-- **Container hardening** — non-root (`1000:1000`), `read_only` rootfs + scoped tmpfs, `cap_drop: [ALL]`, `no-new-privileges`, `mem_limit`/`pids_limit`, no published host port.
-- **Data scope** — `/root/research:ro` + `/root/docs:ro` + writable `/workspace` only; a new `openclaw_ro` Postgres role with an **explicit `GRANT SELECT` allowlist** over research/quant/market tables, deliberately excluding `key_management`, `agent_*`, `telegram_outbox`, `affection_outbox` (PII/secrets).
-- **Channel** — dedicated Telegram bot, long-polling, `allowFrom = [owner chat_id]`. No Caddy route, no webhook, no inbound exposure.
+**Containment design (the security spine — all confirmed live):**
+- **Network isolation** — two dedicated networks: `root_openclaw_egress` (internet for LLM/Telegram/web) + `root_openclaw_db` (`internal: true`, shared only with `portfolio_postgres`). Never joins `root_default` → never reaches the privileged `dind:2375` container-escape vector or the Windmill control plane (probe-verified unreachable).
+- **Container hardening** — non-root (`1000:1000`), `read_only` rootfs + `/tmp` tmpfs, `cap_drop: [ALL]`, `no-new-privileges`, `mem_limit: 1g` / `pids_limit: 256`. Only the Control UI is published, on **loopback `127.0.0.1:18789`** (SSH-tunnel access only — not externally reachable).
+- **Data scope** — `/research:ro` + `/config:ro` + writable `/workspace` only (the `/docs` mount was **revoked** to shrink read surface); a `openclaw_ro` Postgres role with an **explicit `GRANT SELECT` allowlist** over 24 research/quant/market tables, deliberately excluding `key_management`, `agent_*`, `telegram_outbox`, `affection_outbox` (PII/secrets). Reads + PII/secret denials confirmed by privilege.
+- **Secrets** — consolidated to `/root/secrets/` (mode 700); `openclaw.env` (Telegram token + LLM key + `openclaw_ro` DSN) carries no host secrets; env hygiene verified (only the 3 intended vars in-container).
+- **Channel** — dedicated Telegram bot, long-polling, `allowFrom = [owner chat_id]`. No Caddy route, no webhook, no public inbound exposure. Second-sender rejection confirmed.
 
-**Phasing:** Phase 0 targeted hardening (perm fix, `openclaw_ro` role, LLM-provider sign-off) → Phase 1 deploy → **Phase 2 (separate follow-up plan): significant filesystem relocation** (`/srv/shared/research`, consolidated `/root/secrets/`) so the trust boundary is filesystem-enforced rather than mount-discipline.
+**Phasing (delivered):** Phase 0 hardening + Phase 1 deploy ✅; Phase 2 was split per review — **secrets consolidation ✅ done** (`/root/secrets/` 700), **research relocation** deferred to its own future plan (needs a git-tracking story for 104 tracked files), **docs relocation dropped** (no security value — openclaw's `/docs` access revoked instead).
 
-**Open sign-off (blocks Phase 1):** LLM provider/model — **no Anthropic API** (memory rule); proposed default OpenRouter (OpenAI-compatible). Owner must confirm provider + exact model id before config is written (Hard Rules 6 + 10).
+**Relationship to other parts:** overlaps Part 4 (ReAct) — see the warning there; the dynamic-reasoning approach is to be reconsidered now that OpenClaw is live. Distinct from the existing `straitsagent` Telegram agent (Part 1), which remains the portfolio-advisor front-end.
 
-**Relationship to other parts:** overlaps Part 4 (ReAct) — see the warning there; the dynamic-reasoning approach will be reconsidered once OpenClaw is live. Distinct from the existing `straitsagent` Telegram agent (Part 1), which remains the portfolio-advisor front-end.
-
-**Status:** 🔨 Phase 0 starting.
+**Status:** ✅ Live. Follow-up: research-relocation plan (own design); optional functional test of web-browse capability (the `browser-automation` skill is disabled by the read-only `/config` mount).
 
 ---
 
