@@ -218,7 +218,7 @@ services:
       - default
       - agent_net
     env_file:
-      - agent.env
+      - /root/secrets/agent.env
     depends_on:
       portfolio_postgres:
         condition: service_healthy
@@ -256,14 +256,14 @@ services:
       - default
       - agent_net
     env_file:
-      - affection.env
+      - /root/secrets/affection.env
     logging: *default-logging
 
   openclaw:
     build: ./openclaw
     restart: unless-stopped
     container_name: openclaw
-    env_file: [ openclaw.env ]
+    env_file: [ /root/secrets/openclaw.env ]
     networks: [ openclaw_egress, openclaw_db ]
     ports:
       - "127.0.0.1:18789:18789"
@@ -277,7 +277,6 @@ services:
     pids_limit: 256
     volumes:
       - /root/research:/research:ro
-      - /root/docs:/docs:ro
       - ./openclaw/config:/config:ro
       - openclaw_workspace:/workspace
     logging: *default-logging

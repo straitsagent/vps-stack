@@ -58,8 +58,8 @@ These are the highest-cost mistakes from prior sessions — see `CLAUDE.md` for 
 | `/root/agent/` | FastAPI Telegram agent — `main.py`, `db.py`, `tools.py`, `planner.py`, `formatter.py`. Tests in `agent/tests/`. |
 | `/root/portfolio/` | Portfolio DB schema + migrations + seed (33 positions). |
 | `/root/affection/` | Standalone affection-bot service (split from agent 2026-06-25). |
-| `/root/shared/keys.md` | API keys (chmod 600, **never commit**). |
-| `/root/shared/windmill-sa-key.json` | GCP SA key (**never commit**). |
+| `/root/secrets/keys.md` | API keys (chmod 600, **never commit**). |
+| `/root/secrets/windmill-sa-key.json` | GCP SA key (**never commit**). |
 | `/root/docs/ROADMAP.md` | Single source for build status / live workflows / next-up. |
 | `/root/docs/TESTING.md` | Artifact-driven testing philosophy + harness pattern. |
 | `/root/docs/WORKFLOW_ARCHITECTURE.md` | Per-workflow pseudocode specs. |

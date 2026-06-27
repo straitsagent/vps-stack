@@ -8,6 +8,7 @@ openclaw.env
 .openclaw_ro_pw
 shared/keys.md
 shared/windmill-sa-key.json
+secrets/
 
 # SSH
 .ssh/
@@ -17,6 +18,7 @@ shared/windmill-sa-key.json
 
 # Backup files
 *.bak
+backups/
 
 # Claude Code session data
 .claude.json

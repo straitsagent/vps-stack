@@ -19,7 +19,7 @@ curl -s -X POST "http://<YOUR_VPS_IP>:8080/api/w/admins/resources/create" \
 cd /root/windmill && wmill variable add "<Deepseek key from keys.md>" u/admin/deepseek_key --plain-secrets
 ```
 
-Credentials come from `/root/shared/keys.md` (chmod 600).
+Credentials come from `/root/secrets/keys.md` (chmod 600).
 
 ---
 
@@ -55,7 +55,7 @@ A daily backup of the portfolio DB + uncommitted files runs via systemd timer at
 - PostgreSQL dump of the `portfolio` database
 - `research/` output artifacts
 - Untracked Windmill files (new scripts, utils)
-- Credential files (`.env`, `shared/keys.md`, `shared/windmill-sa-key.json`)
+- Credential files (`.env`, `secrets/keys.md`, `secrets/windmill-sa-key.json`)
 - rclone config
 
 **Location:** Google Drive → `vps-backup/YYYY-MM-DD/`

@@ -70,9 +70,10 @@ After any SSH login, use `tmux ls` to see active sessions, then attach to the ap
 |---|---|
 | `/root/docker-compose.yml` | Windmill compose file |
 | `/root/windmill/u/admin/` | Windmill scripts — git source of truth |
-| `/root/shared/` | Shared configs and credentials |
-| `/root/shared/keys.md` | All API keys (chmod 600 — **never commit**) |
-| `/root/shared/windmill-sa-key.json` | GCP service account JSON for Sheets/Drive (**never commit**) |
+| `/root/secrets/` | All credentials (mode 700 — **never commit**) |
+| `/root/secrets/keys.md` | All API keys (chmod 600 — **never commit**) |
+| `/root/secrets/windmill-sa-key.json` | GCP service account JSON for Sheets/Drive (**never commit**) |
+| `/root/shared/` | Shared operational files (override_log, python/, js/) |
 | `/root/shared/override_log.md` | Manual intervention log |
 | `/root/docs/ROADMAP.md` | Full workflow roadmap and build status |
 | `/root/docs/TESTING.md` | Artifact-driven testing philosophy, test hierarchy, harness pattern, live verify procedure |
@@ -81,7 +82,7 @@ After any SSH login, use `tmux ls` to see active sessions, then attach to the ap
 | `/root/portfolio/schema.sql` | DB schema for `price_history`, `portfolio_positions`, `fx_rates` |
 | `/root/portfolio/seed.sql` | Seed data — 33 portfolio positions |
 | `/root/agent/` | Telegram agent service — FastAPI, Docker service `straitsagent` |
-| `/root/agent.env` | Agent env vars (gitignored) — Telegram token, owner chat_id, DB URL, API keys |
+| `/root/secrets/agent.env` | Agent env vars (gitignored) — Telegram token, owner chat_id, DB URL, API keys |
 | `/root/agent.env.example` | Env template (committed) |
 | `/root/agent/tests/` | pytest unit tests — run `python -m pytest tests/ -v` before every build |
 | `/root/scripts/windmill-autopush.py` | PostToolUse hook — auto-pushes edited `.py` files in `windmill/u/admin/` to Windmill after syntax check |
@@ -94,12 +95,12 @@ After any SSH login, use `tmux ls` to see active sessions, then attach to the ap
 
 All API keys are stored in three places:
 
-1. **Server:** `/root/shared/keys.md` (chmod 600). Read directly — no auth needed. Contains all keys synced from Drive on 2026-06-03.
+1. **Server:** `/root/secrets/keys.md` (chmod 600). Read directly — no auth needed. Contains all keys synced from Drive on 2026-06-03.
 2. **Google Drive — Keys spreadsheet:** Access via Drive MCP — run `/mcp` in Claude Code and select "claude.ai Google Drive", then search for file titled `Keys`.
 3. **Google Drive — keys.md backup:** Plain-text backup uploaded 2026-06-03. Search Drive for `keys.md` to restore. Includes Gmail app password which is not in the Keys spreadsheet.
 
 **GCP Service Account:** `<YOUR_GCP_SA>`
-- Key at `/root/shared/windmill-sa-key.json`
+- Key at `/root/secrets/windmill-sa-key.json`
 - Project: `<YOUR_GCP_PROJECT>` (n8n-workflows)
 - APIs enabled: Google Drive, Google Sheets
 
@@ -216,7 +217,7 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
 2. All new automation goes through Windmill only — n8n is kept available but not actively developed
 3. Test every script manually in Windmill before scheduling
 4. Log all errors — don't silently fail
-5. Never commit `shared/keys.md` or `shared/windmill-sa-key.json` to git
+5. Never commit `secrets/keys.md` or `secrets/windmill-sa-key.json` to git
 6. Always ask which API, model, or resource to use — never assume
 7. **For substantive work, document the design as a plan file in `docs/plans/` (see Planning Workflow) and get explicit approval before coding. For trivial work (typo, one-line fix, single rename), describe inline and get verbal approval.** Either way, only start coding after explicit confirmation.
 8. **Never delete or overwrite existing Windmill resources** (especially `u/admin/gmail_smtp`) without explicit confirmation. When rewriting a workflow, only touch the script file — leave all resources/variables intact. `gmail_smtp` was accidentally deleted during a Morning Digest rewrite on 2026-06-03 and had to be manually recreated.
@@ -273,11 +274,11 @@ Update docs at logical stopping points, not just at end of session:
 | New VPS service, credential, or agent tool | `ROADMAP.md` (running services, resources, build status) |
 | Phase completed / end of session | `ROADMAP.md` (Current Status + Next Up) |
 | Hard rule exception or manual override | `/root/shared/override_log.md` |
-| Keys file updated | Update "Last synced" date in `shared/keys.md` |
+| Keys file updated | Update "Last synced" date in `secrets/keys.md` |
 | Plan file created/approved/executed/abandoned | `docs/plans/` (Status field is the source of truth; commit the file) |
 
 ### What never goes in docs
-- Raw API keys or passwords (use `shared/keys.md` for that)
+- Raw API keys or passwords (use `secrets/keys.md` for that)
 - Git history or who changed what (use `git log`)
 - Debugging notes or fix recipes (belongs in commit messages)
 

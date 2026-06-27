@@ -352,7 +352,7 @@ Revisit only after the portfolio advisor track is materially complete:
 | `/root/agent/` | Telegram agent service (Docker: `straitsagent`) |
 | `/root/portfolio/schema.sql` | Full DB schema — authoritative table list |
 | `/root/agent.env.example` | Env template for agent service |
-| `/root/shared/keys.md` | All API keys (chmod 600, never commit) |
+| `/root/secrets/keys.md` | All API keys (chmod 600, never commit) |
 | `/root/shared/override_log.md` | Manual intervention log |
 | `docs/WORKFLOW_ARCHITECTURE.md` | Full pseudocode spec for every workflow |
 | `docs/TESTING.md` | Artifact-driven testing philosophy |
@@ -366,7 +366,7 @@ Revisit only after the portfolio advisor track is materially complete:
 
 ### Windmill Resources
 
-All variables and resources are in the `u/admin` workspace. Credentials from `/root/shared/keys.md`.
+All variables and resources are in the `u/admin` workspace. Credentials from `/root/secrets/keys.md`.
 
 | Path | Type | Purpose |
 |---|---|---|

@@ -37,7 +37,7 @@ Personal automation stack delivering daily intelligence and productivity workflo
 | `/root/agent/` | Telegram agent service (FastAPI) |
 | `/root/portfolio/schema.sql` | Full DB schema — 29 tables |
 | `/root/portfolio/seed.sql` | 33 seed positions |
-| `/root/shared/keys.md` | All API keys (chmod 600, never commit) |
+| `/root/secrets/keys.md` | All API keys (chmod 600, never commit) |
 | `/root/shared/override_log.md` | Manual intervention log |
 | `/root/research/` | Workflow output files (news, portfolio, youtube, earnings) |
 

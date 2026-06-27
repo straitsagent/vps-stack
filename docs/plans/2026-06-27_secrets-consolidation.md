@@ -64,28 +64,28 @@ file locations + 3 env_file paths + removes 1 mount.
 
 ### Phase A — Pre-flight
 
-- [ ] **A1 — Backup.** `tar czf /root/backups/pre-secrets-$(date +%Y%m%d-%H%M%S).tar.gz /root/.env /root/agent.env /root/affection.env /root/openclaw.env /root/shared/keys.md /root/shared/windmill-sa-key.json` — confirm `tar tzf` lists all 6.
-- [ ] **A2 — No runtime hardcoded path refs.** Confirm nothing reads the old absolute paths at runtime:
+- [x] **A1 — Backup.** `tar czf /root/backups/pre-secrets-$(date +%Y%m%d-%H%M%S).tar.gz /root/.env /root/agent.env /root/affection.env /root/openclaw.env /root/shared/keys.md /root/shared/windmill-sa-key.json` — confirm `tar tzf` lists all 6.
+- [x] **A2 — No runtime hardcoded path refs.** Confirm nothing reads the old absolute paths at runtime:
   ```bash
   grep -rn "/root/shared/keys.md\|/root/shared/windmill-sa-key.json" \
     /root/windmill /root/scripts /root/agent /root/docker-compose.yml 2>/dev/null \
     | grep -v "\.md:" || echo "PASS: no runtime code references old secret paths"
   ```
   (Doc `.md` references are expected and handled in Phase D.) If any code/compose reference appears, STOP and report.
-- [ ] **A3 — Services healthy.** `docker compose ps` — all up. Paste.
+- [x] **A3 — Services healthy.** `docker compose ps` — all up. Paste.
 
 ### Phase B — Consolidate secrets
 
-- [ ] **B1 — Create dir.** `install -d -m 700 /root/secrets` ; assert `stat -c '%a' /root/secrets` = `700`.
-- [ ] **B2 — gitignore first** (before any move, so a stray add can't catch them mid-flight). Add `secrets/` to `/root/.gitignore`; assert `git check-ignore /root/secrets/keys.md` succeeds.
-- [ ] **B3 — Move the 5 non-`.env` files.**
+- [x] **B1 — Create dir.** `install -d -m 700 /root/secrets` ; assert `stat -c '%a' /root/secrets` = `700`.
+- [x] **B2 — gitignore first** (before any move, so a stray add can't catch them mid-flight). Add `secrets/` to `/root/.gitignore`; assert `git check-ignore /root/secrets/keys.md` succeeds.
+- [x] **B3 — Move the 5 non-`.env` files.**
   ```bash
   mv /root/agent.env /root/affection.env /root/openclaw.env /root/secrets/
   mv /root/shared/keys.md /root/secrets/keys.md
   mv /root/shared/windmill-sa-key.json /root/secrets/windmill-sa-key.json
   stat -c '%a %n' /root/secrets/* | grep -v '^600' && echo "FAIL: perm" || echo "PASS: all 600"
   ```
-- [ ] **B4 — Move `.env` + symlink.**
+- [x] **B4 — Move `.env` + symlink.**
   ```bash
   mv /root/.env /root/secrets/.env
   ln -s /root/secrets/.env /root/.env
@@ -94,13 +94,13 @@ file locations + 3 env_file paths + removes 1 mount.
 
 ### Phase C — Compose edits + recreate
 
-- [ ] **C1 — Update env_file paths** in `/root/docker-compose.yml`:
+- [x] **C1 — Update env_file paths** in `/root/docker-compose.yml`:
   - straitsagent: `- agent.env` → `- /root/secrets/agent.env`
   - affectionbot: `- affection.env` → `- /root/secrets/affection.env`
   - openclaw: `env_file: [ openclaw.env ]` → `env_file: [ /root/secrets/openclaw.env ]`
-- [ ] **C2 — Remove openclaw `/docs` mount.** Delete the line `      - /root/docs:/docs:ro` from the openclaw `volumes:` block. (openclaw retains `/research:ro`, `/config:ro`, `/workspace`.) `openclaw.json` does not reference `/docs` — no config change needed.
-- [ ] **C3 — Validate compose parses** with the moved `.env`: `docker compose config >/dev/null && echo "PASS: compose valid"`. (Confirms the `.env` symlink resolves at parse time.)
-- [ ] **C4 — Recreate the 3 services.**
+- [x] **C2 — Remove openclaw `/docs` mount.** Delete the line `      - /root/docs:/docs:ro` from the openclaw `volumes:` block. (openclaw retains `/research:ro`, `/config:ro`, `/workspace`.) `openclaw.json` does not reference `/docs` — no config change needed.
+- [x] **C3 — Validate compose parses** with the moved `.env`: `docker compose config >/dev/null && echo "PASS: compose valid"`. (Confirms the `.env` symlink resolves at parse time.)
+- [x] **C4 — Recreate the 3 services.**
   ```bash
   docker compose up -d --force-recreate straitsagent affectionbot openclaw
   ```
@@ -113,8 +113,8 @@ file locations + 3 env_file paths + removes 1 mount.
 
 ### Phase D — Docs
 
-- [ ] **D1 — CLAUDE.md** Key Paths + Credentials: update the two `shared/…` secret paths to `secrets/…`; add `/root/secrets/` (mode 700) as the credentials home.
-- [ ] **D2 — AGENTS.md, docs/OPERATIONS.md, README.md**: update any `/root/shared/keys.md` or `windmill-sa-key.json` references to `/root/secrets/…`. (Grep each first; only edit files that reference them.)
+- [x] **D1 — CLAUDE.md** Key Paths + Credentials: update the two `shared/…` secret paths to `secrets/…`; add `/root/secrets/` (mode 700) as the credentials home.
+- [x] **D2 — AGENTS.md, docs/OPERATIONS.md, README.md**: update any `/root/shared/keys.md` or `windmill-sa-key.json` references to `/root/secrets/…`. (Grep each first; only edit files that reference them.)
 
 ## Locked Oracle Tests (G1)
 
@@ -206,18 +206,18 @@ done
 ```
 
 ## Acceptance Gate
-- [ ] Backup tarball exists before any move
-- [ ] A2 pre-flight: no runtime code/compose references the old secret paths
-- [ ] `/root/secrets/` created mode 700; all 6 files moved, all 600; `/root/.env` is a symlink
-- [ ] `secrets/` added to `.gitignore`; `git check-ignore` confirms the moved files are ignored
-- [ ] Old paths (`/root/agent.env` etc., `/root/shared/keys.md`, `/root/shared/windmill-sa-key.json`) gone
-- [ ] 3 `env_file:` paths updated to `/root/secrets/`; compose still parses
-- [ ] openclaw `/docs` mount removed; openclaw retains `/research`; env vars still loaded
-- [ ] straitsagent + affectionbot + openclaw recreated, running, clean startup
-- [ ] RED run pasted (pre-move, all fail) then GREEN run (post-move, all pass)
-- [ ] LOCKED ORACLE passes verbatim (G1)
-- [ ] Verification Script ends in `PASS` (G4)
-- [ ] CLAUDE.md (+ any other doc that references the moved paths) updated and committed
+- [x] Backup tarball exists before any move
+- [x] A2 pre-flight: no runtime code/compose references the old secret paths
+- [x] `/root/secrets/` created mode 700; all 6 files moved, all 600; `/root/.env` is a symlink
+- [x] `secrets/` added to `.gitignore`; `git check-ignore` confirms the moved files are ignored
+- [x] Old paths (`/root/agent.env` etc., `/root/shared/keys.md`, `/root/shared/windmill-sa-key.json`) gone
+- [x] 3 `env_file:` paths updated to `/root/secrets/`; compose still parses
+- [x] openclaw `/docs` mount removed; openclaw retains `/research`; env vars still loaded
+- [x] straitsagent + affectionbot + openclaw recreated, running, clean startup
+- [x] RED run pasted (pre-move, all fail) then GREEN run (post-move, all pass)
+- [x] LOCKED ORACLE passes verbatim (G1)
+- [x] Verification Script ends in `PASS` (G4)
+- [x] CLAUDE.md (+ any other doc that references the moved paths) updated and committed
 
 ## Execution
 1. Set Status: executing, commit.
