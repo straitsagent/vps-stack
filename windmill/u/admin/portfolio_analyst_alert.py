@@ -26,6 +26,10 @@ RATING_ORDER = {
     "strongBuy": 5, "buy": 4, "hold": 3, "sell": 2, "strongSell": 1,
 }
 
+ARTIFACT_MARKERS: dict[str, list[str]] = {
+    "Analyst Alert": ["upgrade", "downgrade", "target"],
+}
+
 
 def _get_tickers(portfolio_db: dict) -> list[str]:
     conn = psycopg2.connect(

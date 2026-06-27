@@ -169,6 +169,10 @@ SECTION_PROMPTS = {
     ),
 }
 
+ARTIFACT_MARKERS: dict[str, list[str]] = {
+    "Macro Research": ["VIX", "10Y"],
+}
+
 # ── Yahoo data fetch ──────────────────────────────────────────────────────────
 
 def _fetch_yahoo_macro() -> dict:

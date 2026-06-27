@@ -552,6 +552,7 @@ ARTIFACT_MARKERS: dict[str, list[str]] = {
     "Move Monitor":     ["triggered", "threshold"],
     "Analyst Alert":    ["upgrade", "downgrade", "target"],
     "YouTube Monitor":  ["channel", "transcript"],
+    "Rationalization":  ["Score", "Scenario"],
 }
 
 

@@ -49,6 +49,10 @@ NI_CAGR_MIN = -0.20    # below -20% → earnings deterioration
 WM_BASE      = "http://windmill_server:8000"
 WM_WORKSPACE = "admins"
 
+ARTIFACT_MARKERS: dict[str, list[str]] = {
+    "Rationalization": ["Score", "Scenario"],
+}
+
 
 def _dispatch_formatter(formatter_name: str, md_path: str,
                         telegram_bot_token: str, telegram_owner_id: str,

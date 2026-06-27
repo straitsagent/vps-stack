@@ -25,6 +25,10 @@ GRAY  = "#666"
 WM_BASE      = "http://windmill_server:8000"
 WM_WORKSPACE = "admins"
 
+ARTIFACT_MARKERS: dict[str, list[str]] = {
+    "Portfolio": ["Total Value", "P&L"],
+}
+
 
 def _dispatch_formatter(formatter_name: str, md_path: str,
                         telegram_bot_token: str, telegram_owner_id: str,

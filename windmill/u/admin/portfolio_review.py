@@ -30,6 +30,10 @@ ETF_TICKERS = {"XLV", "SPY", "QQQ", "IWM", "VTI"}
 WM_BASE      = "http://windmill_server:8000"
 WM_WORKSPACE = "admins"
 
+ARTIFACT_MARKERS: dict[str, list[str]] = {
+    "Weekly Review": ["Week P&L", "Top Movers"],
+}
+
 
 def _dispatch_formatter(formatter_name: str, md_path: str,
                         telegram_bot_token: str, telegram_owner_id: str,

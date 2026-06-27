@@ -21,6 +21,10 @@ log = logging.getLogger(__name__)
 WM_BASE      = "http://windmill_server:8000"
 WM_WORKSPACE = "admins"
 
+ARTIFACT_MARKERS: dict[str, list[str]] = {
+    "Move Monitor": ["triggered", "threshold"],
+}
+
 
 def _dispatch_formatter(formatter_name: str, md_path: str,
                         telegram_bot_token: str, telegram_owner_id: str,

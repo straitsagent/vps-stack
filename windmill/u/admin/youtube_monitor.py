@@ -37,6 +37,9 @@ MAX_ATTEMPTS = 3
 WM_BASE_URL = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
 STATE_VAR = "u/admin/youtube_processed_state"
 
+ARTIFACT_MARKERS: dict[str, list[str]] = {
+    "YouTube Monitor": ["channel", "transcript"],
+}
 
 # ── State-based deduplication ────────────────────────────────────────────────
 
