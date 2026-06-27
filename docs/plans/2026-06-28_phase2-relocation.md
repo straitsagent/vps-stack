@@ -1,17 +1,26 @@
 ---
 Subject: Phase 2 — Research / secrets / docs relocation (filesystem trust boundary)
 Date: 2026-06-28
-Status: draft
+Status: abandoned
 Planner model: Deepseek V4 (opencode)
 Executor model: any
 Risk tier: HIGH (touches 3 compose mounts, 14 research-writing scripts, 6 secret files, 5 doc files)
 Hard Rules in force: [1, 5, 6, 7, 8, 9, 10, 11, 12, 15, 17, 20, 21, 22]
 Complies with: docs/EXECUTOR_CONTRACT.md
-Review: docs/opencode/2026-06-27_openclaw-implementation-log.md (this is the follow-up doc-deliverable from Acceptance Gate)
+Review: docs/opencode/2026-06-27_phase2-relocation-plan-review.md
+Superseded-by: split into three per owner decision 2026-06-27 (see review). (1) Secrets + openclaw-docs-revoke → docs/plans/2026-06-27_secrets-consolidation.md. (2) Research relocation → own future plan (git-tracking story required). (3) Docs relocation → dropped.
 Files to read before coding: CLAUDE.md, /root/docker-compose.yml, docs/OPERATIONS.md, docs/EXECUTOR_CONTRACT.md
 ---
 
 # Plan: Phase 2 — Filesystem Relocation (trust boundary)
+
+> **⚠️ ABANDONED 2026-06-27 — superseded, do not execute.** Split per owner decision after review
+> (`docs/opencode/2026-06-27_phase2-relocation-plan-review.md`): the secrets-consolidation portion
+> (plus revoking openclaw's `/docs` mount) moved to
+> `docs/plans/2026-06-27_secrets-consolidation.md`; research relocation gets its own future plan
+> (must resolve the git-tracking of 104 tracked files); docs relocation is **dropped** (no security
+> value — bind mounts already isolate `/root`; openclaw's `/docs` access is revoked instead). Kept
+> for record only.
 
 ## Context
 
