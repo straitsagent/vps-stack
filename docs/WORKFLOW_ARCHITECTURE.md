@@ -2943,7 +2943,7 @@ Only written when a rating change fires.
 
 **DB table:** `affection_outbox` (isolated from `telegram_outbox` — no `word_count` column, not audited by `health_check`).
 
-**Windmill variables:** `u/admin/affection_group_id` (negative group chat_id), `u/admin/affection_sticker_packs` (11 packs: `BubuDudu`, `Kittylove`, `PusheenTheCat`, `LoveDove`, `catlove2`, `LoveKitten`, `Cute_couple`, `PenguinsLove`, `BunnyAndBear`, `BearAndBunny`, `HelloKittyLove`).
+**Windmill variables:** `u/admin/affection_group_id` (negative group chat_id), `u/admin/affection_sticker_packs` (11 packs: `BubuDudu`, `Kittylove`, `PusheenTheCat`, `LoveDove`, `catlove2`, `LoveKitten`, `Cute_couple`, `PenguinsLove`, `BunnyAndBear`, `BearAndBunny`, `peachlovesgoma`).
 
 ---
 
