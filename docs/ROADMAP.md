@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-27 (Initiative C Phase 1, A, B live — all three Portfolio Coherence seams closed)
+**Last updated:** 2026-06-27 (OpenClaw sandboxed assistant — Part 6 — implementation begins; Initiative C Phase 1, A, B live)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -28,6 +28,8 @@ What gets built next, in priority order:
 3. **Quantitative precision** — historical valuation percentiles, factor exposures, risk matrix, sizing math (Part 2D)
 4. **Dashboard** — scaffold early (view existing data immediately); enrich as the advisor matures; parallelizable with 2+3 (Part 3)
 5. **ReAct reasoning layer** — dynamic agent reasoning over the fully-wired advisor tools (Part 4)
+
+**Now in progress (out-of-band, security-led):** **OpenClaw sandboxed assistant** (Part 6) — a self-hosted, owner-only agent runtime with read-only access to the research corpus + DB + docs, beginning immediately. Runs independently of the sequence above; its overlap with the Part 4 ReAct layer is to be reconsidered once it is live.
 
 ---
 
@@ -221,6 +223,8 @@ A read-only web portal to navigate advisor outputs, portfolio positions, and res
 
 The Telegram agent's dynamic reasoning layer. Sequenced **after** Parts 2–3 so it has a fully-wired, coherent set of advisor tools to reason over.
 
+> **⚠️ Reconsider vs OpenClaw (Part 6).** OpenClaw is a general-purpose sandboxed agent that can already reason over the research corpus and DB. Before building W4b, reassess whether the dynamic-reasoning need is better served by OpenClaw (with curated read-only tools) than by extending the bespoke `straitsagent` planner — to avoid maintaining two overlapping agent reasoning stacks. Decision deferred until OpenClaw is live.
+
 ### What's Live — W4a Static Planner
 
 `planner.py` generates linear tool sequences for `portfolio_analysis`, `thesis_check`, `macro_brief`. Sequential plan → execute → synthesise. No iteration, no feedback loops.
@@ -266,6 +270,28 @@ Parked: schedule removed (server + disk). `macro_daily_push.py` and its tests re
 ### API Health Monitor 🔲 (lower priority)
 
 Weekly (Sunday evening). Tests all key external API endpoints. Logs to `api_health_log`. Emails on degradation. Reference: `docs/audit/260605_api_endpoint_full_audit.md`.
+
+---
+
+## Part 6 — OpenClaw Sandboxed Assistant 🔨 (in progress — begins 2026-06-27)
+
+A self-hosted, owner-only AI agent runtime added to the VPS as a **sandboxed assistant**: it can run code and write files only inside its own throwaway container workspace, with **no /root access and no secrets**, **read-only** access to the research corpus + Postgres + docs, reachable only by the owner over Telegram polling. Security is the primary design driver — the container is treated as potentially compromised at all times (LLM-driven shell + indirect-prompt-injection surface), so the worst case is "read research the owner already owns + burn the API key."
+
+**Plan:** [`docs/plans/2026-06-27_openclaw-secure-deployment.md`](plans/2026-06-27_openclaw-secure-deployment.md) — Status: approved (HIGH-tier; reviewed by opencode/Deepseek-V4, see `docs/opencode/2026-06-27_openclaw-plan-review.md`).
+
+**Containment design (the security spine):**
+- **Network isolation** — two dedicated networks: `openclaw_egress` (internet for LLM/Telegram/web) + `openclaw_db` (`internal: true`, shared only with `portfolio_postgres`). Never joins `root_default` → never reaches the privileged `dind:2375` container-escape vector or the Windmill control plane.
+- **Container hardening** — non-root (`1000:1000`), `read_only` rootfs + scoped tmpfs, `cap_drop: [ALL]`, `no-new-privileges`, `mem_limit`/`pids_limit`, no published host port.
+- **Data scope** — `/root/research:ro` + `/root/docs:ro` + writable `/workspace` only; a new `openclaw_ro` Postgres role with an **explicit `GRANT SELECT` allowlist** over research/quant/market tables, deliberately excluding `key_management`, `agent_*`, `telegram_outbox`, `affection_outbox` (PII/secrets).
+- **Channel** — dedicated Telegram bot, long-polling, `allowFrom = [owner chat_id]`. No Caddy route, no webhook, no inbound exposure.
+
+**Phasing:** Phase 0 targeted hardening (perm fix, `openclaw_ro` role, LLM-provider sign-off) → Phase 1 deploy → **Phase 2 (separate follow-up plan): significant filesystem relocation** (`/srv/shared/research`, consolidated `/root/secrets/`) so the trust boundary is filesystem-enforced rather than mount-discipline.
+
+**Open sign-off (blocks Phase 1):** LLM provider/model — **no Anthropic API** (memory rule); proposed default OpenRouter (OpenAI-compatible). Owner must confirm provider + exact model id before config is written (Hard Rules 6 + 10).
+
+**Relationship to other parts:** overlaps Part 4 (ReAct) — see the warning there; the dynamic-reasoning approach will be reconsidered once OpenClaw is live. Distinct from the existing `straitsagent` Telegram agent (Part 1), which remains the portfolio-advisor front-end.
+
+**Status:** 🔨 Phase 0 starting.
 
 ---
 
