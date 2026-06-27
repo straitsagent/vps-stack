@@ -12,8 +12,10 @@ RUN npm install -g openclaw@latest
 # The node user already exists (uid 1000, gid 1000 — satisfies oracle O1)
 RUN mkdir -p /workspace && chown 1000:1000 /workspace
 
-# OpenClaw writes state/logs to ~/.openclaw/ on tmpfs /home/node
-RUN mkdir -p /home/node/.openclaw && chown -R 1000:1000 /home/node
+# HOME points to /workspace (named volume, chowned, writable)
+# so OpenClaw state (~/.openclaw/) lands on persistent writable storage,
+# not on a tmpfs that hides the Dockerfile's permission setup.
+ENV HOME=/workspace
 
 USER 1000:1000
 

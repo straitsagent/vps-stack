@@ -269,8 +269,6 @@ services:
     read_only: true
     tmpfs:
       - /tmp
-      - /run
-      - /home/node
     cap_drop: [ ALL ]
     security_opt: [ "no-new-privileges:true" ]
     mem_limit: 1g
