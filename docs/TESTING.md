@@ -297,7 +297,8 @@ deliver:
 Per-script checklist: ASD written → seams factored → harness RED→GREEN → word_count ≥500 →
 `_agree` test ASD-derived → substring tests pruned → Tier 0 `ARTIFACT_MARKERS` entry added →
 live verify (Hard Rule 17). **Status:** ASD, seams, harness, _agree, word-count, and Tier 0
-markers are ✅ for all 7. Substring pruning and live verify remain.
+markers are ✅ for all 7. All 21 artifact-render tests pass in the test container (2026-06-27).
+Substring pruning and live (Windmill) delivery verification remain for a future session.
 
 | Script | ASD | Seams factored | Artifact harness | `_agree` ASD-derived | Word-count test | Tier 0 markers | Substring tests pruned | Live verified |
 |--------|-----|---------------|-----------------|---------------------|-----------------|----------------|----------------------|---------------|
