@@ -1,7 +1,7 @@
 ---
 Subject: Fix research_tool.py column-detection bug — "Reported EPS" silently dropped
 Date: 2026-06-27
-Status: draft
+Status: executing
 Planner model: claude-opus-4-8
 Executor model: Claude Code | deepseek/opencode
 Risk tier: LOW (one-line fix, touches a working script — RED test required)
