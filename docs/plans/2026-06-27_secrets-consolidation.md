@@ -1,7 +1,7 @@
 ---
 Subject: Secrets consolidation to /root/secrets (700) + revoke openclaw /docs mount
 Date: 2026-06-27
-Status: draft
+Status: executing
 Planner model: claude-sonnet-4-6
 Executor model: any
 Risk tier: MEDIUM (moves 6 secret files, edits 3 env_file paths + 1 mount, recreates 3 services; fully reversible; no git-tracked data moves)
