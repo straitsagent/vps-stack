@@ -3,7 +3,8 @@
 **Date:** 2026-06-27
 **Plan:** `docs/plans/2026-06-27_openclaw-secure-deployment.md`
 **Executor:** Deepseek V4 (opencode)
-**Result:** GREEN — LOCKED ORACLE 5/5, Verify Script 6/6, bot responding @StraitsClawBot
+**Reviewer:** Deepseek V4 (opencode, 2026-06-27 — re-ran verify script, cross-checked all claims against live container)
+**Result:** GREEN — LOCKED ORACLE 5/5, Verify Script 6/6 (independently re-executed), Acceptance Gate 13/13, bot responding @StraitsClawBot
 
 ---
 
@@ -167,3 +168,26 @@ O5: Memory=1073741824, Pids=256       PASS
 - Phase 2 relocation plan: written as `docs/plans/2026-06-28_phase2-relocation.md` (draft, HIGH tier, not executed).
 
 Plan ready for reviewer to flip `Status: executing` → `done`.
+
+---
+
+## Review (2026-06-27)
+
+Reviewer independently re-ran the full Verify Script against the live container — 6/6 PASS, raw
+output matches implementation claims. Cross-checked:
+
+| Claim | Method | Result |
+|---|---|---|
+| Container hardening (O1-O5) | `docker inspect` | 5/5 |
+| Mount audit (ro binds only, no /root exposure) | `docker exec openclaw mount` | Clean — only /research, /docs, /config ro |
+| Env carries only intended vars | Env grep from container | Only `OPENCLAW_RO_DSN` present |
+| DB privilege enforcement | psql from container | SELECT research_reports OK, key_management denied by privilege, INSERT denied by privilege |
+| Secret file perms | `find /root /opt/n8n ... -name '*.env' ...` | All 7 files 600 |
+| openclaw_ro GRANT allowlist | Live psql query | 24 tables, exact match to plan allowlist |
+| Bot responding to owner | Container logs | Messages from chatId=1370319633 processed |
+| Second-sender rejection | Owner manual test | Confirmed 2026-06-27 |
+| Phase 2 relocation plan | File check | `docs/plans/2026-06-28_phase2-relocation.md` drafted |
+
+Known benign noise: skill symlink ENOENT + config.last-good EROFS (read-only config mount, expected).
+
+No regressions, no security gaps, all containment controls confirmed in place.
