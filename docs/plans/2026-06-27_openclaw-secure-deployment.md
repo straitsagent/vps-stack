@@ -48,7 +48,7 @@ Decisions locked with owner: **Sandboxed assistant** · **Telegram polling, owne
 
 ## Phase 0 — Targeted hardening (ship-blocking prerequisites)
 
-- [ ] **Fix secret file perms (P1).** Today only `/root/affection.env` is 644; everything else is
+- [x] **Fix secret file perms (P1).** Today only `/root/affection.env` is 644; everything else is
   already 600 — so this is a one-file change. Apply and then verify with a correctly-grouped find:
   ```bash
   chmod 600 /root/affection.env
@@ -58,7 +58,7 @@ Decisions locked with owner: **Sandboxed assistant** · **Telegram polling, owne
   ```
   Success: every line of the find output begins with `600`.
 
-- [ ] **Create scoped read-only Postgres role** (allowlist, not denylist). New migration
+- [x] **Create scoped read-only Postgres role** (allowlist, not denylist). New migration
   `/root/portfolio/openclaw_ro_role.sql`. Idempotent per the repo convention (P2); the password is
   passed via a psql variable read from a `chmod 600` temp file, NEVER on the CLI (no `ps`/history
   leak):
@@ -98,7 +98,7 @@ Decisions locked with owner: **Sandboxed assistant** · **Telegram polling, owne
   by error text, not just non-zero exit) on `key_management`; and every write is denied **by
   privilege** (asserted by error text — see verify §5, B2).
 
-- [ ] **Confirm LLM provider/model (Hard Rule 6 + 10).** OpenClaw is bring-your-own-key. Memory
+- [x] **Confirm LLM provider/model (Hard Rule 6 + 10).** OpenClaw is bring-your-own-key. Memory
   rule: **no Anthropic API** — use Deepseek / OpenRouter / xAI-Grok / Perplexity. Proposed default:
   **OpenRouter** (OpenAI-compatible endpoint, lets owner pick the model). **SIGN-OFF REQUIRED**
   before writing config: (a) provider, (b) exact model id, (c) confirm OpenClaw supports its
