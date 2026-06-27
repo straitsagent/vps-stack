@@ -4,6 +4,8 @@
 !.env.example
 agent.env
 affection.env
+openclaw.env
+.openclaw_ro_pw
 shared/keys.md
 shared/windmill-sa-key.json
 
