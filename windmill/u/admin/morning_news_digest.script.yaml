@@ -1,29 +1,30 @@
-summary: "Workflow 1.1 — Morning News Digest"
+summary: Workflow 1.1 — Morning News Digest
 description: >
-  4-section daily digest: (1) RSS headlines from Reuters/WSJ/Barrons/NYT,
-  (2) Google News keyword alerts, (3) AI summaries of key newsletters,
-  (4) other inbox items. Scheduled 6:30 AM SGT daily.
-language: python3
+  4-section daily digest: (1) RSS headlines from Reuters/WSJ/Barrons/NYT, (2)
+  Google News keyword alerts, (3) AI summaries of key newsletters, (4) other
+  inbox items. Scheduled 6:30 AM SGT daily.
+lock: '!inline u/admin/morning_news_digest.script.lock'
+has_on_behalf_of: false
 kind: script
-tag: ""
 schema:
-  $schema: "https://json-schema.org/draft/2020-12/schema"
+  $schema: https://json-schema.org/draft/2020-12/schema
   type: object
+  properties:
+    deepseek_key:
+      type: string
+      description: Deepseek API key
+      default: $var:u/admin/deepseek_key
+      format: password
+    recipient_email:
+      type: string
+      description: Email address to send the digest to
+      default: $var:u/admin/recipient_email
+    smtp_resource:
+      type: object
+      description: Gmail SMTP credentials (also used for IMAP read)
+      default: $res:u/admin/gmail_smtp
+      format: resource-smtp
   required:
     - smtp_resource
     - deepseek_key
-  properties:
-    smtp_resource:
-      type: object
-      format: resource-smtp
-      description: "Gmail SMTP credentials (also used for IMAP read)"
-      default: "$res:u/admin/gmail_smtp"
-    deepseek_key:
-      type: string
-      format: password
-      description: "Deepseek API key"
-      default: "$var:u/admin/deepseek_key"
-    recipient_email:
-      type: string
-      description: "Email address to send the digest to"
-      default: "$var:u/admin/recipient_email"
+tag: ''

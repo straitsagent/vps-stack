@@ -3,6 +3,8 @@ description: Checks all 6 scheduled workflows, synthesises 24h content digest
   (Grok-4), spec-checks each output, diagnoses failures (Deepseek), sends
   holistic Telegram brief. Runs at 8:00 AM SGT daily.
 lock: '!inline u/admin/health_check.script.lock'
+has_on_behalf_of: false
+kind: script
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   type: object

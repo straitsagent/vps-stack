@@ -1,75 +1,82 @@
-summary: 'Portfolio Candidate Evaluation — On-demand ADD/WATCH/PASS Verdict'
-description: '3-gate evaluation for a candidate stock: Gate 1 absolute red flags, Gate 2 portfolio fit (correlation + fundamental similarity + sector/geo/currency overlap + gap fill), Gate 3 universe benchmark. Outputs a verdict card email and persists results to portfolio_candidate_evals.'
+summary: Portfolio Candidate Evaluation — On-demand ADD/WATCH/PASS Verdict
+description: '3-gate evaluation for a candidate stock: Gate 1 absolute red
+  flags, Gate 2 portfolio fit (correlation + fundamental similarity +
+  sector/geo/currency overlap + gap fill), Gate 3 universe benchmark. Outputs a
+  verdict card email and persists results to portfolio_candidate_evals.'
+lock: '!inline u/admin/portfolio_candidate_eval.script.lock'
+has_on_behalf_of: false
 kind: script
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   type: object
   properties:
-    ticker:
-      description: Candidate stock ticker symbol (e.g. AAPL, 9988.HK)
+    brave_key:
       type: string
-    portfolio_db:
-      description: PostgreSQL portfolio database
-      type: object
-      default: "$res:u/admin/portfolio_db"
-    gmail_smtp:
-      description: Gmail SMTP credentials
-      type: object
-      default: "$res:u/admin/gmail_smtp"
-    xai_key:
-      description: xAI / Grok API key
-      type: string
-      default: "$var:u/admin/xai_key"
+      description: Brave Search API key — passed to research_tool
+      default: $var:u/admin/brave_key
     deepseek_key:
-      description: Deepseek API key (fallback synthesiser)
       type: string
-      default: "$var:u/admin/deepseek_key"
+      description: Deepseek API key (fallback synthesiser)
+      default: $var:u/admin/deepseek_key
+    exa_key:
+      type: string
+      description: Exa neural search API key — passed to research_tool
+      default: $var:u/admin/exa_key
+    finnhub_key:
+      type: string
+      description: Finnhub API key — passed to stock_data_fetcher for peer comparisons
+      default: $var:u/admin/finnhub_key
+    gmail_smtp:
+      type: object
+      description: Gmail SMTP credentials
+      default: $res:u/admin/gmail_smtp
+    perplexity_key:
+      type: string
+      description: Perplexity Search API key — passed to research_tool
+      default: $var:u/admin/perplexity_key
+    portfolio_db:
+      type: object
+      description: PostgreSQL portfolio database
+      default: $res:u/admin/portfolio_db
+    recipient_email:
+      type: string
+      description: Email address to send the verdict card to
+      default: $var:u/admin/recipient_email
+    replacement_ticker:
+      type: string
+      description: Optional ticker to exit simultaneously; Gate 2 recomputed net of
+        this exit
+      default: ''
+    serper_key:
+      type: string
+      description: Serper.dev API key — passed to research_tool
+      default: $var:u/admin/serper_key
+    tavily_key:
+      type: string
+      description: Tavily Search API key — passed to research_tool
+      default: $var:u/admin/tavily_key
+    thesis_text:
+      type: string
+      description: Optional user-supplied investment thesis text
+      default: ''
+    ticker:
+      type: string
+      description: Candidate stock ticker symbol (e.g. AAPL, 9988.HK)
     universe_tickers:
-      description: Optional list of peer tickers to use as Gate 3 benchmark universe
       type: array
+      description: Optional list of peer tickers to use as Gate 3 benchmark universe
+      default: []
       items:
         type: string
-      default: []
-    thesis_text:
-      description: Optional user-supplied investment thesis text
-      type: string
-      default: ""
-    replacement_ticker:
-      description: Optional ticker to exit simultaneously; Gate 2 recomputed net of this exit
-      type: string
-      default: ""
-    recipient_email:
-      description: Email address to send the verdict card to
-      type: string
-      default: "$var:u/admin/recipient_email"
     wm_token:
-      description: Windmill API token — used to dispatch stock_data_fetcher and research_tool on absent/stale data
       type: string
-      default: "$var:u/admin/wm_token"
-    finnhub_key:
-      description: Finnhub API key — passed to stock_data_fetcher for peer comparisons
+      description: Windmill API token — used to dispatch stock_data_fetcher and
+        research_tool on absent/stale data
+      default: $var:u/admin/wm_token
+    xai_key:
       type: string
-      default: "$var:u/admin/finnhub_key"
-    perplexity_key:
-      description: Perplexity Search API key — passed to research_tool
-      type: string
-      default: "$var:u/admin/perplexity_key"
-    serper_key:
-      description: Serper.dev API key — passed to research_tool
-      type: string
-      default: "$var:u/admin/serper_key"
-    tavily_key:
-      description: Tavily Search API key — passed to research_tool
-      type: string
-      default: "$var:u/admin/tavily_key"
-    exa_key:
-      description: Exa neural search API key — passed to research_tool
-      type: string
-      default: "$var:u/admin/exa_key"
-    brave_key:
-      description: Brave Search API key — passed to research_tool
-      type: string
-      default: "$var:u/admin/brave_key"
+      description: xAI / Grok API key
+      default: $var:u/admin/xai_key
   required:
     - ticker
     - portfolio_db

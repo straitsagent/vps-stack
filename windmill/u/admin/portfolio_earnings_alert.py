@@ -18,10 +18,6 @@ class postgresql(TypedDict):
 
 
 import os
-import logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
-log = logging.getLogger(__name__)
-
 WM_BASE_URL = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
 WM_WORKSPACE = "admins"
 
@@ -107,16 +103,16 @@ def main(
                     upcoming_events.append({"ticker": ticker, "date": d})
                 alerts.append(f"• {ticker} earnings: {d}{eps_str}")
         except Exception as e:
-            log.info(f"[EarningsAlert] {ticker}: {e}")
+            print(f"[EarningsAlert] {ticker}: {e}")
 
     alerts_sent = 0
     if alerts:
         msg = "*Earnings Alert*\n\n" + "\n".join(alerts)
         _send_telegram(telegram_bot_token, telegram_owner_id, msg)
         alerts_sent = len(alerts)
-        log.info(f"[EarningsAlert] Sent {alerts_sent} alerts")
+        print(f"[EarningsAlert] Sent {alerts_sent} alerts")
     else:
-        log.info(f"[EarningsAlert] No upcoming earnings alerts for {tickers_checked} tickers")
+        print(f"[EarningsAlert] No upcoming earnings alerts for {tickers_checked} tickers")
 
     # Dispatch pre-earnings analysis for upcoming (no epsActual yet) events
     pre_dispatched = 0
@@ -126,9 +122,9 @@ def main(
         try:
             _dispatch_pre_analysis(ticker, earnings_date, portfolio_db, wm_token)
             pre_dispatched += 1
-            log.info(f"[EarningsAlert] Dispatched pre-analysis for {ticker} ({earnings_date})")
+            print(f"[EarningsAlert] Dispatched pre-analysis for {ticker} ({earnings_date})")
         except Exception as e:
-            log.info(f"[EarningsAlert] Pre-analysis dispatch failed for {ticker}: {e}")
+            print(f"[EarningsAlert] Pre-analysis dispatch failed for {ticker}: {e}")
 
     return {"alerts_sent": alerts_sent, "tickers_checked": tickers_checked,
             "pre_analysis_dispatched": pre_dispatched}

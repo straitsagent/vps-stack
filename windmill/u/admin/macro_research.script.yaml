@@ -1,21 +1,38 @@
-summary: 'Macro Research — comprehensive daily brief (Yahoo + FRED + Fed RSS + email + Telegram)'
+summary: Macro Research — comprehensive daily brief (Yahoo + FRED + Fed RSS +
+  email + Telegram)
 description: ''
 lock: '!inline u/admin/macro_research.script.lock'
+has_on_behalf_of: false
 kind: script
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   type: object
   properties:
-    fred_api_key:
-      type: string
-      description: ''
-      default: null
-      originalType: string
     deepseek_key:
       type: string
       description: ''
       default: null
       originalType: string
+    fred_api_key:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+    portfolio_db:
+      type: object
+      description: ''
+      default: {}
+      properties: {}
+    recipient_email:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+    smtp_resource:
+      type: object
+      description: ''
+      default: {}
+      properties: {}
     telegram_bot_token:
       type: string
       description: ''
@@ -26,21 +43,6 @@ schema:
       description: ''
       default: null
       originalType: string
-    smtp_resource:
-      type: object
-      description: ''
-      default: {}
-      properties: {}
-    recipient_email:
-      type: string
-      description: ''
-      default: null
-      originalType: string
-    portfolio_db:
-      type: object
-      description: ''
-      default: {}
-      properties: {}
     wm_token:
       type: string
       description: ''

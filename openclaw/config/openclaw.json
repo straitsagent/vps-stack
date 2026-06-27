@@ -17,7 +17,6 @@
   },
   gateway: {
     mode: "local",
-    bind: "loopback",
     reload: { mode: "off" },
   },
 }

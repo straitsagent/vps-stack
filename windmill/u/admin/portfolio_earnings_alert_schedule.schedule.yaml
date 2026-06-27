@@ -1,14 +1,13 @@
-schedule: '0 0 21 * * 1-5'
-timezone: Asia/Singapore
-enabled: true
-script_path: u/admin/portfolio_earnings_alert
-is_flow: false
-summary: 'Earnings Alert — 9 PM SGT Mon-Fri'
-permissioned_as: u/admin
-no_flow_overlap: true
 args:
-  portfolio_db: "$res:u/admin/portfolio_db"
-  finnhub_key: "$var:u/admin/finnhub_key"
-  telegram_bot_token: "$var:u/admin/telegram_bot_token"
-  telegram_owner_id: "$var:u/admin/telegram_owner_id"
-  wm_token: "$var:u/admin/wm_token"
+  finnhub_key: $var:u/admin/finnhub_key
+  portfolio_db: $res:u/admin/portfolio_db
+  telegram_bot_token: $var:u/admin/telegram_bot_token
+cron_version: v2
+enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: false
+schedule: 0 0 21 * * 1-5
+script_path: u/admin/portfolio_earnings_alert
+timezone: Asia/Singapore
+ws_error_handler_muted: false

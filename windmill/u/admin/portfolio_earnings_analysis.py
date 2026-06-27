@@ -28,10 +28,6 @@ import requests
 
 # openai imported inline — keeps Windmill happy if package is slow to load
 from openai import OpenAI
-import logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
-log = logging.getLogger(__name__)
-
 
 
 class postgresql(TypedDict):
@@ -217,7 +213,7 @@ def _finnhub_earnings(ticker: str, finnhub_key: str, from_date: str, to_date: st
         resp = requests.get(url, timeout=10)
         return resp.json().get("earningsCalendar", [])
     except Exception as e:
-        log.error(f"[Finnhub] earnings fetch error: {e}")
+        print(f"[Finnhub] earnings fetch error: {e}")
         return []
 
 
@@ -247,7 +243,7 @@ def _yfinance_quarterly(ticker: str) -> str:
         header = "| Quarter | Revenue | Gross Profit | Net Income |\n|---|---|---|---|"
         return header + "\n" + "\n".join(rows)
     except Exception as e:
-        log.error(f"[yfinance] quarterly financials error: {e}")
+        print(f"[yfinance] quarterly financials error: {e}")
         return ""
 
 
@@ -262,7 +258,7 @@ def _edgar_fetch_text(url: str) -> Optional[str]:
         text = re.sub(r"\s+", " ", text).strip()
         return text[:8000] if len(text) > 100 else None
     except Exception as e:
-        log.error(f"[EDGAR] fetch error: {e}")
+        print(f"[EDGAR] fetch error: {e}")
         return None
 
 
@@ -277,7 +273,7 @@ def _edgar_latest_8k(ticker: str, days_back: int = 7) -> Optional[str]:
         resp = requests.get(url, headers={"User-Agent": "straitsagent@gmail.com"}, timeout=15)
         hits = resp.json().get("hits", {}).get("hits", [])
         if not hits:
-            log.info(f"[EDGAR] No 8-K for {ticker} in last {days_back} days")
+            print(f"[EDGAR] No 8-K for {ticker} in last {days_back} days")
             return None
 
         for hit in hits:
@@ -295,15 +291,15 @@ def _edgar_latest_8k(ticker: str, days_back: int = 7) -> Optional[str]:
             accession_nodash = accession_with_dashes.replace("-", "")
             exhibit_url = (f"https://www.sec.gov/Archives/edgar/data/{cik_int}/"
                            f"{accession_nodash}/{exhibit_filename}")
-            log.info(f"[EDGAR] Fetching {file_type} for {ticker} from {src.get('file_date','?')}: {exhibit_url}")
+            print(f"[EDGAR] Fetching {file_type} for {ticker} from {src.get('file_date','?')}: {exhibit_url}")
             text = _edgar_fetch_text(exhibit_url)
             if text:
                 return text
 
-        log.info(f"[EDGAR] Could not extract text from any 8-K hit for {ticker}")
+        print(f"[EDGAR] Could not extract text from any 8-K hit for {ticker}")
         return None
     except Exception as e:
-        log.error(f"[EDGAR] 8-K fetch error: {e}")
+        print(f"[EDGAR] 8-K fetch error: {e}")
         return None
 
 
@@ -331,7 +327,7 @@ def _exa_search(query: str, exa_key: str, num_results: int = 3, max_chars: int =
             parts.append(f"[{title}]({url})\n{text}")
         return "\n\n---\n\n".join(parts)
     except Exception as e:
-        log.error(f"[Exa] search error: {e}")
+        print(f"[Exa] search error: {e}")
         return ""
 
 
@@ -362,7 +358,7 @@ def _dispatch_and_wait_research(ticker: str, wm_token: str, timeout_s: int = 240
         )
         resp.raise_for_status()
         job_id = resp.text.strip().strip('"')
-        log.info(f"[Research] Dispatched research_tool for {ticker}, job {job_id} — polling...")
+        print(f"[Research] Dispatched research_tool for {ticker}, job {job_id} — polling...")
         for _ in range(timeout_s // 5):
             time.sleep(5)
             check = requests.get(
@@ -374,12 +370,12 @@ def _dispatch_and_wait_research(ticker: str, wm_token: str, timeout_s: int = 240
                 result = check.json()
                 if result.get("type") == "CompletedJob":
                     success = result.get("success", False)
-                    log.info(f"[Research] Job {job_id} complete — success={success}")
+                    print(f"[Research] Job {job_id} complete — success={success}")
                     return bool(success)
-        log.info(f"[Research] Timed out waiting for job {job_id}")
+        print(f"[Research] Timed out waiting for job {job_id}")
         return False
     except Exception as e:
-        log.error(f"[Research] Dispatch/poll error: {e}")
+        print(f"[Research] Dispatch/poll error: {e}")
         return False
 
 
@@ -428,7 +424,7 @@ def _extract_research_synopsis(content: str, max_chars: int = 600) -> str:
 def _get_seeded_overview(company: str, ticker: str, exa_key: str, xai_key: str) -> str:
     """When no research_reports entry exists, fetch a lightweight company overview via Exa + Grok.
     Returns a 150-word brief suitable for inclusion as context in the earnings analysis."""
-    log.info(f"[Seed] No prior research for {ticker} — generating overview via Exa+Grok")
+    print(f"[Seed] No prior research for {ticker} — generating overview via Exa+Grok")
     text = _exa_search(
         f"{ticker} {company} business overview revenue model competitive position",
         exa_key, num_results=2, max_chars=2000,
@@ -471,7 +467,7 @@ def _grok_synthesise(system_prompt: str, user_prompt: str, xai_key: str,
             "model": "grok-4.3",
         }
     except Exception as e:
-        log.error(f"[Grok] synthesis error: {e}")
+        print(f"[Grok] synthesis error: {e}")
         return {"text": f"[Synthesis unavailable: {e}]", "input_tokens": 0, "output_tokens": 0, "model": "grok-4.3"}
 
 
@@ -485,14 +481,14 @@ def _grok_brief(prompt: str, xai_key: str) -> str:
 
 def _send_telegram(bot_token: str, text: str, telegram_owner_id: str = ""):
     if not bot_token or bot_token.startswith("$"):
-        log.warning("[Telegram] no valid bot token — skipping")
+        print("[Telegram] no valid bot token — skipping")
         return
     url = f"https://api.telegram.org/bot{bot_token}/sendMessage"
     for chunk in [text[i:i+4000] for i in range(0, len(text), 4000)]:
         try:
             requests.post(url, json={"chat_id": telegram_owner_id, "text": chunk, "parse_mode": "Markdown"}, timeout=10)
         except Exception as e:
-            log.error(f"[Telegram] send error: {e}")
+            print(f"[Telegram] send error: {e}")
 
 
 # ── Email helper ───────────────────────────────────────────────────────────────
@@ -512,7 +508,7 @@ def _send_email(smtp_cfg: dict, subject: str, body: str, recipient_email: str = 
             s.login(smtp_cfg["username"], smtp_cfg["password"])
             s.send_message(msg)
     except Exception as e:
-        log.error(f"[Email] send error: {e}")
+        print(f"[Email] send error: {e}")
 
 
 # ── Pre-earnings flow ─────────────────────────────────────────────────────────
@@ -530,14 +526,14 @@ def _run_pre_earnings(ticker: str, portfolio_db: dict, finnhub_key: str,
 
     ctx = _get_portfolio_context(portfolio_db, ticker)
     company = ctx.get("company_name", ticker)
-    log.info(f"[PreEarnings] {ticker} ({company})")
+    print(f"[PreEarnings] {ticker} ({company})")
 
     sources_used = []
 
     # Research synopsis — use existing research_reports; if absent dispatch research_tool first
     research_synopsis = ""
     if not ctx.get("research_content") and wm_token:
-        log.info(f"[PreEarnings] No research found for {ticker} — dispatching standard research job...")
+        print(f"[PreEarnings] No research found for {ticker} — dispatching standard research job...")
         success = _dispatch_and_wait_research(ticker, wm_token)
         if success:
             ctx = _get_portfolio_context(portfolio_db, ticker)  # re-fetch after research completes
@@ -546,7 +542,7 @@ def _run_pre_earnings(ticker: str, portfolio_db: dict, finnhub_key: str,
         research_synopsis = _extract_research_synopsis(ctx["research_content"])
         sources_used.append(f"Research report ({ctx.get('research_date', '?')}, {ctx.get('research_depth', '?')} depth)")
     else:
-        log.info(f"[PreEarnings] Research dispatch failed or no token — using seeded overview")
+        print(f"[PreEarnings] Research dispatch failed or no token — using seeded overview")
         research_synopsis = _get_seeded_overview(company, ticker, exa_key, xai_key)
         sources_used.append("Seeded overview (research dispatch failed)")
 
@@ -570,12 +566,12 @@ def _run_pre_earnings(ticker: str, portfolio_db: dict, finnhub_key: str,
         sources_used.append("yfinance quarterly financials")
 
     # Prior quarter 8-K from EDGAR (gives verbatim guidance from last earnings)
-    log.info(f"[PreEarnings] Fetching prior 8-K from EDGAR...")
+    print(f"[PreEarnings] Fetching prior 8-K from EDGAR...")
     prior_8k = _edgar_prior_8k(ticker)
     if prior_8k:
         sources_used.append("SEC EDGAR 8-K (prior quarter press release)")
     else:
-        log.info(f"[PreEarnings] No prior 8-K found (may be HK/non-US ticker)")
+        print(f"[PreEarnings] No prior 8-K found (may be HK/non-US ticker)")
 
     # Prior earnings call transcript via Exa
     q_label = f"Q earnings {date.today().year}"
@@ -644,7 +640,7 @@ Write a pre-earnings briefing:
 5. Valuation context: current multiples vs. historical norms for this sector
 6. Top 3 specific items to watch when results are released"""
 
-    log.info(f"[PreEarnings] Synthesising with Grok-4.3...")
+    print(f"[PreEarnings] Synthesising with Grok-4.3...")
     grok_result = _grok_synthesise(PRE_SYSTEM_PROMPT, user_prompt, xai_key)
 
     return {
@@ -686,14 +682,14 @@ def _run_post_earnings(ticker: str, portfolio_db: dict, finnhub_key: str,
 
     ctx = _get_portfolio_context(portfolio_db, ticker)
     company = ctx.get("company_name", ticker)
-    log.info(f"[PostEarnings] {ticker} ({company})")
+    print(f"[PostEarnings] {ticker} ({company})")
 
     sources_used = []
 
     # Research synopsis — use existing research_reports; if absent dispatch research_tool first
     research_synopsis = ""
     if not ctx.get("research_content") and wm_token:
-        log.info(f"[PostEarnings] No research found for {ticker} — dispatching standard research job...")
+        print(f"[PostEarnings] No research found for {ticker} — dispatching standard research job...")
         success = _dispatch_and_wait_research(ticker, wm_token)
         if success:
             ctx = _get_portfolio_context(portfolio_db, ticker)
@@ -702,7 +698,7 @@ def _run_post_earnings(ticker: str, portfolio_db: dict, finnhub_key: str,
         research_synopsis = _extract_research_synopsis(ctx["research_content"])
         sources_used.append(f"Research report ({ctx.get('research_date', '?')}, {ctx.get('research_depth', '?')} depth)")
     else:
-        log.info(f"[PostEarnings] Research dispatch failed or no token — using seeded overview")
+        print(f"[PostEarnings] Research dispatch failed or no token — using seeded overview")
         research_synopsis = _get_seeded_overview(company, ticker, exa_key, xai_key)
         sources_used.append("Seeded overview (research dispatch failed)")
 
@@ -727,12 +723,12 @@ def _run_post_earnings(ticker: str, portfolio_db: dict, finnhub_key: str,
         surprise_pct = ((eps_actual - eps_estimate) / abs(eps_estimate)) * 100
 
     # Current 8-K press release from EDGAR (within last 5 days)
-    log.info(f"[PostEarnings] Fetching latest 8-K from EDGAR...")
+    print(f"[PostEarnings] Fetching latest 8-K from EDGAR...")
     press_release = _edgar_latest_8k(ticker, days_back=5)
     if press_release:
         sources_used.append("SEC EDGAR 8-K (earnings press release)")
     else:
-        log.info(f"[PostEarnings] No recent 8-K — may be HK/non-US ticker, trying Exa fallback")
+        print(f"[PostEarnings] No recent 8-K — may be HK/non-US ticker, trying Exa fallback")
         pr_query = f"{company} earnings results press release {date.today().year} \"results announcement\""
         press_release = _exa_search(pr_query, exa_key, num_results=1, max_chars=5000)
         if press_release:
@@ -801,7 +797,7 @@ Provide:
 5. Thesis impact: does this reinforce or challenge the investment thesis?
 6. Recommendation: [Buy / Accumulate / Hold / Reduce / Sell] + 2-3 sentence rationale"""
 
-    log.info(f"[PostEarnings] Synthesising with Grok-4.3...")
+    print(f"[PostEarnings] Synthesising with Grok-4.3...")
     grok_result = _grok_synthesise(POST_SYSTEM_PROMPT, user_prompt, xai_key)
     recommendation = _parse_recommendation(grok_result["text"])
 
@@ -931,7 +927,7 @@ def main(
     file_path = os.path.join(RESEARCH_DIR, filename)
     with open(file_path, "w") as f:
         f.write(full_doc)
-    log.info(f"[EarningsAnalysis] Written to {file_path}")
+    print(f"[EarningsAnalysis] Written to {file_path}")
 
     # Save to DB (store full_doc so the file and DB are in sync)
     _save_analysis(
@@ -962,7 +958,7 @@ def main(
     _send_email(gmail_smtp, f"{ticker} {label} — {today}", full_doc, recipient_email)
 
     elapsed = time.time() - t0
-    log.info(f"[EarningsAnalysis] Done in {elapsed:.1f}s — {in_tok+out_tok:,} tokens, USD {cost_usd:.4f}")
+    print(f"[EarningsAnalysis] Done in {elapsed:.1f}s — {in_tok+out_tok:,} tokens, USD {cost_usd:.4f}")
     return {
         "ticker": ticker,
         "analysis_type": analysis_type,

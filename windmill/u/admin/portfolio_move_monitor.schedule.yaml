@@ -1,14 +1,15 @@
-schedule: '0 0 9-16 * * 1-5'
-timezone: Asia/Singapore
-enabled: true
-script_path: u/admin/portfolio_move_monitor
-is_flow: false
-summary: 'Move Monitor — HK session (hourly, Mon–Fri 9AM–4PM SGT)'
-permissioned_as: u/admin
-no_flow_overlap: true
 args:
-  portfolio_db: "$res:u/admin/portfolio_db"
-  gmail_smtp: "$res:u/admin/gmail_smtp"
-  recipient_email: "$var:u/admin/recipient_email"
-  telegram_bot_token: "$var:u/admin/telegram_bot_token"
-  telegram_owner_id: "$var:u/admin/telegram_owner_id"
+  gmail_smtp: $res:u/admin/gmail_smtp
+  portfolio_db: $res:u/admin/portfolio_db
+  recipient_email: $var:u/admin/recipient_email
+  telegram_bot_token: $var:u/admin/telegram_bot_token
+  telegram_owner_id: $var:u/admin/telegram_owner_id
+cron_version: v2
+enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: false
+schedule: 0 0 9-16 * * 1-5
+script_path: u/admin/portfolio_move_monitor
+timezone: Asia/Singapore
+ws_error_handler_muted: false

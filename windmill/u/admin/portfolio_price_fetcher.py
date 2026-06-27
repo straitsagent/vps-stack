@@ -4,10 +4,6 @@
 
 import yfinance as yf
 import psycopg2
-import logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
-log = logging.getLogger(__name__)
-
 
 
 def main(portfolio_db: dict):
@@ -22,7 +18,7 @@ def main(portfolio_db: dict):
 
     cur.execute("SELECT ticker, currency FROM portfolio_positions ORDER BY ticker")
     positions = cur.fetchall()
-    log.info(f"Loaded {len(positions)} positions")
+    print(f"Loaded {len(positions)} positions")
 
     # Fetch USDHKD rate (stored as USD→HKD: 1 USD = rate HKD)
     try:
@@ -39,11 +35,11 @@ def main(portfolio_db: dict):
                 (fx_date, fx_rate),
             )
             status = "inserted" if cur.rowcount == 1 else "already in DB"
-            log.info(f"FX    USDHKD=X    {fx_date}  {fx_rate}  ({status})")
+            print(f"FX    USDHKD=X    {fx_date}  {fx_rate}  ({status})")
         else:
-            log.warning("FX    USDHKD=X    empty response — skipping")
+            print("FX    USDHKD=X    empty response — skipping")
     except Exception as e:
-        log.error(f"FX    USDHKD=X    FAILED: {e}")
+        print(f"FX    USDHKD=X    FAILED: {e}")
 
     # Fetch EOD prices — insert last 2 rows per ticker for immediate P&L on first run
     inserted = 0
@@ -54,7 +50,7 @@ def main(portfolio_db: dict):
         try:
             hist = yf.Ticker(ticker).history(period="5d", auto_adjust=True)
             if hist.empty:
-                log.error(f"FAIL  {ticker:<10}  empty response")
+                print(f"FAIL  {ticker:<10}  empty response")
                 failed.append(ticker)
                 continue
 
@@ -76,19 +72,19 @@ def main(portfolio_db: dict):
 
             latest_date  = hist.index[-1].date()
             latest_price = round(float(hist["Close"].iloc[-1]), 4)
-            log.info(f"OK    {ticker:<10}  {latest_date}  {latest_price}  {currency}")
+            print(f"OK    {ticker:<10}  {latest_date}  {latest_price}  {currency}")
 
         except Exception as e:
-            log.error(f"FAIL  {ticker:<10}  {e}")
+            print(f"FAIL  {ticker:<10}  {e}")
             failed.append(ticker)
 
     conn.commit()
     cur.close()
     conn.close()
 
-    log.warning(f"\nDone: {inserted} rows inserted, {skipped} already in DB, {len(failed)} tickers failed")
+    print(f"\nDone: {inserted} rows inserted, {skipped} already in DB, {len(failed)} tickers failed")
     if failed:
-        log.info(f"Failed: {', '.join(failed)}")
+        print(f"Failed: {', '.join(failed)}")
 
     if len(failed) > len(positions) // 2:
         raise RuntimeError(f"More than half of tickers failed: {', '.join(failed)}")

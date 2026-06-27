@@ -3,6 +3,7 @@ description: Scores ~31 positions across 5 factors and 4 scenarios with red-flag
   checks, completeness penalty, delta tracking, and two Grok-4.3 synthesis
   calls.
 lock: '!inline u/admin/portfolio_rationalization.script.lock'
+has_on_behalf_of: false
 kind: script
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema

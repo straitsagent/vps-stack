@@ -1,6 +1,7 @@
 summary: ''
 description: ''
 lock: '!inline u/admin/macro_daily_push.script.lock'
+has_on_behalf_of: false
 kind: script
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema

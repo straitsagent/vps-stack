@@ -265,6 +265,8 @@ services:
     container_name: openclaw
     env_file: [ openclaw.env ]
     networks: [ openclaw_egress, openclaw_db ]
+    ports:
+      - "127.0.0.1:18789:18789"
     user: "1000:1000"
     read_only: true
     tmpfs:

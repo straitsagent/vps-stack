@@ -7,6 +7,7 @@ description: >
   as live fetches in research_tool). Caller is responsible for looping across
   multiple tickers (portfolio, watchlist, index).
 lock: '!inline u/admin/stock_data_fetcher.script.lock'
+has_on_behalf_of: false
 kind: script
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema

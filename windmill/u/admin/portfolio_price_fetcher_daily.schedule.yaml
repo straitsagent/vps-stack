@@ -1,10 +1,11 @@
-schedule: '0 45 5 * * *'
-timezone: Asia/Singapore
-enabled: true
-script_path: u/admin/portfolio_price_fetcher
-is_flow: false
-summary: 'Portfolio Price Fetcher — AM (5:45 AM SGT, daily)'
-permissioned_as: u/admin
-no_flow_overlap: true
 args:
-  portfolio_db: "$res:u/admin/portfolio_db"
+  portfolio_db: $res:u/admin/portfolio_db
+cron_version: v2
+enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: false
+schedule: 0 45 5 * * *
+script_path: u/admin/portfolio_price_fetcher
+timezone: Asia/Singapore
+ws_error_handler_muted: false

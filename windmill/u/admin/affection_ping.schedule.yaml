@@ -1,15 +1,16 @@
-schedule: '0 0 8-22 * * *'
-timezone: Asia/Singapore
-enabled: true
-script_path: u/admin/affection_ping
-is_flow: false
-summary: 'Affection Ping — hourly 8AM–10PM SGT, sticker + caption to group'
-permissioned_as: u/admin
-no_flow_overlap: true
 args:
-  telegram_bot_token: "$var:u/admin/affection_bot_token"
-  telegram_owner_id: "$var:u/admin/telegram_owner_id"
-  affection_group_id: "$var:u/admin/affection_group_id"
-  affection_sticker_packs: "$var:u/admin/affection_sticker_packs"
-  deepseek_key: "$var:u/admin/deepseek_key"
-  portfolio_db: "$res:u/admin/portfolio_db"
+  affection_group_id: $var:u/admin/affection_group_id
+  affection_sticker_packs: $var:u/admin/affection_sticker_packs
+  deepseek_key: $var:u/admin/deepseek_key
+  portfolio_db: $res:u/admin/portfolio_db
+  telegram_bot_token: $var:u/admin/affection_bot_token
+  telegram_owner_id: $var:u/admin/telegram_owner_id
+cron_version: v2
+enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: true
+schedule: 0 0 8-22 * * *
+script_path: u/admin/affection_ping
+timezone: Asia/Singapore
+ws_error_handler_muted: false

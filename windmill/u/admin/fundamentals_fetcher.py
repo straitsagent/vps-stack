@@ -17,10 +17,6 @@ import psycopg2
 import yfinance as yf
 from datetime import date
 from typing import Optional
-import logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
-log = logging.getLogger(__name__)
-
 
 # ETFs have no PE, analyst target, or sector — suppress null warnings for these
 ETF_TICKERS = {"XLV", "SPY", "QQQ", "IWM", "VTI"}
@@ -52,8 +48,8 @@ def main(
     us_tickers = [t for t, c in positions if not t.endswith('.HK')]
     hk_tickers = [t for t, c in positions if t.endswith('.HK')]
 
-    log.info(f"[F1] Starting fundamentals fetch: {len(us_tickers)} US tickers, {len(hk_tickers)} HK tickers")
-    log.info(f"[F1] as_of_date: {as_of}  |  USDHKD: {usdhkd}")
+    print(f"[F1] Starting fundamentals fetch: {len(us_tickers)} US tickers, {len(hk_tickers)} HK tickers")
+    print(f"[F1] as_of_date: {as_of}  |  USDHKD: {usdhkd}")
 
     # ── US tickers ────────────────────────────────────────────────────────────
 
@@ -80,9 +76,9 @@ def main(
                 "roe":                _safe_pct(m.get("roeTTM")),
                 "roic":               _safe_pct(m.get("roiTTM")),
             }
-            log.info(f"[Finnhub] {ticker}: PE={finnhub_data[ticker]['pe_ratio']} ROE={finnhub_data[ticker]['roe']}")
+            print(f"[Finnhub] {ticker}: PE={finnhub_data[ticker]['pe_ratio']} ROE={finnhub_data[ticker]['roe']}")
         except Exception as e:
-            log.warning(f"[Finnhub] WARNING: {ticker} failed — {e}")
+            print(f"[Finnhub] WARNING: {ticker} failed — {e}")
             finnhub_data[ticker] = {}
         time.sleep(0.5)
 
@@ -107,9 +103,9 @@ def main(
                 "debt_equity":        _safe_float(info.get("debtToEquity")),
                 "roe":                _safe_float(info.get("returnOnEquity")),
             }
-            log.info(f"[yfinance-US] {ticker}: target=${target_usd} sector={yf_us_data[ticker]['sector']}")
+            print(f"[yfinance-US] {ticker}: target=${target_usd} sector={yf_us_data[ticker]['sector']}")
         except Exception as e:
-            log.warning(f"[yfinance-US] WARNING: {ticker} failed — {e}")
+            print(f"[yfinance-US] WARNING: {ticker} failed — {e}")
             yf_us_data[ticker] = {}
         time.sleep(2)
 
@@ -163,7 +159,7 @@ def main(
         etf_expected_nulls = 4  # PE, analyst_target, sector, revenue_growth often null for ETFs
         threshold = (null_count > 8) if not is_etf else (null_count > 8 + etf_expected_nulls)
         if threshold:
-            log.warning(f"[WARN] {ticker}: {null_count} null fields — may be a data gap")
+            print(f"[WARN] {ticker}: {null_count} null fields — may be a data gap")
             failed.append(ticker)
 
         results.append(row)
@@ -200,10 +196,10 @@ def main(
                     "sector", "country", "roe"
                 ]}),
             }
-            log.info(f"[yfinance-HK] {ticker}: PE={row['pe_ratio']} target_usd=${target_usd} sector={row['sector']}")
+            print(f"[yfinance-HK] {ticker}: PE={row['pe_ratio']} target_usd=${target_usd} sector={row['sector']}")
             results.append(row)
         except Exception as e:
-            log.error(f"[yfinance-HK] ERROR: {ticker} failed — {e}")
+            print(f"[yfinance-HK] ERROR: {ticker} failed — {e}")
             failed.append(ticker)
         time.sleep(2)
 
@@ -270,8 +266,8 @@ def main(
         "usdhkd_rate":     usdhkd,
     }
 
-    log.warning(f"\n[F1] Run complete — {upserted} upserted, {len(failed)} warnings, {elapsed}s")
-    log.info(f"  Coverage: {coverage}")
+    print(f"\n[F1] Run complete — {upserted} upserted, {len(failed)} warnings, {elapsed}s")
+    print(f"  Coverage: {coverage}")
 
     if len(failed) > len(results) * 0.5:
         raise RuntimeError(f"F1 fundamentals_fetcher: >50% tickers failed. Failed: {failed}")

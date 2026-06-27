@@ -1,43 +1,43 @@
 summary: Workflow 1.2 — YouTube Channel Monitor
 description: >
   Hourly: scans YouTube RSS feeds, retrieves transcripts via RapidAPI,
-  summarises with Deepseek deepseek-chat, emails batch digest. Skips if no
-  new videos. Feed list from u/admin/youtube_feeds variable. Deduplication
-  via Windmill state (rolling window of last 1000 video IDs).
+  summarises with Deepseek deepseek-chat, emails batch digest. Skips if no new
+  videos. Feed list from u/admin/youtube_feeds variable. Deduplication via
+  Windmill state (rolling window of last 1000 video IDs).
 lock: '!inline u/admin/youtube_monitor.script.lock'
+has_on_behalf_of: false
 kind: script
-language: python3
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   type: object
   properties:
-    smtp_resource:
-      type: object
-      description: Gmail SMTP credentials
-      default: "$res:u/admin/gmail_smtp"
-      format: resource-smtp
     deepseek_key:
       type: string
       description: Deepseek API key
-      default: "$var:u/admin/deepseek_key"
+      default: $var:u/admin/deepseek_key
       format: password
       originalType: string
     rapidapi_key:
       type: string
       description: RapidAPI key for YouTube transcript
-      default: "$var:u/admin/rapidapi_key"
-      format: password
-      originalType: string
-    youtube_feeds:
-      type: string
-      description: JSON array of {channel_name, rss_url} objects
-      default: "$var:u/admin/youtube_feeds"
+      default: $var:u/admin/rapidapi_key
       format: password
       originalType: string
     recipient_email:
       type: string
       description: Email address to send the YouTube digest to
-      default: "$var:u/admin/recipient_email"
+      default: $var:u/admin/recipient_email
+      originalType: string
+    smtp_resource:
+      type: object
+      description: Gmail SMTP credentials
+      default: $res:u/admin/gmail_smtp
+      format: resource-smtp
+    youtube_feeds:
+      type: string
+      description: JSON array of {channel_name, rss_url} objects
+      default: $var:u/admin/youtube_feeds
+      format: password
       originalType: string
   required:
     - smtp_resource

@@ -1,12 +1,12 @@
-# 0 0 10 * * 7 UTC == Sunday 18:00 SGT. Stored in UTC to match the live server schedule.
-schedule: '0 0 10 * * 7'
-timezone: UTC
-enabled: true
-script_path: u/admin/fundamentals_fetcher
-is_flow: false
-summary: 'Fundamentals Fetcher — Weekly Sunday 6 PM SGT'
-permissioned_as: u/admin
-no_flow_overlap: true
 args:
-  portfolio_db: "$res:u/admin/portfolio_db"
-  finnhub_key: "$var:u/admin/finnhub_key"
+  finnhub_key: $var:u/admin/finnhub_key
+  portfolio_db: $res:u/admin/portfolio_db
+cron_version: v2
+enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: false
+schedule: 0 0 10 * * 7
+script_path: u/admin/fundamentals_fetcher
+timezone: UTC
+ws_error_handler_muted: false

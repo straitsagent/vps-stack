@@ -1,0 +1,33 @@
+summary: Replacement Screener — auto-suggest top-3 replacements for EXIT/TRIM positions
+description: Runs after candidate_prescreener on Saturdays. Reads EXIT/TRIM
+  positions from portfolio_scores, selects top-3 shortlisted candidates as
+  replacements, identifies overweight candidates, renders Section E, and
+  appends it to the rationalization .md report.
+lock: '!inline u/admin/replacement_screener.script.lock'
+kind: script
+schema:
+  $schema: https://json-schema.org/draft/2020-12/schema
+  type: object
+  properties:
+    md_path:
+      type: string
+      description: Path to the rationalization .md file to append Section E to
+    portfolio_db:
+      type: object
+      description: PostgreSQL portfolio database
+      default: $res:u/admin/portfolio_db
+    telegram_bot_token:
+      type: string
+      description: Telegram bot token for re-dispatching formatter
+      default: $var:u/admin/telegram_bot_token
+    telegram_owner_id:
+      type: string
+      description: Owner Telegram chat ID
+      default: $var:u/admin/telegram_owner_id
+    wm_token:
+      type: string
+      description: Windmill API token
+      default: $var:u/admin/wm_token
+  required:
+    - md_path
+    - portfolio_db

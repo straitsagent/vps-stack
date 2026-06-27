@@ -9,10 +9,6 @@ from email.mime.text import MIMEText
 from datetime import datetime, timedelta, timezone
 from typing import TypedDict
 from openai import OpenAI
-import logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
-log = logging.getLogger(__name__)
-
 
 
 class smtp(TypedDict):
@@ -47,8 +43,8 @@ def get_body(msg):
                         part.get_content_charset() or "utf-8", errors="replace"
                     )
                     break
-                except Exception as _exc:
-                    log.warning("Suppressed: %s", _exc)
+                except Exception:
+                    pass
             elif ct == "text/html" and not body:
                 try:
                     html = part.get_payload(decode=True).decode(
@@ -56,15 +52,15 @@ def get_body(msg):
                     )
                     body = re.sub(r"<[^>]+>", " ", html)
                     body = re.sub(r"\s+", " ", body).strip()
-                except Exception as _exc:
-                    log.warning("Suppressed: %s", _exc)
+                except Exception:
+                    pass
     else:
         try:
             body = msg.get_payload(decode=True).decode(
                 msg.get_content_charset() or "utf-8", errors="replace"
             )
-        except Exception as _exc:
-            log.warning("Suppressed: %s", _exc)
+        except Exception:
+            pass
     return body[:2000]
 
 

@@ -1,17 +1,18 @@
-schedule: '0 0 7 * * 1-5'
-timezone: Asia/Singapore
-enabled: true
-script_path: u/admin/macro_research
-is_flow: false
-summary: 'Macro Research — 7:00 AM SGT (Mon–Fri)'
-permissioned_as: u/admin
-no_flow_overlap: true
 args:
-  fred_api_key: "$var:u/admin/fred_key"
-  deepseek_key: "$var:u/admin/deepseek_key"
-  telegram_bot_token: "$var:u/admin/telegram_bot_token"
-  telegram_owner_id: "$var:u/admin/telegram_owner_id"
-  smtp_resource: "$res:u/admin/gmail_smtp"
-  recipient_email: "$var:u/admin/recipient_email"
-  portfolio_db: "$res:u/admin/portfolio_db"
-  wm_token: "$var:u/admin/wm_token"
+  deepseek_key: $var:u/admin/deepseek_key
+  fred_api_key: $var:u/admin/fred_key
+  portfolio_db: $res:u/admin/portfolio_db
+  recipient_email: $var:u/admin/recipient_email
+  smtp_resource: $res:u/admin/gmail_smtp
+  telegram_bot_token: $var:u/admin/telegram_bot_token
+  telegram_owner_id: $var:u/admin/telegram_owner_id
+  wm_token: $var:u/admin/wm_token
+cron_version: v2
+enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: true
+schedule: 0 0 7 * * 1-5
+script_path: u/admin/macro_research
+timezone: Asia/Singapore
+ws_error_handler_muted: false

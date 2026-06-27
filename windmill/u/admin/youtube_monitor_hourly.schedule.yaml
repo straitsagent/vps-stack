@@ -1,16 +1,19 @@
-schedule: '0 0 */6 * * *'
-timezone: Asia/Singapore
-enabled: true
-script_path: u/admin/youtube_monitor
-is_flow: false
-summary: 'YouTube Channel Monitor — 6-hourly (SGT)'
-permissioned_as: straitsagent@gmail.com
-no_flow_overlap: false
 args:
-  deepseek_key: "$var:u/admin/deepseek_key"
-  rapidapi_key: "$var:u/admin/rapidapi_key"
-  smtp_resource: "$res:u/admin/gmail_smtp"
-  youtube_feeds: "$var:u/admin/youtube_feeds"
-  recipient_email: "$var:u/admin/recipient_email"
-  telegram_bot_token: "$var:u/admin/telegram_bot_token"
-  telegram_owner_id: "$var:u/admin/telegram_owner_id"
+  deepseek_key: $var:u/admin/deepseek_key
+  portfolio_db: $res:u/admin/portfolio_db
+  rapidapi_key: $var:u/admin/rapidapi_key
+  recipient_email: $var:u/admin/recipient_email
+  smtp_resource: $res:u/admin/gmail_smtp
+  telegram_bot_token: $var:u/admin/telegram_bot_token
+  telegram_owner_id: $var:u/admin/telegram_owner_id
+  wm_token: $var:u/admin/wm_token
+  youtube_feeds: $var:u/admin/youtube_feeds
+cron_version: v2
+enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: false
+schedule: 0 0 */6 * * *
+script_path: u/admin/youtube_monitor
+timezone: Asia/Singapore
+ws_error_handler_muted: false

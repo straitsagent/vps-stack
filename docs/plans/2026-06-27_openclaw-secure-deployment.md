@@ -240,8 +240,11 @@ docker inspect openclaw --format '{{range $k,$v := .NetworkSettings.Networks}}{{
 docker inspect openclaw --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' | grep -q 'openclaw_db'
 ! docker inspect openclaw --format '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}' | grep -q 'root_default'
 
-# O3: no host port published
-test -z "$(docker inspect openclaw --format '{{json .NetworkSettings.Ports}}' | tr -d '{}null')"
+# O3: host port published on loopback only (Control UI access)
+test "$(docker port openclaw 18789 | sed 's/.* -> //')" = "127.0.0.1:18789"
+test "$(docker port openclaw 18789 | sed 's/.* -> //' | grep -c '127.0.0.1')" = "1"
+# Also assert no port is published on 0.0.0.0 (not externally accessible)
+! docker port openclaw 18789 | grep -q '0.0.0.0'
 
 # O4: openclaw_db network is internal (no egress)
 test "$(docker network inspect root_openclaw_db --format '{{.Internal}}')" = "true"
@@ -298,8 +301,13 @@ docker exec $OC sh -c 'psql "$OPENCLAW_RO_DSN" -tAc "INSERT INTO watchlist_ideas
   | grep -q "permission denied for table watchlist_ideas" \
   && echo "  PASS: INSERT denied BY PRIVILEGE" || { echo "  FAIL: write not privilege-denied"; fail=1; }
 
-echo "=== 6. No published host port ==="
-docker port $OC 2>/dev/null | grep -q . && { echo "FAIL: port published"; fail=1; } || echo "PASS: no inbound port"
+echo "=== 6. Port published on loopback only (Control UI) ==="
+test "$(docker port $OC 18789 | sed 's/.* -> //')" = "127.0.0.1:18789" \
+  && echo "PASS: port on loopback-only" \
+  || { echo "FAIL: port not on loopback-only"; fail=1; }
+! docker port $OC 18789 | grep -q '0.0.0.0' \
+  && echo "PASS: not exposed externally" \
+  || { echo "FAIL: port exposed externally"; fail=1; }
 
 echo "=== 7. Functional: reads a research file via Telegram (manual) ==="
 echo "  Send owner-only Telegram msg: 'summarize today's macro research'; confirm it cites a /research/macro file."

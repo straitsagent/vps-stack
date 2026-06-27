@@ -1,1 +1,7 @@
-summary: 'Portfolio Thesis Seeder — LLM-drafts a thesis per holding from its research_reports (Grok-4.3). Write-if-absent (never clobbers owner edits).'
+summary: Portfolio Thesis Seeder — LLM-drafts a thesis per holding from its
+  research_reports (Grok-4.3). Write-if-absent (never clobbers owner edits).
+description: ''
+lock: '!inline u/admin/portfolio_thesis_seeder.script.lock'
+has_on_behalf_of: false
+kind: script
+schema: null

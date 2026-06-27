@@ -22,10 +22,6 @@ import yfinance as yf
 import psycopg2
 from bs4 import BeautifulSoup
 from openai import OpenAI
-import logging
-logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
-log = logging.getLogger(__name__)
-
 
 
 class postgresql(TypedDict):
@@ -139,7 +135,7 @@ def _fetch_yfinance_financials(ticker):
                     blocks.append("### Income Statement (Annual, 3yr)\n"
                                   + _format_fin_table(ais.loc[rows, ais.columns[:3]]))
         except Exception as e:
-            log.info(f"[yfinance-fin] income stmt: {e}")
+            print(f"[yfinance-fin] income stmt: {e}")
 
         # Annual balance sheet
         try:
@@ -155,7 +151,7 @@ def _fetch_yfinance_financials(ticker):
                     blocks.append("### Balance Sheet (Annual, 3yr)\n"
                                   + _format_fin_table(bs.loc[rows, bs.columns[:3]]))
         except Exception as e:
-            log.info(f"[yfinance-fin] balance sheet: {e}")
+            print(f"[yfinance-fin] balance sheet: {e}")
 
         # Annual cash flow
         try:
@@ -167,7 +163,7 @@ def _fetch_yfinance_financials(ticker):
                     blocks.append("### Cash Flow (Annual, 3yr)\n"
                                   + _format_fin_table(cf.loc[rows, cf.columns[:3]]))
         except Exception as e:
-            log.info(f"[yfinance-fin] cash flow: {e}")
+            print(f"[yfinance-fin] cash flow: {e}")
 
         # Financial Health Metrics (computed from annual data)
         try:
@@ -187,8 +183,8 @@ def _fetch_yfinance_financials(ticker):
                             v = df.iloc[df.index.get_loc(row), i]
                             f = float(v)
                             return None if f != f else f
-                    except Exception as _exc:
-                        log.warning("Suppressed: %s", _exc)
+                    except Exception:
+                        pass
                     return None
 
                 def _fh(v, pct=False, x=False):
@@ -301,15 +297,15 @@ def _fetch_yfinance_financials(ticker):
 
                 blocks.append("\n".join(hrows))
         except Exception as e:
-            log.info(f"[yfinance-fin] health metrics: {e}")
+            print(f"[yfinance-fin] health metrics: {e}")
 
         if blocks:
-            log.info(f"[yfinance-fin] {len(blocks)} block(s) for {ticker}")
+            print(f"[yfinance-fin] {len(blocks)} block(s) for {ticker}")
             return f"## Financial Statements: {ticker}\n\n" + "\n\n".join(blocks), data
-        log.info(f"[yfinance-fin] no data for {ticker}")
+        print(f"[yfinance-fin] no data for {ticker}")
         return "", {}
     except Exception as e:
-        log.warning(f"[yfinance-fin] WARNING: {e}")
+        print(f"[yfinance-fin] WARNING: {e}")
         return "", {}
 
 
@@ -347,10 +343,10 @@ def _fetch_company_overview(ticker):
             "website":     web,
             "description": full_desc[:1000] if full_desc else None,
         }
-        log.info(f"[overview] profile fetched for {ticker}")
+        print(f"[overview] profile fetched for {ticker}")
         return "\n".join(lines), data
     except Exception as e:
-        log.warning(f"[overview] WARNING: {e}")
+        print(f"[overview] WARNING: {e}")
         return "", {}
 
 
@@ -434,10 +430,10 @@ def _fetch_yfinance_valuation(ticker):
             "analyst_rec_mean": _fv(rec),
             "analyst_count":    int(n_a) if n_a else None,
         }
-        log.info(f"[valuation] fetched for {ticker}")
+        print(f"[valuation] fetched for {ticker}")
         return "\n".join(lines), data
     except Exception as e:
-        log.warning(f"[valuation] WARNING: {e}")
+        print(f"[valuation] WARNING: {e}")
         return "", {}
 
 
@@ -465,8 +461,8 @@ def _fetch_ownership(ticker):
                             institutional_pct = pct_f
                     except (TypeError, ValueError):
                         lines.append(f"**{row.iloc[1]}:** {pct_val}")
-        except Exception as _exc:
-            log.warning("Suppressed: %s", _exc)
+        except Exception:
+            pass
 
         try:
             ih = t.institutional_holders
@@ -490,7 +486,7 @@ def _fetch_ownership(ticker):
                         "reported_date": str(reported)[:10] if reported else None,
                     })
         except Exception as e:
-            log.info(f"[ownership] institutional holders: {e}")
+            print(f"[ownership] institutional holders: {e}")
 
         if len(lines) <= 2:
             return "", {}
@@ -499,10 +495,10 @@ def _fetch_ownership(ticker):
             "institutional_pct": institutional_pct,
             "holders":           holders,
         }
-        log.info(f"[ownership] fetched for {ticker}")
+        print(f"[ownership] fetched for {ticker}")
         return "\n".join(lines), data
     except Exception as e:
-        log.warning(f"[ownership] WARNING: {e}")
+        print(f"[ownership] WARNING: {e}")
         return "", {}
 
 
@@ -538,10 +534,10 @@ def _fetch_insider_transactions(ticker):
                 "value_usd":        int(float(value)) if v_ok else None,
             })
         data = {"transactions": transactions}
-        log.info(f"[insiders] fetched for {ticker}")
+        print(f"[insiders] fetched for {ticker}")
         return "\n".join(lines), data
     except Exception as e:
-        log.warning(f"[insiders] WARNING: {e}")
+        print(f"[insiders] WARNING: {e}")
         return "", {}
 
 
@@ -576,7 +572,7 @@ def _fetch_earnings_calendar(ticker):
                 if parts:
                     lines.append(" | ".join(parts))
         except Exception as e:
-            log.info(f"[calendar] next earnings: {e}")
+            print(f"[calendar] next earnings: {e}")
 
         # Recent EPS surprises
         try:
@@ -602,8 +598,8 @@ def _fetch_earnings_calendar(ticker):
                                     if e_f != 0:
                                         surp_pct = (a_f - e_f) / abs(e_f) * 100
                                         surprise = f"{surp_pct:+.1f}%"
-                                except Exception as _exc:
-                                    log.warning("Suppressed: %s", _exc)
+                                except Exception:
+                                    pass
                             e_fmt = f"${float(est):.2f}" if est is not None else "N/A"
                             a_fmt = f"${float(act):.2f}" if act is not None else "N/A"
                             lines.append(f"| {period} | {e_fmt} | {a_fmt} | {surprise} |")
@@ -614,7 +610,7 @@ def _fetch_earnings_calendar(ticker):
                                 "surprise_pct": surp_pct,
                             })
         except Exception as e:
-            log.info(f"[calendar] earnings dates: {e}")
+            print(f"[calendar] earnings dates: {e}")
 
         if len(lines) <= 2:
             return "", {}
@@ -625,10 +621,10 @@ def _fetch_earnings_calendar(ticker):
             "revenue_high":  int(float(rev_hi)) if rev_hi else None,
             "surprises":     surprises,
         }
-        log.info(f"[calendar] fetched for {ticker}")
+        print(f"[calendar] fetched for {ticker}")
         return "\n".join(lines), data
     except Exception as e:
-        log.warning(f"[calendar] WARNING: {e}")
+        print(f"[calendar] WARNING: {e}")
         return "", {}
 
 
@@ -686,7 +682,7 @@ def _fetch_mdna_synopsis(ticker, deepseek_key):
                     source_label = f"{form} ({filing_dates[i]})"
                     time.sleep(0.3)
                 except Exception as e:
-                    log.info(f"[mdna] fetch {form}: {e}")
+                    print(f"[mdna] fetch {form}: {e}")
                 break
             if extract:
                 break
@@ -709,10 +705,10 @@ def _fetch_mdna_synopsis(ticker, deepseek_key):
             temperature=0.3,
         )
         synopsis = resp.choices[0].message.content.strip()
-        log.info(f"[mdna] synopsis generated for {ticker} from {source_label}")
+        print(f"[mdna] synopsis generated for {ticker} from {source_label}")
         return f"## MD&A Synopsis ({source_label})\n\n{synopsis}", {}
     except Exception as e:
-        log.warning(f"[mdna] WARNING: {e}")
+        print(f"[mdna] WARNING: {e}")
         return "", {}
 
 
@@ -741,10 +737,10 @@ def _fetch_management(ticker):
                 "total_pay_usd": int(pay) if pay else None,
             })
         data = {"officers": officers_data}
-        log.info(f"[management] {len(officers)} officers for {ticker}")
+        print(f"[management] {len(officers)} officers for {ticker}")
         return "\n".join(lines), data
     except Exception as e:
-        log.warning(f"[management] WARNING: {e}")
+        print(f"[management] WARNING: {e}")
         return "", {}
 
 
@@ -761,7 +757,7 @@ def _fetch_board_of_directors(ticker):
         ticker_map = {v["ticker"]: str(v["cik_str"]) for v in tickers_resp.json().values()}
         cik = ticker_map.get(ticker.upper())
         if not cik:
-            log.info(f"[board] CIK not found for {ticker}")
+            print(f"[board] CIK not found for {ticker}")
             return "", {}
 
         cik_padded = cik.zfill(10)
@@ -829,19 +825,19 @@ def _fetch_board_of_directors(ticker):
                         directors_found += 1
 
                 if directors_found == 0:
-                    log.info(f"[board] no directors parsed for {ticker}")
+                    print(f"[board] no directors parsed for {ticker}")
                     return "", {}
                 time.sleep(0.3)
-                log.info(f"[board] {directors_found} directors for {ticker}")
+                print(f"[board] {directors_found} directors for {ticker}")
                 return "\n".join(lines), {"directors": directors_data}
             except Exception as e:
-                log.error(f"[board] parse error: {e}")
+                print(f"[board] parse error: {e}")
                 return "", {}
 
-        log.info(f"[board] no DEF 14A found for {ticker}")
+        print(f"[board] no DEF 14A found for {ticker}")
         return "", {}
     except Exception as e:
-        log.warning(f"[board] WARNING: {e}")
+        print(f"[board] WARNING: {e}")
         return "", {}
 
 
@@ -899,13 +895,13 @@ def _fetch_competitors(ticker, finnhub_key):
                 })
                 time.sleep(0.2)
             except Exception as ep:
-                log.info(f"[competitors] peer {peer}: {ep}")
+                print(f"[competitors] peer {peer}: {ep}")
 
         data = {"peers": peers_data}
-        log.info(f"[competitors] {len(peers)} peers for {ticker}")
+        print(f"[competitors] {len(peers)} peers for {ticker}")
         return "\n".join(lines), data
     except Exception as e:
-        log.warning(f"[competitors] WARNING: {e}")
+        print(f"[competitors] WARNING: {e}")
         return "", {}
 
 
@@ -950,7 +946,7 @@ def _fetch_article_text(url, max_chars=2000):
 def _fetch_edgar_filings(ticker, forms=None):
     """Fetch recent SEC EDGAR filings for US tickers. forms=None → all (10-K, 10-Q, 8-K); forms=['8-K'] → 8-K only."""
     if not ticker or ticker.endswith(".HK"):
-        log.warning(f"[EDGAR] Skipped — {'HK ticker' if ticker else 'no ticker'}")
+        print(f"[EDGAR] Skipped — {'HK ticker' if ticker else 'no ticker'}")
         return []
     try:
         # Resolve ticker → CIK
@@ -962,7 +958,7 @@ def _fetch_edgar_filings(ticker, forms=None):
         ticker_map = {v["ticker"]: str(v["cik_str"]) for v in tickers_resp.json().values()}
         cik = ticker_map.get(ticker.upper())
         if not cik:
-            log.info(f"[EDGAR] Ticker {ticker} not found in EDGAR ticker map")
+            print(f"[EDGAR] Ticker {ticker} not found in EDGAR ticker map")
             return []
 
         cik_padded = cik.zfill(10)
@@ -1032,15 +1028,15 @@ def _fetch_edgar_filings(ticker, forms=None):
                     "content_level": "full_text",
                 })
                 counts[form] = counts.get(form, 0) + 1
-                log.info(f"[EDGAR] {form} ({filing_date}) — {len(extract)} chars")
+                print(f"[EDGAR] {form} ({filing_date}) — {len(extract)} chars")
                 time.sleep(0.5)  # Respect SEC rate limits
             except Exception as e:
-                log.warning(f"[EDGAR] WARNING: failed to fetch {form} ({filing_dates[i]}) — {e}")
+                print(f"[EDGAR] WARNING: failed to fetch {form} ({filing_dates[i]}) — {e}")
 
-        log.info(f"[EDGAR] {len(results)} filing(s) retrieved for {ticker} (CIK {cik})")
+        print(f"[EDGAR] {len(results)} filing(s) retrieved for {ticker} (CIK {cik})")
         return results
     except Exception as e:
-        log.warning(f"[EDGAR] WARNING: {e}")
+        print(f"[EDGAR] WARNING: {e}")
         return []
 
 
@@ -1062,7 +1058,7 @@ def _fetch_google_news(query, max_items=5):
             })
         return items
     except Exception as ex:
-        log.warning(f"[GoogleNews] WARNING: '{query[:40]}' — {ex}")
+        print(f"[GoogleNews] WARNING: '{query[:40]}' — {ex}")
         return []
 
 
@@ -1107,10 +1103,10 @@ def _fetch_perplexity_batch(queries_batch, perplexity_key, max_results=5):
                         "snippet": r.get("snippet", ""),
                         "date": r.get("date") or r.get("last_updated", ""),
                     })
-        log.info(f"[Perplexity] {len(items)} results for {len(queries_batch)} queries")
+        print(f"[Perplexity] {len(items)} results for {len(queries_batch)} queries")
         return items
     except Exception as e:
-        log.warning(f"[Perplexity] WARNING: {e}")
+        print(f"[Perplexity] WARNING: {e}")
         return []
 
 
@@ -1142,7 +1138,7 @@ def _fetch_exa_query(query, exa_key, max_results=5):
             })
         return items
     except Exception as e:
-        log.warning(f"[Exa] WARNING: '{query[:40]}' — {e}")
+        print(f"[Exa] WARNING: '{query[:40]}' — {e}")
         return []
 
 
@@ -1166,9 +1162,9 @@ def _fetch_serper_news(queries, serper_key, max_results=10):
                 "snippet": r.get("snippet", ""),
                 "date": r.get("date", ""),
             })
-        log.info(f"[Serper] {len(items)} news results")
+        print(f"[Serper] {len(items)} news results")
     except Exception as e:
-        log.warning(f"[Serper] WARNING: {e}")
+        print(f"[Serper] WARNING: {e}")
     return items
 
 
@@ -1185,8 +1181,8 @@ def _parse_brave_relative_date(rel_str: str) -> str:
             return (date.today() - timedelta(weeks=n)).isoformat()
         elif unit == 'mo':
             return (date.today() - timedelta(days=n * 30)).isoformat()
-    except Exception as _exc:
-        log.warning("Suppressed: %s", _exc)
+    except Exception:
+        pass
     return ""
 
 
@@ -1219,9 +1215,9 @@ def _fetch_brave_news(queries, brave_key, max_results=10):
                 "snippet": snippet,
                 "date": pub_date,
             })
-        log.info(f"[Brave] {len(items)} news results")
+        print(f"[Brave] {len(items)} news results")
     except Exception as e:
-        log.warning(f"[Brave] WARNING: {e}")
+        print(f"[Brave] WARNING: {e}")
     return items
 
 
@@ -1252,9 +1248,9 @@ def _fetch_tavily(queries, tavily_key, max_results=10):
                 "snippet": content[:400] if content else "",
                 "date": "freshness:month",  # Tavily returns no dates — sentinel per plan
             })
-        log.info(f"[Tavily] {len(items)} results")
+        print(f"[Tavily] {len(items)} results")
     except Exception as e:
-        log.warning(f"[Tavily] WARNING: {e}")
+        print(f"[Tavily] WARNING: {e}")
     return items
 
 
@@ -1297,10 +1293,10 @@ def _fetch_fred_data(fred_key):
                     "date": date_val,
                     "content_level": "full_text",
                 })
-                log.info(f"[FRED] {series_id}: {val} ({date_val})")
+                print(f"[FRED] {series_id}: {val} ({date_val})")
         except Exception as e:
-            log.warning(f"[FRED] WARNING: {series_id} — {e}")
-    log.info(f"[FRED] {len(items)} series retrieved")
+            print(f"[FRED] WARNING: {series_id} — {e}")
+    print(f"[FRED] {len(items)} series retrieved")
     return items
 
 
@@ -1342,10 +1338,10 @@ def _iterative_gap_analysis(sources, question, research_type, deepseek_key):
         if m:
             data = json.loads(m.group())
             gaps = data.get("gaps", [])
-            log.info(f"[gap analysis] Found {len(gaps)} gaps: {[g.get('description','?') for g in gaps]}")
+            print(f"[gap analysis] Found {len(gaps)} gaps: {[g.get('description','?') for g in gaps]}")
             return gaps[:3]
     except Exception as e:
-        log.warning(f"[gap analysis] WARNING: {e}")
+        print(f"[gap analysis] WARNING: {e}")
     return []
 
 
@@ -1639,10 +1635,10 @@ def _read_structured_stock_data(ticker, portfolio_db):
                 sections["comp"] = stale_note + "\n".join(comp_lines)
 
         conn.close()
-        log.info(f"[read_structured] {ticker}: staleness={staleness}, sections={list(sections.keys())}")
+        print(f"[read_structured] {ticker}: staleness={staleness}, sections={list(sections.keys())}")
         return sections, staleness
     except Exception as e:
-        log.warning(f"[read_structured] WARNING: {e}")
+        print(f"[read_structured] WARNING: {e}")
         return {}, "absent"
 
 
@@ -1659,7 +1655,7 @@ def _dispatch_stock_fetcher(ticker, portfolio_db, finnhub_key, wm_token, timeout
         resp = requests.post(url, headers=headers, json=payload, timeout=15)
         resp.raise_for_status()
         job_id = resp.text.strip().strip('"')
-        log.info(f"[fetcher] dispatched job_id={job_id} for {ticker}")
+        print(f"[fetcher] dispatched job_id={job_id} for {ticker}")
         poll_url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/completed/get/{job_id}"
         for _ in range(timeout_s // 5):
             time.sleep(5)
@@ -1669,14 +1665,14 @@ def _dispatch_stock_fetcher(ticker, portfolio_db, finnhub_key, wm_token, timeout
                     job = check.json()
                     if job.get("type") == "CompletedJob":
                         success = bool(job.get("success", False))
-                        log.info(f"[fetcher] job {job_id} completed, success={success}")
+                        print(f"[fetcher] job {job_id} completed, success={success}")
                         return success
-            except Exception as _exc:
-                log.warning("Suppressed: %s", _exc)
-        log.info(f"[fetcher] timeout waiting for job {job_id}")
+            except Exception:
+                pass
+        print(f"[fetcher] timeout waiting for job {job_id}")
         return False
     except Exception as e:
-        log.error(f"[fetcher] dispatch error: {e}")
+        print(f"[fetcher] dispatch error: {e}")
         return False
 
 
@@ -1734,10 +1730,10 @@ def _build_db_context(ticker, portfolio_db):
                 lines.append(f"- Market cap: ${float(mktcap)/1e9:.1f}B")
             lines.append(f"- Sector: {sector or 'N/A'} | Country: {country or 'N/A'}")
 
-        log.info(f"[DB] {len(price_rows)} price rows, fundamentals {'found' if fund_row else 'not found'}")
+        print(f"[DB] {len(price_rows)} price rows, fundamentals {'found' if fund_row else 'not found'}")
         return "\n".join(lines)
     except Exception as e:
-        log.warning(f"[DB] WARNING: context fetch failed — {e}")
+        print(f"[DB] WARNING: context fetch failed — {e}")
         return ""
 
 
@@ -1789,7 +1785,7 @@ def _send_research_email(question, research_type, depth, ticker, full_markdown,
         s.starttls()
         s.login(gmail_smtp["username"], gmail_smtp["password"])
         s.sendmail(gmail_smtp["username"], recipient_email, msg.as_string())
-    log.info(f"[Email] Sent to {recipient_email}")
+    print(f"[Email] Sent to {recipient_email}")
 
 
 def _synthesise_with_fallback(messages, xai_key, deepseek_key, reasoning_effort, max_tokens):
@@ -1808,7 +1804,7 @@ def _synthesise_with_fallback(messages, xai_key, deepseek_key, reasoning_effort,
             "output_tokens": resp.usage.completion_tokens or 0,
         }
     except Exception as e:
-        log.error(f"[Grok] ERROR: {e} — falling back to Deepseek")
+        print(f"[Grok] ERROR: {e} — falling back to Deepseek")
     try:
         ds = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com")
         resp = ds.chat.completions.create(
@@ -1821,7 +1817,7 @@ def _synthesise_with_fallback(messages, xai_key, deepseek_key, reasoning_effort,
             "output_tokens": resp.usage.completion_tokens or 0,
         }
     except Exception as e:
-        log.error(f"[Deepseek fallback] ERROR: {e}")
+        print(f"[Deepseek fallback] ERROR: {e}")
     return {
         "text": "*Synthesis failed — both Grok and Deepseek unavailable.*",
         "synthesiser_model": "error",
@@ -1856,7 +1852,7 @@ def main(
     is_stock = (research_type == "stock" and ticker)
     is_us_ticker = is_stock and not ticker.endswith(".HK")
 
-    log.info(f"[Start] question='{question[:60]}', type={research_type}, depth={depth}, ticker={ticker or 'none'}")
+    print(f"[Start] question='{question[:60]}', type={research_type}, depth={depth}, ticker={ticker or 'none'}")
 
     # ── Step 1: Query decomposition (Deepseek) ────────────────────────────────
     queries = [question]
@@ -1894,13 +1890,13 @@ def main(
                         parsed = json.loads(m.group())
                         if isinstance(parsed, list) and parsed:
                             queries = [str(q) for q in parsed[:n_queries]]
-                    except Exception as _exc:
-                        log.warning("Suppressed: %s", _exc)
-            log.info(f"[Decomposition] {len(queries)} queries generated")
+                    except Exception:
+                        pass
+            print(f"[Decomposition] {len(queries)} queries generated")
         except Exception as e:
-            log.warning(f"[Decomposition] WARNING: Deepseek failed — {e}. Using question as query.")
+            print(f"[Decomposition] WARNING: Deepseek failed — {e}. Using question as query.")
     else:
-        log.info("[Decomposition] No deepseek_key — using question directly")
+        print("[Decomposition] No deepseek_key — using question directly")
 
     # ── Step 2: Multi-source search ───────────────────────────────────────────
     all_results = []
@@ -1935,9 +1931,9 @@ def main(
                             "snippet": a.get("summary", "")[:300],
                             "date": str(a.get("datetime", "")),
                         })
-                log.info(f"[Finnhub] {sum(1 for r in all_results if r['source']=='finnhub')} articles")
+                print(f"[Finnhub] {sum(1 for r in all_results if r['source']=='finnhub')} articles")
             except Exception as e:
-                log.warning(f"[Finnhub] WARNING: {e}")
+                print(f"[Finnhub] WARNING: {e}")
 
         # Seeking Alpha RSS
         try:
@@ -1951,9 +1947,9 @@ def main(
                     "snippet": snippet,
                     "date": e.get("published", ""),
                 })
-            log.info(f"[SeekingAlpha] {sum(1 for r in all_results if r['source']=='seeking_alpha')} articles")
+            print(f"[SeekingAlpha] {sum(1 for r in all_results if r['source']=='seeking_alpha')} articles")
         except Exception as e:
-            log.warning(f"[SeekingAlpha] WARNING: {e}")
+            print(f"[SeekingAlpha] WARNING: {e}")
 
         # yfinance news
         try:
@@ -1970,16 +1966,16 @@ def main(
                         "snippet": "",
                         "date": "",
                     })
-            log.info(f"[yfinance-news] {sum(1 for r in all_results if r['source']=='yfinance')} articles")
+            print(f"[yfinance-news] {sum(1 for r in all_results if r['source']=='yfinance')} articles")
         except Exception as e:
-            log.warning(f"[yfinance-news] WARNING: {e}")
+            print(f"[yfinance-news] WARNING: {e}")
         time.sleep(0.3)
 
     # 2a: Google News RSS
     for q in queries:
         all_results.extend(_fetch_google_news(q, max_items=5))
         time.sleep(0.2)
-    log.info(f"[GoogleNews] {sum(1 for r in all_results if r['source']=='google_news')} articles total")
+    print(f"[GoogleNews] {sum(1 for r in all_results if r['source']=='google_news')} articles total")
 
     # 2c: Perplexity Search API
     perplexity_calls_n = 0
@@ -2017,7 +2013,7 @@ def main(
             all_results.extend(_fetch_exa_query(q, exa_key, max_results=5))
             exa_queries_n += 1
             time.sleep(0.3)
-        log.info(f"[Exa] {sum(1 for r in all_results if r['source']=='exa')} articles total")
+        print(f"[Exa] {sum(1 for r in all_results if r['source']=='exa')} articles total")
 
     # 2f: SEC EDGAR — standard (8-K only) + deep (all) for US tickers
     edgar_results = []
@@ -2038,7 +2034,7 @@ def main(
         if item.get("title"):
             deduped.append(item)
     deduped.sort(key=lambda x: source_priority.get(x["source"], 99))
-    log.info(f"[Aggregate] {len(all_results)} raw → {len(deduped)} deduped results")
+    print(f"[Aggregate] {len(all_results)} raw → {len(deduped)} deduped results")
 
     # ── Step 3b: Full article text fetch — standard + deep ────────────────────
     full_text_count = snippet_count = skip_count = 0
@@ -2058,7 +2054,7 @@ def main(
                 item.setdefault("content_level", "snippet")
                 snippet_count += 1
             time.sleep(0.15)
-        log.warning(f"[ArticleFetch] {full_text_count} full text, {snippet_count} snippet, {skip_count} skipped")
+        print(f"[ArticleFetch] {full_text_count} full text, {snippet_count} snippet, {skip_count} skipped")
     else:
         for item in deduped:
             item.setdefault("content_level", "snippet")
@@ -2070,7 +2066,7 @@ def main(
         for gap in gaps:
             source_type = gap.get("source_type", "news")
             gap_query = gap.get("query", "")
-            log.info(f"[Round 2] fetching for gap: '{gap.get('description','?')}' — source_type={source_type}")
+            print(f"[Round 2] fetching for gap: '{gap.get('description','?')}' — source_type={source_type}")
             round2_batch = []
             if source_type == "news":
                 if perplexity_key:
@@ -2104,7 +2100,7 @@ def main(
                                     "date": str(a.get("datetime", "")),
                                 })
                     except Exception as e:
-                        log.warning(f"[Round 2 market_data] WARNING: {e}")
+                        print(f"[Round 2 market_data] WARNING: {e}")
                 elif is_stock:
                     try:
                         raw_news = yf.Ticker(ticker).news or []
@@ -2114,7 +2110,7 @@ def main(
                             if headline:
                                 round2_batch.append({"source": "yfinance", "title": headline, "url": url, "snippet": "", "date": ""})
                     except Exception as e:
-                        log.warning(f"[Round 2 yfinance] WARNING: {e}")
+                        print(f"[Round 2 yfinance] WARNING: {e}")
             # Deduplicate Round 2 against seen_urls and append
             for item in round2_batch:
                 url = item.get("url", "").strip()
@@ -2133,7 +2129,7 @@ def main(
                     deduped.append(item)
                     gap_round2_count += 1
         if gap_round2_count > 0:
-            log.info(f"[Round 2] {gap_round2_count} new sources added from gap analysis")
+            print(f"[Round 2] {gap_round2_count} new sources added from gap analysis")
             deduped.sort(key=lambda x: source_priority.get(x["source"], 99))
 
     # ── Step 4: DB context + comprehensive stock fundamentals (stock type only) ─
@@ -2145,13 +2141,13 @@ def main(
     if is_stock and portfolio_db:
         sections, staleness = _read_structured_stock_data(ticker, portfolio_db)
         if staleness in ("absent", "stale") and wm_token:
-            log.info(f"[Step 4] Data {staleness} for {ticker} — dispatching stock_data_fetcher")
+            print(f"[Step 4] Data {staleness} for {ticker} — dispatching stock_data_fetcher")
             ok = _dispatch_stock_fetcher(ticker, portfolio_db, finnhub_key, wm_token)
             if ok:
                 sections, staleness = _read_structured_stock_data(ticker, portfolio_db)
-                log.info(f"[Step 4] Fetcher completed — re-read: staleness={staleness}")
+                print(f"[Step 4] Fetcher completed — re-read: staleness={staleness}")
             else:
-                log.info(f"[Step 4] Fetcher failed — falling back to live fetch")
+                print(f"[Step 4] Fetcher failed — falling back to live fetch")
 
     if is_stock and sections:
         # DB data available (fresh read, or fetcher succeeded)
@@ -2165,7 +2161,7 @@ def main(
         comp_context     = sections.get("comp", "")
     elif is_stock:
         # Live-fetch fallback: no portfolio_db, OR fetcher timed out with empty sections
-        log.info(f"[Step 4] Live-fetching all 8 data functions for {ticker}")
+        print(f"[Step 4] Live-fetching all 8 data functions for {ticker}")
         overview_context, _ = _fetch_company_overview(ticker)
         fin_context,      _ = _fetch_yfinance_financials(ticker)
         val_context,      _ = _fetch_yfinance_valuation(ticker)
@@ -2270,7 +2266,7 @@ def main(
     synthesiser_model = _synth["synthesiser_model"]
     grok_input_tokens = _synth["input_tokens"]
     grok_output_tokens = _synth["output_tokens"]
-    log.info(f"[Synthesis] model={synthesiser_model}, {grok_input_tokens} in + {grok_output_tokens} out tokens, {len(synthesis)} chars")
+    print(f"[Synthesis] model={synthesiser_model}, {grok_input_tokens} in + {grok_output_tokens} out tokens, {len(synthesis)} chars")
 
     # ── Cost estimation ────────────────────────────────────────────────────────
     ds_cost = (ds_input_tokens * 0.27 + ds_output_tokens * 1.10) / 1_000_000
@@ -2406,9 +2402,9 @@ def main(
         with open(file_path, "w") as f:
             f.write(full_markdown)
         written_path = file_path
-        log.info(f"[Store] Written: {file_path}")
+        print(f"[Store] Written: {file_path}")
     except Exception as e:
-        log.warning(f"[Store] WARNING: file write failed — {e}")
+        print(f"[Store] WARNING: file write failed — {e}")
 
     report_id = None
     if portfolio_db:
@@ -2437,9 +2433,9 @@ def main(
                 report_id = cur.fetchone()[0]
             conn.commit()
             conn.close()
-            log.info(f"[DB] Saved research_reports id={report_id}")
+            print(f"[DB] Saved research_reports id={report_id}")
         except Exception as e:
-            log.warning(f"[DB] WARNING: save failed — {e}")
+            print(f"[DB] WARNING: save failed — {e}")
 
     try:
         index_path = "/research/index.json"
@@ -2459,9 +2455,9 @@ def main(
         })
         with open(index_path, "w") as f:
             json.dump(index, f, indent=2, default=str)
-        log.info(f"[Index] Updated — {len(index)} entries total")
+        print(f"[Index] Updated — {len(index)} entries total")
     except Exception as e:
-        log.warning(f"[Index] WARNING: {e}")
+        print(f"[Index] WARNING: {e}")
 
     # ── Step 7: Email delivery ─────────────────────────────────────────────────
     if gmail_smtp:
@@ -2471,9 +2467,9 @@ def main(
                 full_markdown, len(deduped), est_cost, gmail_smtp, recipient_email,
             )
         except Exception as e:
-            log.warning(f"[Email] WARNING: send failed — {e}")
+            print(f"[Email] WARNING: send failed — {e}")
     else:
-        log.warning("[Email] No gmail_smtp provided — skipping email delivery")
+        print("[Email] No gmail_smtp provided — skipping email delivery")
 
     return {
         "file_path": written_path,

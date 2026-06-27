@@ -1,1 +1,7 @@
-summary: 'Position Sentinel Telegram — formatter reading canonical .md, builds >=500-word self-contained Telegram message.'
+summary: Position Sentinel Telegram — formatter reading canonical .md, builds
+  >=500-word self-contained Telegram message.
+description: ''
+lock: '!inline u/admin/position_sentinel_telegram.script.lock'
+has_on_behalf_of: false
+kind: script
+schema: null

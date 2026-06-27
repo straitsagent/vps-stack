@@ -1,12 +1,15 @@
-summary: Morning News Digest — daily 6:30 AM SGT
-schedule: '0 30 6 * * *'
-timezone: Asia/Singapore
-script_path: u/admin/morning_news_digest
-is_flow: false
 args:
-  smtp_resource: $res:u/admin/gmail_smtp
   deepseek_key: $var:u/admin/deepseek_key
   recipient_email: $var:u/admin/recipient_email
+  smtp_resource: $res:u/admin/gmail_smtp
   telegram_bot_token: $var:u/admin/telegram_bot_token
   telegram_owner_id: $var:u/admin/telegram_owner_id
+cron_version: v2
 enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: false
+schedule: 0 30 6 * * *
+script_path: u/admin/morning_news_digest
+timezone: Asia/Singapore
+ws_error_handler_muted: false
