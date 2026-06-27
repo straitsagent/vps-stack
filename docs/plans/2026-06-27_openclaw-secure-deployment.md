@@ -321,9 +321,9 @@ write — not a schema constraint. Same pattern for `key_management`.
 - [x] Network: openclaw on `openclaw_egress`+`openclaw_db` only; `dind` and Windmill `db` unreachable (verify §2, oracle O2)
 - [x] Mounts: only `/research`+`/docs`+`/config` ro + scratch tmpfs + `/workspace`; no `/root` exposure; env carries only intended vars (verify §3/§3b)
 - [x] DB read-only + table-scoped, denials proven by privilege (verify §5)
-- [x] Telegram owner-only **partial**: messages from owner (ID 1370319633) work, @StraitsClawBot responding; second-sender rejection NOT yet confirmed (manual test)
+- [x] Telegram owner-only: messages from owner (ID 1370319633) work; second-sender rejection confirmed (non-owner messages ignored) — 2026-06-27 manual test passed
 - [x] Verify script output pasted, ends in `PASS` — 6/6 PASS
-- [ ] Phase 2 relocation written as a separate `docs/plans/` file (not executed here) (doc-deliverable, O2)
+- [x] Phase 2 relocation written as a separate `docs/plans/` file (not executed here) — `docs/plans/2026-06-28_phase2-relocation.md`
 
 ## Execution
 1. Set Status: executing, commit.

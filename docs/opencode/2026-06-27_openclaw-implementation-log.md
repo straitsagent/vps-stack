@@ -162,6 +162,8 @@ O5: Memory=1073741824, Pids=256       PASS
 
 ## Acceptance Gate status
 
-11/13 complete. Remaining:
-- Telegram second-sender rejection test (manual)
-- Phase 2 relocation plan (deferred doc-deliverable)
+13/13 complete.
+- Telegram second-sender rejection: confirmed 2026-06-27 — non-owner messages to @StraitsClawBot receive no response.
+- Phase 2 relocation plan: written as `docs/plans/2026-06-28_phase2-relocation.md` (draft, HIGH tier, not executed).
+
+Plan ready for reviewer to flip `Status: executing` → `done`.
