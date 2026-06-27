@@ -15,7 +15,10 @@ Plans live in `docs/plans/YYYY-MM-DD_<slug>.md`, git-tracked, copy `docs/plans/_
 2. Set front-matter `Status: executing`, commit (from `/root` only — see Git below).
 3. Work the `- [ ]` checklist top to bottom; tick each item only when its success criteria are met.
 4. Run the plan's `## Asserting Verification Script` — paste its full output; it must end in `PASS`.
-5. **Before flipping to `done`:** confirm every item in the plan's `## Acceptance Gate` is satisfied,
+5. Write a detailed implementation log at `docs/logs/YYYY-MM-DD_<slug>.md` documenting what was
+   built, key decisions, deviations, verification output, and remaining items. Commit before
+   flipping to done. See existing logs in `docs/logs/` for the required format.
+6. **Before flipping to `done`:** confirm every item in the plan's `## Acceptance Gate` is satisfied,
    including docs edits (ROADMAP, CLAUDE.md, WORKFLOW_ARCHITECTURE). A skipped docs item is a
    review-gate violation even if the code is correct. The reviewer (human or frontier) flips `done` —
    self-certification is never sufficient.
@@ -46,6 +49,11 @@ These are the highest-cost mistakes from prior sessions — see `CLAUDE.md` for 
 - **Hard Rule 17 — verify the rendered artifact, not `success: True`.** Email body via IMAP, Telegram via
   outbox table, agreement check across both.
 - **Hard Rule 22 — cross-model handoff contract.** Any plan must satisfy EXECUTOR_CONTRACT.md.
+- **Hard Rule 23 — always write the implementation log.** After verification passes and before
+  flipping a plan's status to `done`, write `docs/logs/YYYY-MM-DD_<slug>.md` documenting the
+  implementation. See existing logs in `docs/logs/` for the required format (Summary, What was
+  built, Key decisions, Deviation log, Verification output, Remaining items). Missing or
+  placeholder logs are a review-gate violation.
 - **Never edit a `# LOCKED ORACLE` block.** Reviewers diff the committed test file against the plan;
   any change ⇒ reject.
 
@@ -64,6 +72,7 @@ These are the highest-cost mistakes from prior sessions — see `CLAUDE.md` for 
 | `/root/docs/TESTING.md` | Artifact-driven testing philosophy + harness pattern. |
 | `/root/docs/WORKFLOW_ARCHITECTURE.md` | Per-workflow pseudocode specs. |
 | `/root/docs/OPERATIONS.md` | Operational runbooks (credential restore, schedule API push, Docker rebuild). |
+| `/root/docs/logs/` | Implementation logs for every executed plan — one per plan. |
 | `/root/docs/earnings_report_standards.md` | 6 mandatory report standards for `portfolio_earnings_analysis.py`. |
 | `/root/scripts/` | Hooks: `session-git-check.py` (SessionStart), `windmill-autopush.py` (PostToolUse). |
 
