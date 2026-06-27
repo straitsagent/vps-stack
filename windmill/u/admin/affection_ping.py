@@ -52,10 +52,11 @@ _CAPTION_MAX_CHARS = 1024  # Telegram sendSticker caption limit
 # This whitelist approach keeps variety high while ensuring every
 # sticker expresses warmth, cuteness, or affection.
 _AFFECTIONATE_EMOJIS = {
-    "🥰", "😍", "🥺", "😇", "😊", "☺️", "🤗", "😘", "😚", "❤️",
+    "🥰", "😍", "🥺", "😇", "😊", "☺️", "🤗", "😘", "😚", "❤️", "❤",
     "😋", "😌", "😄", "😁", "😃", "😆", "😎", "🙂", "😉", "😛",
     "😅", "😂", "🤣", "🥳", "💐", "🐼", "🐻", "🤤", "👀", "🤭",
-    "😌", "💓", "💖", "💕", "💗", "💘",
+    "💓", "💖", "💕", "💗", "💘", "💞", "💝", "💌", "💋", "🌹",
+    "🌸", "👋", "😴", "💤",
 }
 
 
