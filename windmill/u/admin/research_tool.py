@@ -578,7 +578,7 @@ def _fetch_earnings_calendar(ticker):
         try:
             ed_df = t.earnings_dates
             if ed_df is not None and not ed_df.empty:
-                actual_col = next((c for c in ed_df.columns if "actual" in str(c).lower()), None)
+                actual_col = next((c for c in ed_df.columns if "reported" in str(c).lower() or "actual" in str(c).lower()), None)
                 est_col    = next((c for c in ed_df.columns if "estimate" in str(c).lower()), None)
                 if actual_col:
                     recent = ed_df[ed_df[actual_col].notna()].head(4)

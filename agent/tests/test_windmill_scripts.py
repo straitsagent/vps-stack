@@ -1446,6 +1446,81 @@ def test_earnings_calendar_includes_next_earnings_date():
     )
 
 
+class _FakeEarningsDates:
+    """Fake earnings_dates DataFrame supporting columns, [].notna(), .head(), .iterrows()."""
+    def __init__(self, columns, rows):
+        self._columns = list(columns)
+        self._rows = list(rows)
+        self.empty = len(rows) == 0
+
+    @property
+    def columns(self):
+        return self._columns
+
+    def __getitem__(self, key):
+        if isinstance(key, str):
+            return _FakeEarningsColumn([r.get(key) for r in self._rows])
+        if isinstance(key, (list, tuple)):
+            filtered = [r for r, keep in zip(self._rows, key) if keep]
+            return _FakeEarningsDates(self._columns, filtered)
+        return self
+
+    def head(self, n):
+        return _FakeEarningsDates(self._columns, self._rows[:n])
+
+    def iterrows(self):
+        for r in self._rows:
+            yield r.get("_idx", ""), _FakeEarningsRow(r)
+
+
+class _FakeEarningsColumn:
+    def __init__(self, values):
+        self._values = values
+
+    def notna(self):
+        return [v is not None for v in self._values]
+
+
+class _FakeEarningsRow:
+    def __init__(self, data):
+        self._data = data
+
+    def get(self, key, default=None):
+        return self._data.get(key, default)
+
+
+def test_earnings_calendar_reported_eps_column():
+    if _rt is None:
+        pytest.skip("research_tool not loadable")
+
+    columns = ["EPS Estimate", "Reported EPS", "Surprise(%)"]
+    rows = [
+        {"_idx": "2026-07-30", "EPS Estimate": None, "Reported EPS": None, "Surprise(%)": None},
+        {"_idx": "2026-04-30", "EPS Estimate": 1.94, "Reported EPS": 2.01, "Surprise(%)": 3.46},
+        {"_idx": "2026-01-29", "EPS Estimate": 2.67, "Reported EPS": 2.84, "Surprise(%)": 6.25},
+        {"_idx": "2025-10-30", "EPS Estimate": 1.77, "Reported EPS": 1.85, "Surprise(%)": 4.52},
+    ]
+    fake_ed = _FakeEarningsDates(columns, rows)
+
+    with patch.object(_rt, "yf") as mock_yf:
+        mock_ticker = MagicMock()
+        mock_ticker.calendar = None
+        mock_ticker.earnings_dates = fake_ed
+        mock_yf.Ticker.return_value = mock_ticker
+
+        markdown, data = _rt._fetch_earnings_calendar("AAPL")
+
+    assert markdown is not None, "markdown should not be None"
+    assert "### Recent EPS Surprises" in markdown, (
+        "Missing earnings surprises table — 'Reported EPS' column detection likely failed"
+    )
+    assert "2026-04-30" in markdown, "Missing dated earnings row — data not rendered"
+    assert "$2.01" in markdown, "Missing EPS actual value — row data not rendered"
+    assert len(data.get("surprises", [])) >= 1, (
+        "surprises list empty — table rows not processed"
+    )
+
+
 # MD&A synopsis function
 
 def test_fetch_mdna_synopsis_function_exists():
