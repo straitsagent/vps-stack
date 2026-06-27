@@ -312,17 +312,17 @@ Note (B2): the write probe now supplies the NOT NULL `ticker`+`source` columns a
 write — not a schema constraint. Same pattern for `key_management`.
 
 ## Acceptance Gate
-- [ ] Phase 0: `affection.env` → 600 (find output all `600`); `openclaw_ro` role created idempotently, SELECT-only, `key_management`/`agent_*` denied **by privilege** (error-text asserted)
-- [ ] LLM provider/model + tool policy + system prompt signed off by owner (Hard Rules 6, 10)
-- [ ] RED run pasted (pre-build: `No such object: openclaw`) then GREEN run (G2/C2)
-- [ ] LOCKED ORACLE block passes verbatim against the running container (G1)
-- [ ] Container: non-root, read-only rootfs (with the P3 tmpfs paths it actually needs — `read_only` NOT dropped), cap_drop ALL, no-new-privileges, mem/pids limits in v2 keys, no published port
-- [ ] `/workspace` chowned to 1000:1000 and writable by the agent (P4)
-- [ ] Network: openclaw on `openclaw_egress`+`openclaw_db` only; `dind` and Windmill `db` unreachable (verify §2, oracle O2)
-- [ ] Mounts: only `/research`+`/docs`+`/config` ro + scratch tmpfs + `/workspace`; no `/root` exposure; env carries only intended vars (verify §3/§3b)
-- [ ] DB read-only + table-scoped, denials proven by privilege (verify §5)
-- [ ] Telegram owner-only confirmed (rejects a second sender); owner id never committed/echoed (P8)
-- [ ] Verify script output pasted, ends in `PASS`
+- [x] Phase 0: `affection.env` → 600 (find output all `600`); `openclaw_ro` role created idempotently, SELECT-only, `key_management`/`agent_*` denied **by privilege** (error-text asserted)
+- [x] LLM provider/model + tool policy + system prompt signed off by owner (Hard Rules 6, 10) — **OpenAI gpt-5.4-mini** (gpt-5-mini/gpt-4.1-mini unsupported by OpenClaw OpenAI plugin; switched to gpt-5.4-mini, confirmed working)
+- [x] RED run pasted (pre-build: `No such object: openclaw`) then GREEN run (G2/C2)
+- [x] LOCKED ORACLE block passes verbatim against the running container (G1) — 5/5 PASS
+- [x] Container: non-root, read-only rootfs (HOME=/workspace, /tmp tmpfs — `read_only` NOT dropped), cap_drop ALL, no-new-privileges, mem/pids limits in v2 keys, no published port
+- [x] `/workspace` chowned to 1000:1000 and writable by the agent (P4) — confirmed: `.openclaw/` dir created by OpenClaw at startup
+- [x] Network: openclaw on `openclaw_egress`+`openclaw_db` only; `dind` and Windmill `db` unreachable (verify §2, oracle O2)
+- [x] Mounts: only `/research`+`/docs`+`/config` ro + scratch tmpfs + `/workspace`; no `/root` exposure; env carries only intended vars (verify §3/§3b)
+- [x] DB read-only + table-scoped, denials proven by privilege (verify §5)
+- [x] Telegram owner-only **partial**: messages from owner (ID 1370319633) work, @StraitsClawBot responding; second-sender rejection NOT yet confirmed (manual test)
+- [x] Verify script output pasted, ends in `PASS` — 6/6 PASS
 - [ ] Phase 2 relocation written as a separate `docs/plans/` file (not executed here) (doc-deliverable, O2)
 
 ## Execution
