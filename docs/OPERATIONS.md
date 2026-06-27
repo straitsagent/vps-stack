@@ -45,6 +45,67 @@ cd /root/windmill && wmill sync pull --yes
 
 ---
 
+---
+
+## Google Drive Backup (Automated)
+
+A daily backup of the portfolio DB + uncommitted files runs via systemd timer at 04:00 SGT.
+
+**What's backed up:**
+- PostgreSQL dump of the `portfolio` database
+- `research/` output artifacts
+- Untracked Windmill files (new scripts, utils)
+- Credential files (`.env`, `shared/keys.md`, `shared/windmill-sa-key.json`)
+- rclone config
+
+**Location:** Google Drive → `vps-backup/YYYY-MM-DD/`
+**Retention:** 7 days (older folders auto-purged)
+
+### Manual run
+
+```bash
+sudo bash /root/scripts/drive-backup.sh
+```
+
+### Verify latest backup
+
+```bash
+rclone ls gdrive-oauth:vps-backup/$(date +%Y-%m-%d)/
+```
+
+### Restore from backup
+
+```bash
+# List available backups
+rclone lsf gdrive-oauth:vps-backup/
+
+# Download a specific date's backup
+TMP=$(mktemp -d)
+rclone copy "gdrive-oauth:vps-backup/YYYY-MM-DD/uncommitted.tar.gz" "$TMP/"
+rclone copy "gdrive-oauth:vps-backup/YYYY-MM-DD/portfolio_db.sql.gz" "$TMP/"
+# Extract files
+tar xzf "$TMP/uncommitted.tar.gz" -C /root
+# Restore DB
+gunzip < "$TMP/portfolio_db.sql.gz" | docker exec -i root-portfolio_postgres-1 psql -U portfolio_user -d portfolio
+```
+
+### Timer management
+
+```bash
+# Check next trigger
+systemctl list-timers --all | grep drive-backup
+
+# Disable temporarily
+systemctl stop drive-backup.timer
+systemctl disable drive-backup.timer
+
+# Re-enable
+systemctl enable drive-backup.timer
+systemctl start drive-backup.timer
+```
+
+---
+
 ## Docker: Rebuild Agent Container
 
 After agent code changes in `/root/agent/`:
