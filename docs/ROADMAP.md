@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-27 (OpenClaw sandboxed assistant — Part 6 — ✅ live + secrets consolidated to /root/secrets; Initiative C Phase 1, A, B live)
+**Last updated:** 2026-06-27 (OpenClaw + secrets consolidated; Initiatives A/B/C live; research_tool EPS fix + lxml lock; Testing Phase C ARTIFACT_MARKERS deployed — 21/21 artifact tests pass)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -76,7 +76,7 @@ Everything below is live and running unattended unless noted.
 
 | Component | Notes |
 |---|---|
-| Research Tool (`u/admin/research_tool`) | Manual trigger or Telegram. stock/strategy/macro/project × brief/standard/deep. Google News + Perplexity + Serper + Tavily + Brave + EDGAR + Exa + FRED. Grok-4.3 synthesis. Writes `research_reports`. |
+| Research Tool (`u/admin/research_tool`) | Manual trigger or Telegram. stock/strategy/macro/project × brief/standard/deep. Google News + Perplexity + Serper + Tavily + Brave + EDGAR + Exa + FRED. Grok-4.3 synthesis. Writes `research_reports`. **2026-06-27:** "Reported EPS" column-detection bug fixed (was silently dropping EPS Surprises table); `lxml==5.3.0` added to lock (same as `stock_data_fetcher`). |
 | Stock Data Fetcher (`u/admin/stock_data_fetcher`) | Single-ticker collector → 13 quant tables. Called on-demand by research_tool and candidate_eval; can be dispatched standalone. |
 
 ### System
