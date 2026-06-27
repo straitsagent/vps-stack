@@ -1,7 +1,7 @@
 ---
 Subject: Secure OpenClaw deployment (sandboxed assistant) + phased security reorg
 Date: 2026-06-27
-Status: approved
+Status: executing
 Planner model: claude-sonnet-4-6 (revised after opencode/Deepseek-V4 review 2026-06-27)
 Risk tier: HIGH (new internet-facing LLM agent with shell capability; touches live stack, DB roles, secrets)
 Hard Rules in force: [1, 5, 6, 7, 8, 10, 12, 20, 21]
@@ -133,6 +133,7 @@ stop and report instead.
   openclaw:
     build: ./openclaw
     restart: unless-stopped
+    container_name: openclaw
     env_file: [ openclaw.env ]          # LLM key + telegram token + OPENCLAW_RO_DSN ONLY
     networks: [ openclaw_egress, openclaw_db ]   # NOT default (avoids dind:2375), NOT agent_net
     user: "1000:1000"                    # non-root
@@ -243,7 +244,7 @@ docker inspect openclaw --format '{{range $k,$v := .NetworkSettings.Networks}}{{
 test -z "$(docker inspect openclaw --format '{{json .NetworkSettings.Ports}}' | tr -d '{}null')"
 
 # O4: openclaw_db network is internal (no egress)
-test "$(docker network inspect openclaw_db --format '{{.Internal}}')" = "true"
+test "$(docker network inspect root_openclaw_db --format '{{.Internal}}')" = "true"
 
 # O5: enforcing resource limits are set in the v2 keys (P6)
 test "$(docker inspect openclaw --format '{{.HostConfig.Memory}}')" = "1073741824"
