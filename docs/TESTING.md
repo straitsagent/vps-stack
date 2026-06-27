@@ -296,7 +296,8 @@ deliver:
 
 Per-script checklist: ASD written → seams factored → harness RED→GREEN → word_count ≥500 →
 `_agree` test ASD-derived → substring tests pruned → Tier 0 `ARTIFACT_MARKERS` entry added →
-live verify (Hard Rule 17).
+live verify (Hard Rule 17). **Status:** ASD, seams, harness, _agree, word-count, and Tier 0
+markers are ✅ for all 7. Substring pruning and live verify remain.
 
 | Script | ASD | Seams factored | Artifact harness | `_agree` ASD-derived | Word-count test | Tier 0 markers | Substring tests pruned | Live verified |
 |--------|-----|---------------|-----------------|---------------------|-----------------|----------------|----------------------|---------------|
@@ -309,6 +310,6 @@ live verify (Hard Rule 17).
 | `portfolio_analyst_alert` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
 | `youtube_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | ✅ |
 
-**Rollout order:** `macro_research` (partial seams) → `portfolio_email` → `portfolio_review` →
-`portfolio_rationalization` → `portfolio_move_monitor` → `portfolio_analyst_alert` → `youtube_monitor`.
-Each is one commit, per the same pattern as `health_check`.
+**Rollout order:** All 7 scripts completed 2026-06-23 in consecutive commits
+(`06a5a8a` through `2b9c8f2`). Tier 0 `ARTIFACT_MARKERS` entries added 2026-06-27.
+"Substring tests pruned" and "Live verified" items remain for a future session.
