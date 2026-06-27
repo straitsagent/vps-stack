@@ -231,6 +231,9 @@ services:
   portfolio_postgres:
     image: postgres:16
     restart: unless-stopped
+    networks:
+      - default
+      - openclaw_db
     volumes:
       - portfolio_db_data:/var/lib/postgresql/data
     ports:
@@ -256,6 +259,29 @@ services:
       - affection.env
     logging: *default-logging
 
+  openclaw:
+    build: ./openclaw
+    restart: unless-stopped
+    container_name: openclaw
+    env_file: [ openclaw.env ]
+    networks: [ openclaw_egress, openclaw_db ]
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+      - /home/node
+    cap_drop: [ ALL ]
+    security_opt: [ "no-new-privileges:true" ]
+    mem_limit: 1g
+    pids_limit: 256
+    volumes:
+      - /root/research:/research:ro
+      - /root/docs:/docs:ro
+      - ./openclaw/config:/config:ro
+      - openclaw_workspace:/workspace
+    logging: *default-logging
+
   caddy:
     image: ghcr.io/windmill-labs/caddy-l4:latest
     restart: unless-stopped
@@ -278,6 +304,9 @@ services:
 networks:
   agent_net:
     external: true
+  openclaw_egress: {}
+  openclaw_db:
+    internal: true
 
 volumes:
   db_data: null
@@ -289,3 +318,4 @@ volumes:
   caddy_data: null
   dind-data: null
   portfolio_db_data: null
+  openclaw_workspace: null
