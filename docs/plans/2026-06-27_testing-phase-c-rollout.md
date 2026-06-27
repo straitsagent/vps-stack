@@ -1,7 +1,7 @@
 ---
 Subject: Testing Phase C Rollout — ASD + artifact harness for 7 remaining scripts
 Date: 2026-06-27
-Status: draft
+Status: done
 Planner model: claude-opus-4-8
 Executor model: Claude Code | deepseek/opencode (one script per session)
 Risk tier: LOW per script (read + test additions only, no behavior change)
@@ -13,6 +13,19 @@ Files to read before coding: CLAUDE.md, docs/TESTING.md, docs/EXECUTOR_CONTRACT.
 # Plan: Testing Phase C Rollout
 
 ## Context
+
+> **⚠️ Historical note (2026-06-27):** The work this plan describes was **already completed
+> 2026-06-23 in 7 consecutive commits** — 4 days before this plan was written. All 7 scripts
+> already have ASDs (`_<SCRIPT>_ASD` in the test file), seam-factored `_send_email`/`_write_canonical_md`,
+> harness tests, `_agree` ASD-derived tests, and word-count tests. The commits:
+> `06a5a8a` (macro_research), `21b716f` (portfolio_email), `8f4101a` (portfolio_review),
+> `0903ff3` (portfolio_rationalization), `abac0f5` (portfolio_move_monitor),
+> `868a74f` (portfolio_analyst_alert), `2b9c8f2` (youtube_monitor). This plan is retained
+> as a design document of the Phase C pattern only; the implementation log for the actual
+> work is `docs/logs/2026-06-23_testing-gap-analysis-implementation.md`. The only remaining
+> items from the plan's template: Tier 0 `ARTIFACT_MARKERS` entries (added 2026-06-27 per
+> the companion secrets-consolidation session) and `docs/TESTING.md` rollout table cleanup
+> (updated 2026-06-27).
 
 `docs/logs/2026-06-23_testing-gap-analysis-implementation.md:79,96` explicitly marked
 "Phase C rollout — apply ASD + seam factoring + harness + word-count test + Tier 0
@@ -133,10 +146,10 @@ Do not redesign. If the plan is ambiguous or wrong, stop and report — do not i
 
 ## Progress tracker
 
-- [ ] 1. macro_research
-- [ ] 2. portfolio_email
-- [ ] 3. portfolio_review
-- [ ] 4. portfolio_rationalization
-- [ ] 5. portfolio_move_monitor
-- [ ] 6. portfolio_analyst_alert
-- [ ] 7. youtube_monitor
+- [x] 1. macro_research (06a5a8a, 2026-06-23)
+- [x] 2. portfolio_email (21b716f, 2026-06-23)
+- [x] 3. portfolio_review (8f4101a, 2026-06-23)
+- [x] 4. portfolio_rationalization (0903ff3, 2026-06-23)
+- [x] 5. portfolio_move_monitor (abac0f5, 2026-06-23)
+- [x] 6. portfolio_analyst_alert (868a74f, 2026-06-23)
+- [x] 7. youtube_monitor (2b9c8f2, 2026-06-23)
