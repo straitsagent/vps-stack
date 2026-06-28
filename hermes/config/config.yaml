@@ -1,0 +1,23 @@
+# Hermes Agent config — read-only bind mount (do not edit inside container)
+model:
+  default: "nousresearch/hermes-4-70b"
+  provider: "openrouter"
+  base_url: "https://openrouter.ai/api/v1"
+
+terminal:
+  backend: "local"
+  cwd: "/workspace"
+  timeout: 180
+
+agent:
+  max_turns: 60
+  verbose: false
+  reasoning_effort: "medium"
+
+platform_toolsets:
+  telegram: [hermes-telegram]
+
+platforms:
+  telegram:
+    reply_to_mode: "first"
+    guest_mode: false

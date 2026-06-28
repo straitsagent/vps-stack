@@ -234,6 +234,7 @@ services:
     networks:
       - default
       - openclaw_db
+      - hermes_db
     volumes:
       - portfolio_db_data:/var/lib/postgresql/data
     ports:
@@ -281,6 +282,33 @@ services:
       - openclaw_workspace:/workspace
     logging: *default-logging
 
+  hermes:
+    build: ./hermes
+    restart: unless-stopped
+    container_name: hermes
+    env_file: [ /root/secrets/hermes.env ]
+    networks: [ hermes_egress, hermes_db ]
+    user: "1000:1000"
+    read_only: true
+    tmpfs:
+      - /tmp
+      - /run
+    cap_drop: [ ALL ]
+    security_opt: [ "no-new-privileges:true" ]
+    mem_limit: 1g
+    pids_limit: 256
+    environment:
+      - TELEGRAM_ALLOWED_USERS=1370319633
+    volumes:
+      - /root/research:/research:ro
+      - /root/research/hermes:/research/hermes
+      - /root/docs:/docs:ro
+      - /root/docs/hermes:/docs/hermes
+      - /root/hermes/config/config.yaml:/workspace/config.yaml:ro
+      - /root/secrets/hermes.env:/workspace/.env:ro
+      - hermes_state:/workspace
+    logging: *default-logging
+
   caddy:
     image: ghcr.io/windmill-labs/caddy-l4:latest
     restart: unless-stopped
@@ -306,6 +334,9 @@ networks:
   openclaw_egress: {}
   openclaw_db:
     internal: true
+  hermes_egress: {}
+  hermes_db:
+    internal: true
 
 volumes:
   db_data: null
@@ -318,3 +349,4 @@ volumes:
   dind-data: null
   portfolio_db_data: null
   openclaw_workspace: null
+  hermes_state: null

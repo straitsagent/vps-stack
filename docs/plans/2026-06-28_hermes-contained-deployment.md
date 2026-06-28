@@ -118,7 +118,7 @@ or join `root_default` to reach `dind`.
 
 ### Phase 0 — Prerequisites
 - [x] **P0.1 — `hermes_ro` DB role.** Created `/root/portfolio/hermes_ro_role.sql`. Applied idempotently. Verified: SELECT `research_reports` → 87 rows; SELECT `key_management` → `permission denied for table key_management` (privilege text); INSERT `watchlist_ideas` → `permission denied for table watchlist_ideas` (privilege text). Password in `keys.md`, temp file deleted.
-- [x] **P0.2 — OpenRouter key + bot.** OpenRouter key added to `/root/secrets/hermes.env`. **Bot token pending** — create via @BotFather and paste into `/root/secrets/hermes.env` (replace `<PASTE_BOT_TOKEN_HERE>`). `HERMES_RO_DSN` configured.
+- [x] **P0.2 — OpenRouter key + bot.** OpenRouter key in `hermes.env`. Bot created at @StraitsHermesBot, token `8648643255:...`. Added to `keys.md`.
 - [x] **P0.3 — Scratch dirs + gitignore.** Directories created at `/root/research/hermes` and `/root/docs/hermes`, chown 1000:1000. `research/hermes/` and `docs/hermes/` added to `.gitignore`. Verified with `git check-ignore`.
 - [x] **P0.4 — Model** = `nousresearch/hermes-4-70b` (locked; Hard Rule 6/10).
 
@@ -222,3 +222,23 @@ Satisfy all five EXECUTOR_CONTRACT gates; do not modify the `# LOCKED ORACLE` bl
 **Never weaken a containment control** (network split, cap_drop, ro mounts, read-only config, RO role
 allowlist, scratch-folder scoping, no docker.sock) to make something work — STOP and report instead.
 Do not redesign; if the plan is ambiguous or wrong, stop and report.
+
+---
+
+## Deviation log
+
+- **Dockerfile approach** — upstream Hermes Dockerfile is a complex multi-stage
+  build with s6-overlay, host networking, and docker-cli. Wrote a lean
+  single-stage Dockerfile from scratch: `python:3.11-slim` → pip install
+  `hermes-agent[messaging]` at pinned commit `f3d8f20`. Simpler, no s6-overlay,
+  no docker-cli, no host networking.
+- **Config mount** — plan specified `/config/config.yaml` with `HERMES_CONFIG_PATH`
+  env var. Hermes natively reads `$HERMES_HOME/config.yaml`. Mounted config at
+  `/workspace/config.yaml:ro` overlaid on the writable state volume. Same for
+  `.env` at `/workspace/.env:ro`.
+- **Env var name** — scaffold used `HERMES_BOT_TOKEN` but Hermes/`python-telegram-bot`
+  expect `TELEGRAM_BOT_TOKEN`. Fixed during execution.
+- **Multi-stage build** — initial multi-stage Dockerfile's COPY from builder
+  didn't preserve files in the final stage. Switched to single-stage.
+- **No supporting services** — upstream includes a `dashboard` service on host
+  networking. Deferred per plan scope.
