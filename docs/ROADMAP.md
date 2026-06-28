@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-27 (OpenClaw + secrets consolidated; Initiatives A/B/C live; research_tool EPS fix + lxml lock; Testing Phase C ARTIFACT_MARKERS deployed — 21/21 artifact tests pass)
+**Last updated:** 2026-06-28 (Hermes Agent Part 7 deployed alongside OpenClaw — A/B trial)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -293,6 +293,32 @@ A self-hosted, owner-only AI agent runtime (`openclaw` container, model `openai/
 **Status:** ✅ Live. Follow-up: research-relocation plan (own design); optional functional test of web-browse capability (the `browser-automation` skill is disabled by the read-only `/config` mount).
 
 ---
+
+## Part 7 — Hermes Agent (Nous Research) ✅ Live (2026-06-28)
+
+A self-improving autonomous agent — **confined sandbox (Model A)** alongside OpenClaw.
+Container `hermes`, bot `@StraitsHermesBot`, model `nousresearch/hermes-4-70b`
+via OpenRouter (owner-only Telegram polling). Read+write scratch in
+`/research/hermes` and `/docs/hermes`; parent trees read-only. `terminal.backend:
+local` inside the hardened container (no Docker socket, no dind).
+
+**Containment (mirrors OpenClaw's security spine):**
+- **Network isolation** — two dedicated networks: `root_hermes_egress` (internet for
+  LLM/Telegram) + `root_hermes_db` (`internal: true`, shared only with
+  `portfolio_postgres`). Never reaches `dind:2375` or the Windmill control plane.
+- **Container hardening** — non-root (`1000:1000`), `read_only` rootfs + `/tmp` tmpfs,
+  `cap_drop: [ALL]`, `no-new-privileges`, `mem_limit: 1g` / `pids_limit: 256`.
+  No published ports.
+- **Data scope** — `/research:ro` + `/docs:ro` with `/research/hermes:rw` and
+  `/docs/hermes:rw` nested scratch folders. Config and `.env` files mounted `:ro`
+  on the `/workspace` state volume (integrity — agent can't flip its own config).
+  `hermes_ro` Postgres role (24-table SELECT allowlist, same as `openclaw_ro`).
+- **Secrets** — OpenRouter API key + Telegram bot token + `HERMES_RO_DSN` in
+  `/root/secrets/hermes.env` (600, gitignored).
+- **Channel** — dedicated Telegram bot, long-polling, `TELEGRAM_ALLOWED_USERS` set
+  to owner chat ID. No Caddy route, no webhook, no public inbound exposure.
+
+**Status:** ✅ Live. A/B trial with OpenClaw. Next: daily usage comparison.
 
 ## Deleted / Parked
 
