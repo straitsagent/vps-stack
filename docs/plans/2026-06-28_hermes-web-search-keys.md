@@ -29,20 +29,10 @@ unlock web search for the agent.
 
 ## Checklist
 
-- [ ] **Step 1 — Add keys to host env file.** Edit `/root/secrets/hermes.env`: add `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `SERPER_API_KEY`. Values sourced from `/root/secrets/keys.md`.
-- [ ] **Step 2 — Re-pre-populate volume.** Copy the updated `.env` from host into `root_hermes_state` volume so `/workspace/.env` has the new keys.
-  ```bash
-  docker run --rm -v root_hermes_state:/workspace -v /root/secrets/hermes.env:/src.env:ro \
-    alpine sh -c 'cp /src.env /workspace/.env && chown 1000:1000 /workspace/.env'
-  ```
-- [ ] **Step 3 — Restart container.** `docker compose up -d --force-recreate hermes`.
-- [ ] **Step 4 — Verify.** Confirm web search is now available:
-  ```bash
-  docker exec hermes env | grep -E "BRAVE|TAVILY|EXA|FIRECRAWL|SERPER"
-  docker exec hermes sh -c 'tail -3 /workspace/logs/gateway.log'
-  docker exec hermes sh -c 'tac /workspace/logs/errors.log | head -3'
-  ```
-  Expected: no `check_web_api_key returned False` warnings.
+- [x] **Step 1 — Add keys to host env file.** Edit `/root/secrets/hermes.env`: add `BRAVE_API_KEY`, `TAVILY_API_KEY`, `EXA_API_KEY`, `FIRECRAWL_API_KEY`, `SERPER_API_KEY`. Values sourced from `/root/secrets/keys.md`.
+- [x] **Step 2 — Re-pre-populate volume.** Copy the updated `.env` from host into `root_hermes_state` volume so `/workspace/.env` has the new keys.
+- [x] **Step 3 — Restart container.** `docker compose up -d --force-recreate hermes`.
+- [x] **Step 4 — Verify.** All 5 keys present in container env. No `check_web_api_key returned False` in post-restart logs.
 - [ ] **Step 5 — Live test.** User sends a web-search message to @StraitsHermesBot and receives a substantive response citing web sources.
 
 ## Locked Oracle Tests (G1)
@@ -75,9 +65,9 @@ docker exec hermes sh -c 'tac /workspace/logs/errors.log | head -5' 2>/dev/null
 
 ## Acceptance Gate
 
-- [ ] All 5 web search API keys in `/workspace/.env` (and `/root/secrets/hermes.env`)
-- [ ] Container restarted, picks up new env
-- [ ] Web search tool available (no `check_web_api_key returned False`)
+- [x] All 5 web search API keys in `/workspace/.env` (and `/root/secrets/hermes.env`)
+- [x] Container restarted, picks up new env
+- [x] Web search tool available (no `check_web_api_key returned False`)
 - [ ] Live test: user gets search results from the agent
 
 ## Execution
