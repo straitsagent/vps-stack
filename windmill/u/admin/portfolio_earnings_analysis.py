@@ -47,7 +47,7 @@ class smtp(TypedDict):
 
 
 RESEARCH_DIR = "/research/earnings"
-WM_BASE = "http://windmill_server:8000"
+WM_BASE = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
 WM_WORKSPACE = "admins"
 
 

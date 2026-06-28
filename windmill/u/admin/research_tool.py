@@ -1646,7 +1646,7 @@ def _dispatch_stock_fetcher(ticker, portfolio_db, finnhub_key, wm_token, timeout
     """Dispatch stock_data_fetcher as a Windmill sub-job and poll until complete.
     Returns True on success, False on timeout or error. Never raises.
     """
-    WM_BASE = "http://windmill_server:8000"
+    WM_BASE = os.environ.get("WM_BASE_URL", "http://windmill_server:8000")
     WM_WORKSPACE = "admins"
     url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/stock_data_fetcher"
     headers = {"Authorization": f"Bearer {wm_token}", "Content-Type": "application/json"}

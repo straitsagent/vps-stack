@@ -99,7 +99,7 @@ Everything below is live and running unattended unless noted.
 | | ASYNC_NOTIFY: research, earnings_analysis |
 | | GATED_WRITE: price_refresh, fundamentals_refresh, thesis_write |
 | | MULTI_STEP: portfolio_analysis, thesis_check, macro_brief (static planner — W4a) |
-| Unit tests | ✅ 680 passing — `agent/tests/` (classifier, telegram, tools, routing, planner, db, schema, Windmill scripts, 8 formatter behavioral tests, 11 affection ping artifact tests) |
+| Unit tests | ✅ 680 passing — `agent/tests/` (classifier, telegram, tools, routing, planner, db, schema, Windmill scripts, 8 formatter behavioral tests, 11 affection ping artifact tests). Note: count covers agent + Windmill test suites combined; June 16 audit baseline of 316 was agent-container only. |
 | Agent Drafts Telegram group | ⏳ Pending — create group → add bot → set `DRAFTS_GROUP_ID` in `agent.env` → rebuild container |
 
 ---
