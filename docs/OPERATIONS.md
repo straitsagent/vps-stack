@@ -106,6 +106,34 @@ systemctl start drive-backup.timer
 
 ---
 
+## OpenClaw: Multi-Provider LLM Setup
+
+OpenClaw (`@StraitsClawBot`) uses a 3-provider fallback chain to avoid OpenAI
+rate limits. Config at `/root/openclaw/config/openclaw.json` (mounted `:ro`).
+
+**Fallback order:** `openai/gpt-5.4-mini` → `openai/gpt-5.4` → `xai/grok-4.3` →
+`deepseek/deepseek-chat`.
+
+**API keys** are in `/root/secrets/openclaw.env` (chmod 600):
+- `OPENAI_API_KEY` (primary, baked in image)
+- `XAI_API_KEY` (xAI Grok, baked in image)
+- `DEEPSEEK_API_KEY` (Deepseek via custom `models.providers` config)
+
+**After key/config changes:**
+```bash
+docker compose up -d --force-recreate openclaw
+```
+
+**Deepseek provider** is configured as a custom provider in `openclaw.json`
+(`models.providers.deepseek`). No plugin install is needed; the config uses
+the bundled `openai-completions` API transport against `api.deepseek.com`.
+
+**Recovery** (if `/workspace` volume is wiped): key/config changes are safe on
+the bind-mounted `/root/openclaw/config/` and `/root/secrets/openclaw.env`.
+Just recreate the container. The gateway auto-detects the custom provider.
+
+---
+
 ## Docker: Rebuild Agent Container
 
 After agent code changes in `/root/agent/`:
