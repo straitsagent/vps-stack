@@ -297,7 +297,7 @@ A self-hosted, owner-only AI agent runtime (`openclaw` container, model `openai/
 ## Part 7 — Hermes Agent (Nous Research) ✅ Live (2026-06-28)
 
 A self-improving autonomous agent — **confined sandbox (Model A)** alongside OpenClaw.
-Container `hermes`, bot `@StraitsHermesBot`, model `nousresearch/hermes-4-70b`
+Container `hermes`, bot `@StraitsHermesBot`, model `deepseek/deepseek-v4-pro`
 via OpenRouter (owner-only Telegram polling). Read+write scratch in
 `/research/hermes` and `/docs/hermes`; parent trees read-only. `terminal.backend:
 local` inside the hardened container (no Docker socket, no dind).
@@ -310,8 +310,7 @@ local` inside the hardened container (no Docker socket, no dind).
   `cap_drop: [ALL]`, `no-new-privileges`, `mem_limit: 1g` / `pids_limit: 256`.
   No published ports.
 - **Data scope** — `/research:ro` + `/docs:ro` with `/research/hermes:rw` and
-  `/docs/hermes:rw` nested scratch folders. Config and `.env` files mounted `:ro`
-  on the `/workspace` state volume (integrity — agent can't flip its own config).
+  `/docs/hermes:rw` nested scratch folders. Config and `.env` live on the `/workspace` state volume — writable by design (Hermes persists model switches and runtime state across sessions; sandbox controls are the security boundary).
   `hermes_ro` Postgres role (24-table SELECT allowlist, same as `openclaw_ro`).
 - **Secrets** — OpenRouter API key + Telegram bot token + `HERMES_RO_DSN` in
   `/root/secrets/hermes.env` (600, gitignored).
