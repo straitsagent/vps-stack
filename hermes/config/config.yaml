@@ -1,11 +1,8 @@
-# Hermes Agent config — read-only bind mount (do not edit inside container)
+# Hermes Agent config — pre-populated from host, writable at runtime
 model:
-  default: "nousresearch/hermes-4-70b"
+  default: "deepseek/deepseek-v4-pro"
   provider: "openrouter"
   base_url: "https://openrouter.ai/api/v1"
-  provider_routing:
-    require_parameters: true
-    only: ["deepinfra"]
 
 terminal:
   backend: "local"

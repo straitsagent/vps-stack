@@ -304,8 +304,6 @@ services:
       - /root/research/hermes:/research/hermes
       - /root/docs:/docs:ro
       - /root/docs/hermes:/docs/hermes
-      - /root/hermes/config/config.yaml:/workspace/config.yaml:ro
-      - /root/secrets/hermes.env:/workspace/.env:ro
       - hermes_state:/workspace
     logging: *default-logging
 
