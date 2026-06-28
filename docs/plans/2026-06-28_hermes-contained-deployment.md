@@ -1,7 +1,7 @@
 ---
 Subject: Deploy Hermes Agent (Nous Research) as a contained, owner-only assistant on the VPS
 Date: 2026-06-28
-Status: executing
+Status: done
 Planner model: claude-sonnet-4-6
 Executor model: any (Claude Code | opencode/Deepseek)
 Risk tier: HIGH (new internet-facing, self-improving LLM agent with shell + write capability; co-hosted with the live portfolio stack, Postgres, and secrets)
