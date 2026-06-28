@@ -1,7 +1,7 @@
 ---
 Subject: Deploy Hermes Agent (Nous Research) as a contained, owner-only assistant on the VPS
 Date: 2026-06-28
-Status: approved
+Status: executing
 Planner model: claude-sonnet-4-6
 Executor model: any (Claude Code | opencode/Deepseek)
 Risk tier: HIGH (new internet-facing, self-improving LLM agent with shell + write capability; co-hosted with the live portfolio stack, Postgres, and secrets)
@@ -117,18 +117,10 @@ or join `root_default` to reach `dind`.
 ## Checklist
 
 ### Phase 0 — Prerequisites
-- [ ] **P0.1 — `hermes_ro` DB role.** Create `/root/portfolio/hermes_ro_role.sql` by cloning
-  `openclaw_ro_role.sql` (role `hermes_ro`, password from `/root/.hermes_ro_pw` chmod-600 temp file,
-  same 19-table SELECT allowlist, `statement_timeout=15s`, idempotent `DO $$ IF NOT EXISTS`). Apply via
-  the same `sed | psql` one-liner. Success: `hermes_ro` SELECTs `research_reports`, denied (by privilege
-  text) on `key_management` + INSERT.
-- [ ] **P0.2 — OpenRouter key + bot.** Add OpenRouter API key to `/root/secrets/keys.md`; create a new
-  Telegram bot via BotFather; place key + bot token + `HERMES_RO_DSN` in `/root/secrets/hermes.env`
-  (chmod 600).
-- [ ] **P0.3 — Scratch dirs + gitignore.** `mkdir -p /root/research/hermes /root/docs/hermes` and
-  `chown 1000:1000` both. Add `hermes.env`, `research/hermes/`, `docs/hermes/` to `.gitignore` (confirm
-  `secrets/` already covers `hermes.env`).
-- [ ] **P0.4 — Model** = `nousresearch/hermes-4-70b` (locked; Hard Rule 6/10).
+- [x] **P0.1 — `hermes_ro` DB role.** Created `/root/portfolio/hermes_ro_role.sql`. Applied idempotently. Verified: SELECT `research_reports` → 87 rows; SELECT `key_management` → `permission denied for table key_management` (privilege text); INSERT `watchlist_ideas` → `permission denied for table watchlist_ideas` (privilege text). Password in `keys.md`, temp file deleted.
+- [x] **P0.2 — OpenRouter key + bot.** OpenRouter key added to `/root/secrets/hermes.env`. **Bot token pending** — create via @BotFather and paste into `/root/secrets/hermes.env` (replace `<PASTE_BOT_TOKEN_HERE>`). `HERMES_RO_DSN` configured.
+- [x] **P0.3 — Scratch dirs + gitignore.** Directories created at `/root/research/hermes` and `/root/docs/hermes`, chown 1000:1000. `research/hermes/` and `docs/hermes/` added to `.gitignore`. Verified with `git check-ignore`.
+- [x] **P0.4 — Model** = `nousresearch/hermes-4-70b` (locked; Hard Rule 6/10).
 
 ### Phase 1 — Build + deploy
 - [ ] **P1.1 — Dockerfile.** `/root/hermes/Dockerfile` — install Hermes from upstream repo at a

@@ -10,6 +10,10 @@ shared/keys.md
 shared/windmill-sa-key.json
 secrets/
 
+# Agent scratch dirs (agent-generated files, never commit)
+research/hermes/
+docs/hermes/
+
 # SSH
 .ssh/
 
