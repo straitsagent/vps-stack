@@ -1,7 +1,7 @@
 ---
 Subject: Multi-provider LLM fallback for openclaw — resolve rate-limit issue
 Date: 2026-06-27
-Status: executing
+Status: done
 Planner model: mimo-v2.5-pro (opencode)
 Executor model: any
 Risk tier: MEDIUM (touches secrets file, openclaw config, adds 2 new providers; 1 image-baked plugin install; no production data risk)
