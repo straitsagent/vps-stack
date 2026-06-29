@@ -1,6 +1,6 @@
 # Workflow Architecture
 
-**Last updated:** 2026-06-23 (ASD convention added to Testing Contract; Tier 0 artifact body verification added to health_check; see docs/TESTING.md)  
+**Last updated:** 2026-06-29 (YouTube schedule daily 18:00 SGT; synthesis in email; Telegram dispatch retired from 4 scripts; macro_research Finnhub migration)  
 **Owner:** the owner  
 **Purpose:** Human-readable / pseudocode spec for every workflow in the stack. Claude Code reads this before building or modifying any workflow. Each built workflow is documented in full. Planned workflows have a brief stub — fill in the full spec before coding.
 
@@ -30,7 +30,7 @@ Every sending workflow (email or Telegram) must have an artifact-render test in 
 - Results written to `artifact_verification` Postgres table; failures logged as warnings
 - Add a `ARTIFACT_MARKERS` entry for every new sending script
 
-Scripts with full test coverage: `health_check` ✅. Rollout order: `macro_research` → `portfolio_email` → `portfolio_review` → `portfolio_rationalization` → `portfolio_move_monitor` → `portfolio_analyst_alert` → `youtube_monitor`.
+Scripts with full artifact harnesses (Phase C ✅): `health_check`, `macro_research`, `portfolio_email`, `portfolio_review`, `portfolio_rationalization`, `portfolio_move_monitor`, `portfolio_analyst_alert`, `youtube_monitor`. Testing Phase D (approved): adds harnesses for `morning_news_digest`, `portfolio_price_fetcher`, `fundamentals_fetcher`.
 
 ---
 
@@ -150,7 +150,7 @@ deepseek-v4-flash · N calls · X prompt + Y completion tokens · est. $0.000X
 ### Workflow 1.2 — YouTube Channel Monitor ✅ LIVE
 
 **Script:** `u/admin/youtube_monitor`  
-**Trigger:** Cron — `0 0 */6 * * *` SGT (every 6 hours), schedule `u/admin/youtube_monitor_hourly`  
+**Trigger:** Cron — `0 0 18 * * *` SGT (daily 18:00 SGT), schedule `u/admin/youtube_monitor_hourly`  
 **Send to:** `<YOUR_RECIPIENT_EMAIL>`
 
 **Inputs:**
@@ -213,19 +213,38 @@ for each video with a transcript:
 merge new video_ids into existing set, trim to 1000, POST back to
 u/admin/youtube_processed_state via Windmill variables API
 
-── Step 7: Send email ───────────────────────────────────────────
-build HTML email — one block per video, sorted by published_at descending:
-    CHANNEL NAME (bold, uppercase)
-    Video title (hyperlinked to watch_url)
-    Published: HH:MM SGT
-    Summary paragraph (or "[Transcript unavailable]")
-    ---
+── Step 6b: Compute synthesis ────────────────────────────────────
+call Deepseek deepseek-chat with all per-video summaries:
+    prompt: synthesise N video summaries into a cohesive daily narrative
+    → synthesis (string, ≥500w)
+
+── Step 6c: Write canonical .md ─────────────────────────────────
+write /research/youtube/YYYY-MM-DD_HHMM.md:
+    JSON front-matter block (video_count, synthesis excerpt, cost)
+    ≥500-word synthesis narrative
+    <!-- DETAIL --> separator
+    per-video detail
+
+── Step 7: Send email (after synthesis is computed) ─────────────
+build HTML email:
+    Daily Synthesis block (highlighted callout, synthesis narrative split into paragraphs)
+    Per-video blocks, sorted by published_at descending:
+        CHANNEL NAME (bold, uppercase)
+        Video title (hyperlinked to watch_url)
+        Published: HH:MM SGT
+        Summary paragraph (or "[Transcript unavailable]")
+        ---
 send via Gmail SMTP
 ```
 
 **Output email:**
 ```
 Subject: YouTube Digest — DD Mon YYYY, HH:MM SGT (N new videos)
+
+DAILY SYNTHESIS
+[synthesis narrative — ≥500 words, cohesive cross-channel brief]
+
+---
 
 CHANNEL NAME
 Video title (linked to YouTube)
@@ -243,13 +262,13 @@ Published: HH:MM SGT
 ```
 
 **Design decisions:**
-- 65-minute lookback (not 60) to absorb clock jitter and any slight cron delay
+- 65-minute lookback (not 60) to absorb clock jitter — note: with daily 18:00 SGT schedule this captures only videos published in the ~hour before the run; wider coverage would require a 24h+ lookback (future improvement)
 - Deduplication via Windmill variable `u/admin/youtube_processed_state` — Google Sheets service account permission could not be granted, so state moved to Windmill-native storage
-- Email skipped entirely if no fresh videos — no noise
+- Email skipped entirely if no fresh videos — no noise (daily cadence: runs once at 18:00 SGT)
 - Transcript failures logged as "[Transcript unavailable]" but don't block the rest of the run
 - Videos sorted newest-first in the email
 - RapidAPI key stored as new Windmill variable `u/admin/rapidapi_key` (plain secret)
-- Each run writes its own `/research/youtube/YYYY-MM-DD_HHMM.md` file (one file per run, not appended). The Telegram agent reads the latest file via alphabetical sort — always returns the freshest 6h batch.
+- Each run writes its own `/research/youtube/YYYY-MM-DD_HHMM.md` file (one file per run, not appended). The Telegram agent reads the latest file via alphabetical sort — returns the latest daily batch. Telegram push retired 2026-06-29; Hermes will consume `.md` directly.
 
 ---
 
@@ -304,7 +323,7 @@ Windmill scripts write dated `.md` files alongside email sends. The agent reads 
 
 ```
 news_digest:       reads /research/news/YYYY-MM-DD.md          (latest by alpha sort)
-youtube_digest:    reads /research/youtube/YYYY-MM-DD_HHMM.md  (latest run, 6h batch)
+youtube_digest:    reads /research/youtube/YYYY-MM-DD_HHMM.md  (latest daily run)
 portfolio_digest:  reads /research/portfolio/YYYY-MM-DD_{am|pm}.md
 ```
 
@@ -437,7 +456,7 @@ Key pairs the LLM is guided to distinguish:
 | `u/admin/portfolio_email_daily` | Portfolio Email (AM) | 26h / 72h† | weekday_only |
 | `u/admin/portfolio_price_fetcher_evening` | Portfolio Price Fetcher (PM) | 26h / 72h† | weekday_only |
 | `u/admin/portfolio_email_evening` | Portfolio Email (PM) | 26h / 72h† | weekday_only |
-| `u/admin/youtube_monitor_hourly` | YouTube Monitor (hourly) | 2h | Has LLM (aggregate 24h) |
+| `u/admin/youtube_monitor_hourly` | YouTube Monitor (daily 18:00 SGT) | 26h | Has LLM — daily synthesis. Schedule changed 2026-06-29 |
 
 † 72h on Sat/Sun/Mon — portfolio scripts intentionally skip weekends
 
@@ -469,7 +488,7 @@ content_reports = _collect_24h_reports(now_sgt)
 
 spec_checks = [_spec_check(r) for r in content_reports]
     # per-type validators:
-    #   macro:     indicators.yahoo ≥ 12 symbols, indicators.fred ≥ 13 series, news_headlines present
+    #   macro:     indicators.market ≥ 12 symbols, indicators.fred ≥ 13 series, news_headlines present
     #   portfolio: total_value / total_pnl / total_pnl_pct present
     #   youtube:   videos or video_count present
     # returns {output, pass, violations[]}

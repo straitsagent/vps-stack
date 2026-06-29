@@ -1,6 +1,6 @@
 # Automation Stack Roadmap
 
-**Last updated:** 2026-06-28 (Hermes Agent Part 7 deployed alongside OpenClaw — A/B trial)
+**Last updated:** 2026-06-29 (rationalise StraitsAgent pushes; Perplexity key added to Hermes; plans reviewed)
 **Owner:** ${OWNER_NAME}
 
 > **Architecture specs:** Full pseudocode for every workflow lives in [`WORKFLOW_ARCHITECTURE.md`](WORKFLOW_ARCHITECTURE.md).
@@ -101,7 +101,7 @@ Everything below is live and running unattended unless noted.
 | | ASYNC_NOTIFY: research, earnings_analysis |
 | | GATED_WRITE: price_refresh, fundamentals_refresh, thesis_write |
 | | MULTI_STEP: portfolio_analysis, thesis_check, macro_brief (static planner — W4a) |
-| Unit tests | ✅ 680 passing — `agent/tests/` (classifier, telegram, tools, routing, planner, db, schema, Windmill scripts, 8 formatter behavioral tests, 11 affection ping artifact tests). Note: count covers agent + Windmill test suites combined; June 16 audit baseline of 316 was agent-container only. |
+| Unit tests | ✅ 495 passing — `agent/tests/` (classifier, telegram, tools, routing, planner, db, schema, Windmill scripts, formatter behavioral tests, affection ping artifact tests). Note: count reduced from ~680 after rationalise E6 removed Telegram dispatch tests for 4 retired scripts (2026-06-29). Testing Phase D (approved) will add ≥10 new harness tests. |
 | Agent Drafts Telegram group | ⏳ Pending — create group → add bot → set `DRAFTS_GROUP_ID` in `agent.env` → rebuild container |
 
 ---
@@ -314,7 +314,7 @@ local` inside the hardened container (no Docker socket, no dind).
 - **Data scope** — `/research:ro` + `/docs:ro` with `/research/hermes:rw` and
   `/docs/hermes:rw` nested scratch folders. Config and `.env` live on the `/workspace` state volume — writable by design (Hermes persists model switches and runtime state across sessions; sandbox controls are the security boundary).
   `hermes_ro` Postgres role (24-table SELECT allowlist, same as `openclaw_ro`).
-- **Secrets** — OpenRouter API key + Telegram bot token + `HERMES_RO_DSN` in
+- **Secrets** — OpenRouter API key + Telegram bot token + `HERMES_RO_DSN` + 6 web-search API keys (Brave, Tavily, Exa, Firecrawl, Serper, Perplexity — added 2026-06-28/29) in
   `/root/secrets/hermes.env` (600, gitignored).
 - **Channel** — dedicated Telegram bot, long-polling, `TELEGRAM_ALLOWED_USERS` set
   to owner chat ID. No Caddy route, no webhook, no public inbound exposure.
@@ -328,7 +328,7 @@ local` inside the hardened container (no Docker socket, no dind).
 Hermes has proven useful enough to graduate from A/B trial to a planned **integration layer**. The approved parent roadmap — [`docs/plans/2026-06-29_hermes-integration-roadmap.md`](plans/2026-06-29_hermes-integration-roadmap.md) — sequences three workstreams under **seven non-negotiable security invariants** (the sandbox is never weakened: Hermes stays read-only + off the `root_default`/`dind`/Windmill networks; no Docker socket; PII/secret tables stay denied; **analysis-only — no job dispatch**).
 
 - **WS-A — System visibility 🔲** Producers running *outside* the sandbox push Windmill job-health + container/system-health JSON into `/research/system/` (which Hermes already reads `:ro`). Reuses `health_check.py` + the `drive-backup.timer` host-timer pattern. **The Hermes container spec does not change** — LOCKED ORACLE O1–O8 still pass verbatim.
-- **WS-B — Analysis takeover 🔲** Clean producer/interpreter split: Windmill schedules + StraitsAgent keep *producing* artifacts and *dispatching* jobs; Hermes becomes the *interpreter*. StraitsAgent keeps webhook routing, confirmations, transactional commands (`/portfolio`, `/prices`, `/health`, `/thesis` write) and all Windmill dispatch. Overlapping analytical commands (`/analyze`, `/macro`, `/deepresearch`, and the interpretation half of `/research` `/rationalize` `/candidate`) soft-deprecate over three reversible, usage-gated phases. **First increment delivered 2026-06-29:** 4 automations stopped from pushing Telegram (macro_research, morning_news_digest, portfolio_email, youtube_monitor); YouTube cadence daily 18:00 SGT with email-only delivery. (`docs/plans/2026-06-29_rationalise-straitsagent-pushes.md`)
+- **WS-B — Analysis takeover 🔲** Clean producer/interpreter split: Windmill schedules + StraitsAgent keep *producing* artifacts and *dispatching* jobs; Hermes becomes the *interpreter*. StraitsAgent keeps webhook routing, confirmations, transactional commands (`/portfolio`, `/prices`, `/health`, `/thesis` write) and all Windmill dispatch. Overlapping analytical commands (`/analyze`, `/macro`, `/deepresearch`, and the interpretation half of `/research` `/rationalize` `/candidate`) soft-deprecate over three reversible, usage-gated phases. **First increment delivered 2026-06-29:** 4 automations stopped from pushing Telegram (macro_research, morning_news_digest, portfolio_email, youtube_monitor); YouTube cadence daily 18:00 SGT with email-only delivery. ([`docs/plans/archive/2026-06-29_rationalise-straitsagent-pushes.md`](plans/archive/2026-06-29_rationalise-straitsagent-pushes.md))
 - **WS-C — Research `.md` quality 🔲** Overhaul the corpus Hermes reads: one unified machine-parseable front-matter schema, recency/staleness metadata, cross-file linking (extend `/research/index.json`), and structured metric tables in prose. Schema-design + sign-off first (Hard Rule 18 contract migration), then `macro_research` as the reference script, then roll-out — each script pairing formatter + round-trip test in one commit.
 
 Recommended order: **WS-A → WS-C → WS-B**. Each workstream spawns its own `EXECUTOR_CONTRACT`-compliant child plan when picked up.
@@ -454,11 +454,12 @@ Every Windmill notification uses a **canonical markdown → dedicated formatter*
 
 | Formatter Script | Main Script | Status |
 |---|---|---|
-| `u/admin/macro_daily_push_telegram` | `u/admin/macro_daily_push` | ⚠️ Main script disabled |
-| `u/admin/portfolio_email_telegram` | `u/admin/portfolio_email` | ✅ Live |
+| `u/admin/macro_daily_push_telegram` | `u/admin/macro_daily_push` | ⚠️ Retained — main script disabled; dispatch by `macro_research` also retired 2026-06-29 |
+| `u/admin/portfolio_email_telegram` | `u/admin/portfolio_email` | ⚠️ Retained on disk — dispatch removed 2026-06-29 (Hermes will consume `.md`) |
 | `u/admin/portfolio_review_telegram` | `u/admin/portfolio_review` | ✅ Live |
 | `u/admin/portfolio_rationalization_telegram` | `u/admin/portfolio_rationalization` | ✅ Live |
 | `u/admin/portfolio_move_monitor_telegram` | `u/admin/portfolio_move_monitor` | ✅ Live |
 | `u/admin/portfolio_analyst_alert_telegram` | `u/admin/portfolio_analyst_alert` | ✅ Live |
 | `u/admin/health_check_telegram` | `u/admin/health_check` | ✅ Live |
-| `u/admin/youtube_monitor_telegram` | `u/admin/youtube_monitor` | ✅ Live |
+| `u/admin/youtube_monitor_telegram` | `u/admin/youtube_monitor` | ⚠️ Retained on disk — dispatch removed 2026-06-29 (Hermes will consume `.md`) |
+| `u/admin/position_sentinel_telegram` | `u/admin/position_sentinel` | ✅ Live (9th formatter) |
