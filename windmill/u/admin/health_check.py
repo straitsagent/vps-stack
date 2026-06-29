@@ -544,7 +544,7 @@ def _write_canonical_md(md_content: str, path: str) -> None:
 # surface as warnings in the health check report and are written to artifact_verification.
 
 ARTIFACT_MARKERS: dict[str, list[str]] = {
-    "Morning Digest":   ["Source:", "token"],
+    "Morning Digest":   ["Key Headlines", "Newsletter Summaries"],
     "Portfolio":        ["Total Value", "P&L"],
     "Macro Research":   ["VIX", "10Y"],
     "Weekly Review":    ["Week P&L", "Top Movers"],

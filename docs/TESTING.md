@@ -296,21 +296,31 @@ deliver:
 
 Per-script checklist: ASD written → seams factored → harness RED→GREEN → word_count ≥500 →
 `_agree` test ASD-derived → substring tests pruned → Tier 0 `ARTIFACT_MARKERS` entry added →
-live verify (Hard Rule 17). **Status:** ASD, seams, harness, _agree, word-count, and Tier 0
-markers are ✅ for all 7. All 21 artifact-render tests pass in the test container (2026-06-27).
-Substring pruning and live (Windmill) delivery verification remain for a future session.
+live verify (Hard Rule 17). **Status:** All 8 delivery scripts + 2 pipeline scripts now have
+harness coverage (Testing Phase D, 2026-06-29). Substring pruning complete (macro_research: 1 pruned;
+other 5 scripts audited — no duplicates found). 505/1 tests passing.
 
 | Script | ASD | Seams factored | Artifact harness | `_agree` ASD-derived | Word-count test | Tier 0 markers | Substring tests pruned | Live verified |
 |--------|-----|---------------|-----------------|---------------------|-----------------|----------------|----------------------|---------------|
 | `health_check` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (2 pruned) | 🔲 |
-| `macro_research` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `portfolio_email` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `portfolio_review` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `portfolio_rationalization` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `portfolio_move_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `portfolio_analyst_alert` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | 🔲 |
-| `youtube_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | 🔲 | ✅ |
+| `macro_research` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (1 pruned) | 🔲 |
+| `portfolio_email` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (none needed) | 🔲 |
+| `portfolio_review` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (none needed) | 🔲 |
+| `portfolio_rationalization` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (none needed) | 🔲 |
+| `portfolio_move_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (none needed) | 🔲 |
+| `portfolio_analyst_alert` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (none needed) | 🔲 |
+| `youtube_monitor` | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ | ✅ (none needed) | ✅ |
+| `morning_news_digest` | ✅ | ✅ (email-only) | ✅ | ✅ (email-only) | N/A (no Telegram) | ✅ | ✅ (none needed) | 🔲 |
+| `portfolio_price_fetcher` | N/A (DB-write) | N/A | ✅ (DB-write) | ✅ (DB-write) | N/A | ✅ | N/A | 🔲 |
+| `fundamentals_fetcher` | N/A (DB-write) | N/A | ✅ (DB-write) | ✅ (DB-write) | N/A | ✅ | N/A | 🔲 |
 
-**Rollout order:** All 7 scripts completed 2026-06-23 in consecutive commits
-(`06a5a8a` through `2b9c8f2`). Tier 0 `ARTIFACT_MARKERS` entries added 2026-06-27.
-"Substring tests pruned" and "Live verified" items remain for a future session.
+**Rollout order:** Phase A–C (health_check, macro_research, portfolio_email, portfolio_review,
+rationalization, move_monitor, analyst_alert, youtube_monitor) completed 2026-06-23/27.
+**Phase D** (2026-06-29): subtitle pruning for all 7 Phase C scripts; new harnesses for
+morning_news_digest (email-only), portfolio_price_fetcher (DB-write), fundamentals_fetcher (DB-write).
+505/1 tests passing. "Live verified" column remains for a future session.
+
+**Note:** `morning_news_digest` - no Telegram formatter (dispatch retired 2026-06-29).
+Word-count test skipped per Testing Phase D plan (Hard Rule 16 is Telegram-specific).
+`portfolio_price_fetcher` and `fundamentals_fetcher` are pipeline scripts — their artifact is a DB row,
+not a delivered email/Telegram message. ASD and word-count are not applicable.

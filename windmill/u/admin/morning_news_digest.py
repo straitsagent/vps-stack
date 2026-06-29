@@ -438,6 +438,26 @@ def build_html(rss_headlines, google_news, key_emails, ai_summaries, other_email
     return S
 
 
+# ── Seams ─────────────────────────────────────────────────────────────────────
+
+def _send_email(smtp_resource: dict, username: str, subject: str, html: str, recipients: list) -> None:
+    msg = MIMEMultipart("alternative")
+    msg["Subject"] = subject
+    msg["From"] = username
+    msg["To"] = ", ".join(recipients)
+    msg.attach(MIMEText(html, "html"))
+    with smtplib.SMTP(smtp_resource["host"], smtp_resource["port"]) as server:
+        server.starttls()
+        server.login(username, smtp_resource["password"])
+        server.sendmail(username, recipients, msg.as_string())
+    log.info(f"Sent: {subject}")
+
+
+def _write_canonical_md(content: str, path: str) -> None:
+    with open(path, "w") as f:
+        f.write(content)
+
+
 # ── Main ─────────────────────────────────────────────────────────────────────
 
 def main(
@@ -491,19 +511,7 @@ def main(
     )
 
     recipients = [r.strip() for r in recipient_email.split(",") if r.strip()]
-    subject = f"Morning Digest — {date_str}"
-    msg = MIMEMultipart("alternative")
-    msg["Subject"] = subject
-    msg["From"] = username
-    msg["To"] = ", ".join(recipients)
-    msg.attach(MIMEText(html, "html"))
-
-    with smtplib.SMTP(smtp_resource["host"], smtp_resource["port"]) as server:
-        server.starttls()
-        server.login(username, password)
-        server.sendmail(username, recipients, msg.as_string())
-
-    log.info(f"Sent: {subject}")
+    _send_email(smtp_resource, username, f"Morning Digest — {date_str}", html, recipients)
 
     # ── Write markdown digest ──────────────────────────────────────────────
     import os as _os
@@ -539,9 +547,7 @@ def main(
                 md.append("")
                 md.append(summary)
                 md.append("")
-    with open(md_path, "w") as f:
-        f.write("\n".join(md) + "\n")
-    log.info(f"[md] Written {md_path}")
+    _write_canonical_md("\n".join(md) + "\n", md_path)
 
     if portfolio_db and wm_token:
         _dispatch_idea_extractor(
