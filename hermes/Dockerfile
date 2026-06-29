@@ -29,6 +29,7 @@ ENV HOME=/workspace \
     HERMES_HOME=/workspace \
     HERMES_DISABLE_LAZY_INSTALLS=1 \
     HERMES_WRITE_SAFE_ROOT=/workspace \
+    NPM_CONFIG_PREFIX=/workspace \
     PATH="/usr/local/bin:$PATH"
 
 USER 1000:1000
