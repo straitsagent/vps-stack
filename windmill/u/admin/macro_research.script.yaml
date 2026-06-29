@@ -1,5 +1,4 @@
-summary: Macro Research — comprehensive daily brief (Yahoo + FRED + Fed RSS +
-  email + Telegram)
+summary: Macro Research — comprehensive daily brief (Finnhub ETF proxies + FRED + Fed RSS + email + Telegram)
 description: ''
 lock: '!inline u/admin/macro_research.script.lock'
 has_on_behalf_of: false
@@ -14,6 +13,11 @@ schema:
       default: null
       originalType: string
     fred_api_key:
+      type: string
+      description: ''
+      default: null
+      originalType: string
+    finnhub_key:
       type: string
       description: ''
       default: null
@@ -50,6 +54,7 @@ schema:
       originalType: string
   required:
     - fred_api_key
+    - finnhub_key
     - deepseek_key
     - telegram_bot_token
     - telegram_owner_id

@@ -1,5 +1,6 @@
 args:
   deepseek_key: $var:u/admin/deepseek_key
+  finnhub_key: $var:u/admin/finnhub_key
   fred_api_key: $var:u/admin/fred_key
   portfolio_db: $res:u/admin/portfolio_db
   recipient_email: $var:u/admin/recipient_email

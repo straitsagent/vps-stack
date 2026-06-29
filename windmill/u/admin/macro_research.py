@@ -1,12 +1,11 @@
 # Requirements:
 # requests>=2.31
-# yfinance>=0.2.40
 # pytz>=2024.1
 # feedparser>=6.0
 
 """
 Macro Research — comprehensive daily macro brief.
-Fetches ~25 Yahoo Finance indicators + 13 FRED series + Fed RSS feeds + Google News.
+Fetches 11 Finnhub ETF proxies + 30 FRED series + Fed RSS feeds + Google News.
 Analyses in 6 sections via Deepseek. Writes canonical .md, sends HTML email,
 dispatches macro_daily_push_telegram formatter for Telegram push.
 """
@@ -14,7 +13,6 @@ dispatches macro_daily_push_telegram formatter for Telegram push.
 import calendar as _calendar
 import json
 import logging
-import math
 import os
 import re
 import smtplib
@@ -25,64 +23,66 @@ from email.mime.text import MIMEText
 import feedparser
 import pytz
 import requests
-import yfinance as yf
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 log = logging.getLogger(__name__)
 
-# ── Yahoo Finance symbols ─────────────────────────────────────────────────────
+# ── Finnhub symbols (ETF proxies — direct index symbols not available on free tier) ──
 
-YAHOO_SYMBOLS = {
-    # Volatility
-    "VIX":    "^VIX",
-    # US equities
-    "SP500":  "^GSPC",
-    "NDX":    "^NDX",
-    "RUT":    "^RUT",
-    # Global equities
-    "Nikkei": "^N225",
-    "DAX":    "^GDAXI",
-    "FTSE":   "^FTSE",
-    "HSI":    "^HSI",
-    "CSI300": "000300.SS",
-    # US rates (market)
-    "UST5Y":  "^FVX",
-    "UST10Y": "^TNX",
-    "UST30Y": "^TYX",
-    # Credit proxies
+FINNHUB_SYMBOLS = {
+    # US equities — ETF proxies (SPY/QQQ/IWM track the indices)
+    "SP500":  "SPY",
+    "NDX":    "QQQ",
+    "RUT":    "IWM",
+    # Global equities — ETF proxies
+    "Nikkei": "EWJ",
+    "DAX":    "EWG",
+    "FTSE":   "EWU",
+    "HSI":    "EWH",
+    "CSI300": "FXI",
+    # Credit ETFs
     "HYG":    "HYG",
     "LQD":    "LQD",
-    # Dollar & FX
-    "DXY":    "DX-Y.NYB",
-    "EURUSD": "EURUSD=X",
-    "GBPUSD": "GBPUSD=X",
-    "USDJPY": "JPY=X",
-    "USDCNY": "CNY=X",
-    "USDSGD": "SGD=X",
-    "USDHKD": "HKD=X",
-    # Commodities
-    "Gold":   "GC=F",
-    "Brent":  "BZ=F",
-    "Copper": "HG=F",
-    "NatGas": "NG=F",
+    # Commodities ETF proxies
+    "Copper": "CPER",
+    "Gold":   "GLD",
 }
 
 # ── FRED series ───────────────────────────────────────────────────────────────
 
 FRED_SERIES = {
+    # Policy & rates
     "DFF":          "Effective Fed Funds Rate (%)",
     "SOFR":         "SOFR (%)",
     "DGS2":         "UST 2Y Yield (%)",
+    "DGS5":         "UST 5Y Yield (%)",
+    "DGS10":        "UST 10Y Yield (%)",
+    "DGS30":        "UST 30Y Yield (%)",
     "T10Y2Y":       "10Y-2Y Spread (pp)",
     "T10Y3M":       "10Y-3M Spread (pp)",
+    # Inflation & conditions
     "T5YIE":        "5Y Breakeven Inflation (%)",
     "T10YIE":       "10Y Breakeven Inflation (%)",
-    "BAMLH0A0HYM2": "HY OAS Spread (%)",
-    "BAMLC0A0CM":   "IG OAS Spread (%)",
-    "NFCI":         "Chicago Fed Fin. Conditions",
     "CPIAUCSL":     "CPI YoY %",
     "PCEPI":        "PCE YoY %",
     "UNRATE":       "Unemployment Rate %",
+    "NFCI":         "Chicago Fed Fin. Conditions",
+    # Credit spreads
+    "BAMLH0A0HYM2": "HY OAS Spread (bp)",
+    "BAMLC0A0CM":   "IG OAS Spread (bp)",
+    # Volatility (replaces Yahoo ^VIX)
+    "VIXCLS":            "VIX",
+    # Dollar & FX (replaces Yahoo FX tickers)
+    "DTWEXBGS":          "USD Index (Broad)",
+    "DEXUSEU":           "EUR/USD",
+    "DEXUSUK":           "GBP/USD",
+    "DEXJPUS":           "USD/JPY",
+    "DEXCHUS":           "USD/CNY",
+    "DEXSIUS":           "USD/SGD",
+    "DEXHKUS":           "USD/HKD",
+    # Commodities (replaces Yahoo BZ=F, NG=F)
+    "DCOILBRENTEU":      "Brent Crude (USD/bbl)",
+    "DHHNGSP":           "Nat Gas (USD/MMBtu)",
 }
 
 FRED_BASE = "https://api.stlouisfed.org/fred/series/observations"
@@ -148,7 +148,7 @@ SECTION_PROMPTS = {
     "fx_credit": (
         "You are a macro analyst. Write 200+ words of continuous analytical prose — "
         "no bullets, no headers — on the US dollar, FX, and credit spread environment. "
-        "Cover: DXY direction and risk-asset implications, key FX pairs (EUR/USD, GBP/USD, "
+        "Cover: USD Index (Broad) direction and risk-asset implications, key FX pairs (EUR/USD, GBP/USD, "
         "USD/JPY), USD/SGD and USD/HKD for the Singapore/HK portfolio context, "
         "HY OAS and IG OAS spreads as credit health gauges.\n\nData:\n{data}"
     ),
@@ -173,24 +173,30 @@ ARTIFACT_MARKERS: dict[str, list[str]] = {
     "Macro Research": ["VIX", "10Y"],
 }
 
-# ── Yahoo data fetch ──────────────────────────────────────────────────────────
+# ── Finnhub market data fetch ─────────────────────────────────────────────────
 
-def _fetch_yahoo_macro() -> dict:
-    tickers = list(YAHOO_SYMBOLS.values())
-    data = yf.download(tickers, period="5d", progress=False, auto_adjust=True)
-    filled = data["Close"].ffill()
-    close = filled.iloc[-1]
-    prev  = filled.iloc[-2] if len(filled) > 1 else filled.iloc[-1]
+def _fetch_finnhub_data(api_key: str) -> dict:
     results = {}
-    for name, sym in YAHOO_SYMBOLS.items():
-        val  = float(close[sym]) if sym in close else None
-        if val is not None and math.isnan(val):
-            val = None
-        pval = float(prev[sym])  if sym in prev  else None
-        if pval is not None and math.isnan(pval):
-            pval = None
-        chg = ((val - pval) / pval * 100) if (val is not None and pval and pval != 0) else None
-        results[name] = {"value": val, "change_pct": chg}
+    for name, sym in FINNHUB_SYMBOLS.items():
+        try:
+            resp = requests.get(
+                "https://finnhub.io/api/v1/quote",
+                params={"symbol": sym, "token": api_key},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            d   = resp.json()
+            val = d.get("c") or None
+            pc  = d.get("pc") or None
+            if val == 0:
+                val = None
+            if pc == 0:
+                pc = None
+            chg = ((val - pc) / pc * 100) if (val is not None and pc) else None
+            results[name] = {"value": val, "change_pct": chg}
+        except Exception as e:
+            log.warning(f"[Finnhub] {name} ({sym}): {e}")
+            results[name] = {"value": None, "change_pct": None}
     return results
 
 # ── FRED fetch ────────────────────────────────────────────────────────────────
@@ -334,71 +340,81 @@ def _synthesise_section(section_key: str, data_str: str, deepseek_key: str,
 
 # ── Formatting helpers ────────────────────────────────────────────────────────
 
-_YAHOO_FMT = {
-    "VIX":    lambda v: f"{v:.1f}",
-    "SP500":  lambda v: f"{v:,.0f}",
-    "NDX":    lambda v: f"{v:,.0f}",
-    "RUT":    lambda v: f"{v:,.0f}",
-    "Nikkei": lambda v: f"{v:,.0f}",
-    "DAX":    lambda v: f"{v:,.0f}",
-    "FTSE":   lambda v: f"{v:,.0f}",
-    "HSI":    lambda v: f"{v:,.0f}",
-    "CSI300": lambda v: f"{v:,.2f}",
-    "UST5Y":  lambda v: f"{v:.2f}%",
-    "UST10Y": lambda v: f"{v:.2f}%",
-    "UST30Y": lambda v: f"{v:.2f}%",
+_MARKET_FMT = {
+    "SP500":  lambda v: f"{v:.2f}",
+    "NDX":    lambda v: f"{v:.2f}",
+    "RUT":    lambda v: f"{v:.2f}",
+    "Nikkei": lambda v: f"{v:.2f}",
+    "DAX":    lambda v: f"{v:.2f}",
+    "FTSE":   lambda v: f"{v:.2f}",
+    "HSI":    lambda v: f"{v:.2f}",
+    "CSI300": lambda v: f"{v:.2f}",
     "HYG":    lambda v: f"{v:.2f}",
     "LQD":    lambda v: f"{v:.2f}",
-    "DXY":    lambda v: f"{v:.2f}",
-    "EURUSD": lambda v: f"{v:.4f}",
-    "GBPUSD": lambda v: f"{v:.4f}",
-    "USDJPY": lambda v: f"{v:.2f}",
-    "USDCNY": lambda v: f"{v:.4f}",
-    "USDSGD": lambda v: f"{v:.4f}",
-    "USDHKD": lambda v: f"{v:.4f}",
-    "Gold":   lambda v: f"${v:,.0f}",
-    "Brent":  lambda v: f"${v:.1f}",
-    "Copper": lambda v: f"${v:.3f}",
-    "NatGas": lambda v: f"${v:.3f}",
+    "Copper": lambda v: f"{v:.2f}",
+    "Gold":   lambda v: f"${v:.2f} (GLD)",
 }
 
-_YAHOO_DISPLAY = {
-    "EURUSD": "EUR/USD", "GBPUSD": "GBP/USD", "USDJPY": "USD/JPY",
-    "USDCNY": "USD/CNY", "USDSGD": "USD/SGD", "USDHKD": "USD/HKD",
-    "NatGas": "Nat Gas",
+_MARKET_DISPLAY = {
+    "SP500":  "SP500 (SPY)",
+    "NDX":    "NDX (QQQ)",
+    "RUT":    "RUT (IWM)",
+    "Nikkei": "Nikkei (EWJ)",
+    "DAX":    "DAX (EWG)",
+    "FTSE":   "FTSE (EWU)",
+    "HSI":    "HSI (EWH)",
+    "CSI300": "CSI300 (FXI)",
+    "Copper": "Copper (CPER)",
+    "Gold":   "Gold (GLD ETF)",
 }
 
 
-def _fmt_yahoo_cell(name: str, val, chg) -> str:
+def _fmt_market_cell(name: str, val, chg) -> str:
     if val is None:
         return "N/A"
-    fmt = _YAHOO_FMT.get(name, lambda v: f"{v:.4g}")
+    fmt = _MARKET_FMT.get(name, lambda v: f"{v:.4g}")
     arrow = " ↑" if (chg or 0) > 0.1 else (" ↓" if (chg or 0) < -0.1 else "")
     chg_str = f" ({chg:+.1f}%)" if chg is not None else ""
     return f"{fmt(val)}{chg_str}{arrow}"
 
 
+_FRED_FMT: dict = {
+    "NFCI":             lambda v: f"{v:.3f}",
+    "VIXCLS":           lambda v: f"{v:.1f}",
+    "DTWEXBGS":         lambda v: f"{v:.2f}",
+    "DEXUSEU":          lambda v: f"{v:.4f}",
+    "DEXUSUK":          lambda v: f"{v:.4f}",
+    "DEXJPUS":          lambda v: f"{v:.2f}",
+    "DEXCHUS":          lambda v: f"{v:.4f}",
+    "DEXSIUS":          lambda v: f"{v:.4f}",
+    "DEXHKUS":          lambda v: f"{v:.4f}",
+    "DCOILBRENTEU":     lambda v: f"${v:.1f}",
+    "DHHNGSP":          lambda v: f"${v:.3f}",
+}
+
+
 def _fmt_fred_val(series_id: str, val) -> str:
     if val is None:
         return "N/A"
-    if series_id == "NFCI":
-        return f"{val:.3f}"
+    fmt = _FRED_FMT.get(series_id)
+    if fmt:
+        return fmt(val)
     return f"{val:.2f}%"
 
 # ── Section data string builders ──────────────────────────────────────────────
 
-def _yahoo_data_str(yahoo: dict, names: list) -> str:
+def _market_data_str(market: dict, names: list) -> str:
     lines = []
     for name in names:
-        if name not in yahoo:
+        if name not in market:
             continue
-        d = yahoo[name]
+        d = market[name]
         v, c = d.get("value"), d.get("change_pct")
-        disp = _YAHOO_DISPLAY.get(name, name)
+        disp = _MARKET_DISPLAY.get(name, name)
         if v is None:
             lines.append(f"{disp}: N/A")
             continue
-        fmt = _YAHOO_FMT.get(name, lambda x: f"{x:.4g}")
+        fmt = _MARKET_FMT.get(name, lambda x: f"{x:.4g}")
         chg_str = f" ({c:+.1f}%)" if c is not None else ""
         lines.append(f"{disp}: {fmt(v)}{chg_str}")
     return "\n".join(lines)
@@ -437,20 +453,22 @@ def _china_news_str(headlines: list) -> str:
 
 # ── HTML email builder ────────────────────────────────────────────────────────
 
-_YAHOO_GROUPS = [
-    ("Volatility & US Equities", ["VIX", "SP500", "NDX", "RUT"]),
-    ("Global Equities",          ["Nikkei", "DAX", "FTSE", "HSI", "CSI300"]),
-    ("US Rates (Market)",        ["UST5Y", "UST10Y", "UST30Y", "HYG", "LQD"]),
-    ("Dollar & FX",              ["DXY", "EURUSD", "GBPUSD", "USDJPY", "USDCNY", "USDSGD", "USDHKD"]),
-    ("Commodities",              ["Gold", "Brent", "Copper", "NatGas"]),
+_MARKET_GROUPS = [
+    ("US Equities (ETF proxy)",     ["SP500", "NDX", "RUT"]),
+    ("Global Equities (ETF proxy)", ["Nikkei", "DAX", "FTSE", "HSI", "CSI300"]),
+    ("Credit ETFs",                 ["HYG", "LQD"]),
+    ("Commodities (ETF proxy)",     ["Copper", "Gold"]),
 ]
 
 _FRED_GROUPS = [
-    ("Fed Policy",   ["DFF", "SOFR", "DGS2"]),
+    ("Volatility",   ["VIXCLS"]),
+    ("US Rates",     ["DGS5", "DGS10", "DGS30", "DFF", "SOFR", "DGS2"]),
     ("Yield Curve",  ["T10Y2Y", "T10Y3M"]),
     ("Inflation",    ["T5YIE", "T10YIE", "CPIAUCSL", "PCEPI"]),
     ("Credit",       ["BAMLH0A0HYM2", "BAMLC0A0CM"]),
     ("Conditions",   ["NFCI", "UNRATE"]),
+    ("Dollar & FX",  ["DTWEXBGS", "DEXUSEU", "DEXUSUK", "DEXJPUS", "DEXCHUS", "DEXSIUS", "DEXHKUS"]),
+    ("Commodities",  ["DCOILBRENTEU", "DHHNGSP"]),
 ]
 
 _HDR = 'style="background:#eef2f7;font-weight:bold;padding:5px 10px;text-align:left"'
@@ -460,21 +478,21 @@ _TDR = 'style="padding:4px 10px;border-bottom:1px solid #f0f0f0;color:#b30000"'
 _TDS = 'style="padding:4px 10px;border-bottom:1px solid #f0f0f0;color:#999;font-size:11px"'
 
 
-def _build_email_html(time_label: str, yahoo: dict, fred: dict, sections: dict,
+def _build_email_html(time_label: str, market: dict, fred: dict, sections: dict,
                       fed_items: list, headlines: list, total_cost: float) -> str:
-    # Yahoo indicator table
-    yahoo_rows = ""
-    for group_name, names in _YAHOO_GROUPS:
-        yahoo_rows += f'<tr><th colspan="2" {_HDR}>{group_name}</th></tr>\n'
+    # Market indicator table (Finnhub ETF proxies)
+    market_rows = ""
+    for group_name, names in _MARKET_GROUPS:
+        market_rows += f'<tr><th colspan="2" {_HDR}>{group_name}</th></tr>\n'
         for name in names:
-            if name not in yahoo:
+            if name not in market:
                 continue
-            d    = yahoo[name]
+            d    = market[name]
             v, c = d.get("value"), d.get("change_pct")
-            cell = _fmt_yahoo_cell(name, v, c)
-            disp = _YAHOO_DISPLAY.get(name, name)
+            cell = _fmt_market_cell(name, v, c)
+            disp = _MARKET_DISPLAY.get(name, name)
             td   = _TDG if (c or 0) > 0.1 else (_TDR if (c or 0) < -0.1 else _TD)
-            yahoo_rows += f'<tr><td {_TD}>{disp}</td><td {td}>{cell}</td></tr>\n'
+            market_rows += f'<tr><td {_TD}>{disp}</td><td {td}>{cell}</td></tr>\n'
 
     # FRED table
     fred_rows = ""
@@ -540,8 +558,8 @@ def _build_email_html(time_label: str, yahoo: dict, fred: dict, sections: dict,
 
 <h1 style="color:#1a1a6b;border-bottom:2px solid #1a1a6b">Macro Research — {time_label}</h1>
 
-<h2 style="color:#1a1a6b;border-bottom:1px solid #ddd;margin-top:28px">Market Indicators</h2>
-<table {tbl}>{yahoo_rows}</table>
+<h2 style="color:#1a1a6b;border-bottom:1px solid #ddd;margin-top:28px">Market Indicators (Finnhub ETF proxies)</h2>
+<table {tbl}>{market_rows}</table>
 
 <h2 style="color:#1a1a6b;border-bottom:1px solid #ddd;margin-top:28px">FRED Economic Data</h2>
 <table {tbl}>{fred_rows}</table>
@@ -617,6 +635,7 @@ def _dispatch_formatter(md_path: str, telegram_bot_token: str,
 
 def main(
     fred_api_key: str,
+    finnhub_key: str,
     deepseek_key: str,
     telegram_bot_token: str,
     telegram_owner_id: str,
@@ -629,8 +648,8 @@ def main(
     now_sgt   = datetime.now(sgt)
     time_label = now_sgt.strftime("%a %-d %b %Y, %-I:%M %p SGT")
 
-    log.info("[MacroResearch] Fetching Yahoo Finance data...")
-    yahoo = _fetch_yahoo_macro()
+    log.info("[MacroResearch] Fetching Finnhub market data...")
+    market = _fetch_finnhub_data(finnhub_key)
 
     log.info("[MacroResearch] Fetching FRED data...")
     fred = _fetch_fred_data(fred_api_key)
@@ -644,18 +663,27 @@ def main(
     log.info(f"[MacroResearch]   {len(headlines)} headlines")
 
     # ── Build data strings per section ────────────────────────────────────────
-    equity_data = _yahoo_data_str(yahoo, ["VIX","SP500","NDX","RUT","Nikkei","DAX","FTSE","HSI","CSI300"])
+    equity_data = "\n".join([
+        _market_data_str(market, ["SP500", "NDX", "RUT", "Nikkei", "DAX", "FTSE", "HSI", "CSI300"]),
+        _fred_data_str(fred, ["VIXCLS"]),
+    ])
     rates_data  = "\n".join([
-        _yahoo_data_str(yahoo, ["UST5Y","UST10Y","UST30Y","HYG","LQD"]),
-        _fred_data_str(fred, ["DFF","SOFR","DGS2","T10Y2Y","T10Y3M"]),
+        _market_data_str(market, ["HYG", "LQD"]),
+        _fred_data_str(fred, ["DFF", "SOFR", "DGS2", "DGS5", "DGS10", "DGS30", "T10Y2Y", "T10Y3M"]),
     ])
-    fed_data    = _fred_data_str(fred, ["DFF","T5YIE","T10YIE","CPIAUCSL","PCEPI","UNRATE","NFCI"])
+    fed_data    = _fred_data_str(fred, ["DFF", "T5YIE", "T10YIE", "CPIAUCSL", "PCEPI", "UNRATE", "NFCI"])
     fx_data     = "\n".join([
-        _yahoo_data_str(yahoo, ["DXY","EURUSD","GBPUSD","USDJPY","USDCNY","USDSGD","USDHKD"]),
-        _fred_data_str(fred, ["BAMLH0A0HYM2","BAMLC0A0CM"]),
+        _fred_data_str(fred, ["DTWEXBGS", "DEXUSEU", "DEXUSUK", "DEXJPUS", "DEXCHUS", "DEXSIUS", "DEXHKUS"]),
+        _fred_data_str(fred, ["BAMLH0A0HYM2", "BAMLC0A0CM"]),
     ])
-    comm_data   = _yahoo_data_str(yahoo, ["Gold","Brent","Copper","NatGas"])
-    hk_data     = _yahoo_data_str(yahoo, ["HSI","CSI300","USDHKD","USDCNY"])
+    comm_data   = "\n".join([
+        _market_data_str(market, ["Copper", "Gold"]),
+        _fred_data_str(fred, ["DCOILBRENTEU", "DHHNGSP"]),
+    ])
+    hk_data     = "\n".join([
+        _market_data_str(market, ["HSI", "CSI300"]),
+        _fred_data_str(fred, ["DEXHKUS", "DEXCHUS"]),
+    ])
 
     section_inputs = {
         "equity":      (equity_data, ""),
@@ -684,8 +712,8 @@ def main(
     front_matter = {
         "timestamp": now_sgt.isoformat(),
         "indicators": {
-            "yahoo": yahoo,
-            "fred":  fred,
+            "market": market,
+            "fred":   fred,
         },
         "fed_items":      fed_items,
         "news_headlines": headlines,
@@ -707,7 +735,7 @@ def main(
     # ── HTML email ────────────────────────────────────────────────────────────
     log.info("[MacroResearch] Sending HTML email...")
     html_body = _build_email_html(
-        time_label, yahoo, fred, sections, fed_items, headlines, total_cost
+        time_label, market, fred, sections, fed_items, headlines, total_cost
     )
     _send_email(smtp_resource, recipient_email,
                 f"Macro Research — {time_label}", html_body)
