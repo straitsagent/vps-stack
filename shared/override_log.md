@@ -22,6 +22,16 @@ Fix needed: [yes/no — what needs to change in the script]
 
 ---
 
+Date: 2026-06-29
+Component: drive-backup / rclone gdrive-oauth remote
+Action: Manually re-authorized rclone Google Drive OAuth token; switched from custom GCP OAuth client to rclone's built-in OAuth app
+Reason: The original custom GCP OAuth client (client_id: 583689966861-pcr012s6navog6stk7cho6qerah42mgn) was deleted in GCP Console, causing all backup runs to fail with `deleted_client` error since 2026-06-28. Two days of backups were missed (2026-06-28, 2026-06-29 AM).
+Fix: User ran `rclone authorize "drive"` on local machine (no custom client_id — uses rclone's built-in OAuth app). New refresh token obtained and written to /root/.config/rclone/rclone.conf. Access token auto-renews via refresh token; no manual intervention should be needed going forward.
+Token persistence: The refresh token from rclone's built-in app is long-lived and auto-renews silently on every backup run. It only expires if the user explicitly revokes rclone's access in Google Account → Security → Third-party apps.
+If re-auth is needed again: Do NOT use the same `rclone authorize "drive"` flow if it fails — the rclone built-in OAuth client may have rotated. Consider migrating to Backblaze B2 or Cloudflare R2 (rclone application keys — no OAuth, no expiry, 10 GB free tier).
+
+---
+
 Date: 2026-06-27
 Workflow: position_sentinel (Position Sentinel Phase 1)
 Action: Logging G4 live-artifact verification waiver — no live BABA signal was produced during Phase 1 acceptance testing.
@@ -73,14 +83,6 @@ Action: Recreated `u/admin/gmail_smtp` resource (curl POST) and `u/admin/deepsee
 Reason: Both credentials disappeared during a `wmill sync push --yes` call, despite skipResources: true and skipVariables: true being set in wmill.yaml. Push also deployed a stale archived script version rather than the latest.
 Fix: Credentials recreated from keys.md. Hard rules 9 added to CLAUDE.md: never use wmill sync push for routine script changes — always use wmill script push <path>.
 Restoration commands documented in CLAUDE.md Script Workflow section.
-
----
-
-Date: 2026-06-03
-Workflow: 1.1 — Morning News Digest
-Action: Recreated `u/admin/gmail_smtp` resource in Windmill manually
-Reason: Resource was accidentally deleted by Claude Code during a rewrite of the Morning News Digest workflow
-Fix needed: No — resource recreated. Hard rule added to CLAUDE.md to never delete Windmill resources without explicit confirmation.
 
 ---
 
