@@ -1,7 +1,7 @@
 ---
 Subject: Rationalise StraitsAgent Telegram pushes — decouple 4 Windmill automations from Telegram, daily-ify YouTube
 Date: 2026-06-29
-Status: approved
+Status: executing
 Planner model: claude-sonnet-4-6
 Executor: opencode/Deepseek (clean-checkout handoff)
 Risk tier: MEDIUM (modifies 4 live workflows + 1 schedule + tests; reversible — formatter scripts retained)
