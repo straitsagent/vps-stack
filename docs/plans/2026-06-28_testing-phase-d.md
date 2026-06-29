@@ -1,7 +1,7 @@
 ---
 Subject: Testing Phase D — prune Phase C substring tests, harness 3 missing scripts, live-verify all
 Date: 2026-06-28
-Status: executing
+Status: done
 Planner model: claude-sonnet-4-6
 Risk tier: MEDIUM (adds tests + modifies test file; no change to production scripts)
 Hard Rules in force: [12, 15, 17, 20]
