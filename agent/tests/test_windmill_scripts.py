@@ -3073,26 +3073,11 @@ def _read_pe_source() -> str:
         return f.read()
 
 
-def test_portfolio_email_has_telegram_params():
-    """main() must accept telegram_bot_token and telegram_owner_id params."""
+def test_portfolio_email_no_longer_dispatches_telegram():
+    """portfolio_email must no longer dispatch the Telegram formatter."""
     src = _read_pe_source()
-    assert "telegram_bot_token" in src, "portfolio_email missing telegram_bot_token param"
-    assert "telegram_owner_id" in src, "portfolio_email missing telegram_owner_id param"
-
-
-def test_portfolio_email_sends_telegram_when_token_set():
-    """Script must dispatch the Telegram formatter to deliver the snapshot."""
-    src = _read_pe_source()
-    assert "_dispatch_formatter" in src, "portfolio_email missing _dispatch_formatter helper"
-    assert "portfolio_email_telegram" in src, \
-        "_dispatch_formatter not called with formatter name in portfolio_email"
-
-
-def test_portfolio_email_telegram_guarded_by_token_check():
-    """Telegram send must be guarded so it only fires when token is set."""
-    src = _read_pe_source()
-    assert "if telegram_bot_token" in src or "telegram_bot_token and" in src, \
-        "portfolio_email must guard _send_telegram with a token check"
+    assert "portfolio_email_telegram" not in src, \
+        "portfolio_email still dispatches telegram — should have been removed"
 
 
 # ── Macro daily push: new script ─────────────────────────────────────────────
@@ -3137,26 +3122,11 @@ def test_macro_daily_push_sends_telegram():
 
 # ── YouTube monitor: Telegram push on new videos ─────────────────────────────
 
-def test_youtube_monitor_has_telegram_params():
-    """main() must accept telegram_bot_token and telegram_owner_id params."""
+def test_youtube_no_longer_dispatches_telegram():
+    """youtube_monitor must no longer dispatch the Telegram formatter."""
     src = _read_yt_source()
-    assert "telegram_bot_token" in src, "youtube_monitor missing telegram_bot_token param"
-    assert "telegram_owner_id" in src, "youtube_monitor missing telegram_owner_id param"
-
-
-def test_youtube_monitor_sends_telegram_when_videos_found():
-    """Script must dispatch the Telegram formatter when new videos are found."""
-    src = _read_yt_source()
-    assert "_dispatch_formatter" in src, "youtube_monitor missing _dispatch_formatter helper"
-    assert "youtube_monitor_telegram" in src, \
-        "_dispatch_formatter not called with formatter name in youtube_monitor"
-
-
-def test_youtube_monitor_telegram_guarded_by_token_check():
-    """Telegram send must be guarded so it only fires when token is set."""
-    src = _read_yt_source()
-    assert "if telegram_bot_token" in src or "telegram_bot_token and" in src, \
-        "youtube_monitor must guard _send_telegram with a token check"
+    assert "youtube_monitor_telegram" not in src, \
+        "youtube_monitor still dispatches telegram — should have been removed"
 
 
 # ── macro_daily_push: USD/xxx currency direction ──────────────────────────────
@@ -3176,19 +3146,6 @@ def _read_analyst_alert_source() -> str:
     path = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/portfolio_analyst_alert.py")
     with open(path) as f:
         return f.read()
-
-
-def test_youtube_telegram_includes_links():
-    """youtube_monitor front-matter must include watch_url and channel_name per video."""
-    src = _read_yt_source()
-    fm_idx = src.find("front_matter")
-    assert fm_idx != -1, "front_matter not found in youtube_monitor"
-    # fm_videos (built just before front_matter) carries watch_url and channel_name
-    fm_block = src[max(0, fm_idx - 400): fm_idx + 400]
-    assert "watch_url" in fm_block, \
-        "youtube_monitor front_matter must include watch_url as a clickable link"
-    assert "channel_name" in fm_block, \
-        "youtube_monitor front_matter must include channel_name"
 
 
 def test_youtube_telegram_includes_date():
@@ -3249,20 +3206,6 @@ def test_rationalization_telegram_includes_scores():
     context = src[make_entry_idx: make_entry_idx + 300]
     assert "balanced" in context or "composites" in context, \
         "portfolio_rationalization _make_entry must include composite scores (balanced)"
-
-
-def test_morning_news_has_telegram_push():
-    """morning_news_digest must have _send_telegram and use it with links from rss_headlines."""
-    src = _read_md_source()
-    assert "_send_telegram" in src, \
-        "morning_news_digest missing _send_telegram — no Telegram push implemented"
-    assert "telegram_bot_token" in src, \
-        "morning_news_digest main() must accept telegram_bot_token param"
-    tg_idx = src.find("tg_text")
-    assert tg_idx != -1, "tg_text not found in morning_news_digest"
-    tg_block = src[max(0, tg_idx - 600): tg_idx + 600]
-    assert "link" in tg_block, \
-        "morning_news_digest tg_text must include article links from rss_headlines"
 
 
 def test_health_check_has_telegram_push():
@@ -4142,6 +4085,12 @@ _MAIN_SCRIPT_NAMES = [
     "portfolio_analyst_alert", "health_check", "youtube_monitor",
 ]
 
+_DISPATCH_MAIN_NAMES = [
+    "macro_daily_push", "portfolio_review",
+    "portfolio_rationalization", "portfolio_move_monitor",
+    "portfolio_analyst_alert", "health_check",
+]
+
 
 @pytest.mark.parametrize("name", _FORMATTER_NAMES)
 def test_formatter_exists(name):
@@ -4187,9 +4136,9 @@ def test_formatter_checks_telegram_api_ok(name):
         f"{name}_telegram.py must check the Telegram API 'ok' response field"
 
 
-@pytest.mark.parametrize("name", _MAIN_SCRIPT_NAMES)
+@pytest.mark.parametrize("name", _DISPATCH_MAIN_NAMES)
 def test_main_script_dispatches_formatter(name):
-    """Every main script must dispatch its formatter (contain a formatter job dispatch call)."""
+    """Every main script that still pushes Telegram must dispatch its formatter."""
     path = _SCRIPTS_DIR / f"{name}.py"
     if not path.exists():
         pytest.skip(f"{name}.py does not exist")
@@ -4775,13 +4724,12 @@ def test_macro_research_has_required_params():
         assert param in src, f"macro_research.main missing param: {param}"
 
 
-def test_macro_research_has_yahoo_symbols():
-    """Script must define at least 20 Yahoo Finance symbols."""
+def test_macro_research_has_finnhub_symbols():
+    """Script must define at least 8 Finnhub ETF proxy symbols."""
     src = _read_mr_source()
-    # Count ^-prefixed or =X / =F tickers as a proxy for symbol count
-    yahoo_sym_count = src.count("^") + src.count("=X") + src.count("=F")
-    assert yahoo_sym_count >= 20, (
-        f"Expected ≥20 Yahoo symbol references, found {yahoo_sym_count}"
+    sym_count = src.count('":')  # rough proxy for symbol dict entries
+    assert sym_count >= 10, (
+        f"Expected ≥10 Finnhub+FRED symbol references, found {sym_count}"
     )
 
 
@@ -4832,19 +4780,18 @@ def test_macro_research_sends_email():
     assert "html" in src.lower(), "macro_research email must be HTML"
 
 
-def test_macro_research_dispatches_telegram_formatter():
-    """Script must dispatch macro_daily_push_telegram formatter."""
+def test_macro_research_no_longer_dispatches_telegram():
+    """macro_research must no longer dispatch the Telegram formatter."""
     src = _read_mr_source()
-    assert "_dispatch_formatter" in src, "macro_research must call _dispatch_formatter"
-    assert "macro_daily_push_telegram" in src, \
-        "macro_research must dispatch macro_daily_push_telegram"
+    assert "macro_daily_push_telegram" not in src, \
+        "macro_research still dispatches telegram — should have been removed"
 
 
 def test_macro_research_md_has_nested_indicators_schema():
-    """Front-matter must use nested indicators.yahoo and indicators.fred keys."""
+    """Front-matter must use nested indicators.market and indicators.fred keys."""
     src = _read_mr_source()
-    assert '"yahoo"' in src or "'yahoo'" in src, \
-        "macro_research front-matter must use nested 'yahoo' key under indicators"
+    assert '"market"' in src or "'market'" in src, \
+        "macro_research front-matter must use nested 'market' key under indicators"
     assert '"fred"' in src or "'fred'" in src, \
         "macro_research front-matter must use nested 'fred' key under indicators"
 
@@ -6932,7 +6879,7 @@ _MR_ASD = {
 }
 
 _MR_WORLD = {
-    "yahoo": {
+    "finnhub": {
         "VIX":    {"value": 13.2,    "change_pct": -3.1},
         "SP500":  {"value": 5520.0,  "change_pct":  0.4},
         "NDX":    {"value": 19350.0, "change_pct":  0.6},
@@ -7048,14 +6995,14 @@ def _render_macro_research_artifacts(world=None):
     Returns (email_html: str, md_content: str, telegram_message: str).
 
     Patches applied (edge I/O only):
-      - _fetch_yahoo_macro       → canned yahoo indicators
+      - _fetch_finnhub_data      → canned finnhub indicators
       - _fetch_fred_data         → canned fred series
       - _fetch_fed_news          → canned fed_items
       - _fetch_macro_news        → canned headlines
       - _synthesise_section      → canned section texts (no Deepseek call)
       - _write_canonical_md      → captures md_content
       - _send_email              → captures email_html
-      - _dispatch_formatter      → no-op (Telegram rendered directly below)
+      - (dispatch_formatter removed 2026-06-29)
     """
     import tempfile as _tf
     import datetime as _dtt
@@ -7089,17 +7036,17 @@ def _render_macro_research_artifacts(world=None):
         )
 
     with (
-        patch.object(mr, "_fetch_yahoo_macro",  return_value=world["yahoo"]),
+        patch.object(mr, "_fetch_finnhub_data", return_value=world["finnhub"]),
         patch.object(mr, "_fetch_fred_data",    return_value=world["fred"]),
         patch.object(mr, "_fetch_fed_news",     return_value=world["fed_items"]),
         patch.object(mr, "_fetch_macro_news",   return_value=world["headlines"]),
         patch.object(mr, "_synthesise_section", side_effect=mock_synthesise_section),
         patch.object(mr, "_send_email",         side_effect=mock_send_email),
         patch.object(mr, "_write_canonical_md", side_effect=mock_write_canonical_md),
-        patch.object(mr, "_dispatch_formatter"),
     ):
         mr.main(
             fred_api_key="fake-fred-key",
+            finnhub_key="fake-finnhub-key",
             deepseek_key="fake-deepseek-key",
             telegram_bot_token="fake-bot-token",
             telegram_owner_id="12345678",
@@ -7347,8 +7294,7 @@ def _render_portfolio_email_artifacts(world):
                       return_value=world["narrative"]), \
          patch.object(mod, "fetch_news", return_value=[]), \
          patch.object(mod, "_send_email", side_effect=_fake_send_email), \
-         patch.object(mod, "_write_canonical_md", side_effect=_fake_write_md), \
-         patch.object(mod, "_dispatch_formatter", return_value=""):
+         patch.object(mod, "_write_canonical_md", side_effect=_fake_write_md):
 
         mod.main(
             portfolio_db={"host": "localhost", "port": 5432, "dbname": "portfolio",
@@ -8662,7 +8608,6 @@ def _render_youtube_monitor_artifacts(world: dict):
          patch.object(mod, "summarize",           return_value=(summary, 100, 50)), \
          patch.object(mod, "_collect_24h_videos", return_value=fm_videos), \
          patch.object(mod, "_synthesise_24h",     return_value=world["synthesis"]), \
-         patch.object(mod, "_dispatch_formatter", return_value=""), \
          patch.object(mod, "_send_email",         side_effect=_fake_send_email), \
          patch.object(mod, "_write_canonical_md", side_effect=_fake_write_md), \
          patch.object(mod, "datetime",            _DatetimeStub), \
@@ -8908,4 +8853,43 @@ def test__select_top_replacements_few_candidates():
     ]
     result = _load_replacement_screener_module()._select_top_replacements(exit_tickers, shortlisted, set(), top_n=3)
     assert len(result["BABA"]) == 2  # only 2 available, not 3
+
+
+# ── YouTube: new synthesis-in-email artifact test ────────────────────────────
+
+YOUTUBE_MONITOR_PATH = os.path.join(
+    os.path.dirname(__file__), "../../windmill/u/admin/youtube_monitor.py"
+)
+
+
+def _load_youtube_mod():
+    for pkg in ("feedparser", "openai", "requests"):
+        if pkg not in sys.modules:
+            sys.modules[pkg] = MagicMock()
+    spec = importlib.util.spec_from_file_location("_yt", YOUTUBE_MONITOR_PATH)
+    if spec is None:
+        return None
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        pass
+    return mod
+
+
+def test_youtube_email_renders_synthesis():
+    """build_email_html must render the synthesis narrative when passed a synthesis string."""
+    mod = _load_youtube_mod()
+    if mod is None or not hasattr(mod, "build_email_html"):
+        pytest.skip("youtube_monitor not loadable")
+    from datetime import datetime, timezone
+    results = [
+        {"title": "Video A", "channel_name": "Channel1",
+         "watch_url": "https://youtu.be/a", "summary": "Summary A",
+         "published_at": datetime.now(timezone.utc)},
+    ]
+    synthesis = "SYNTH_SENTINEL_PARAGRAPH"
+    html = mod.build_email_html(results, synthesis, 0, 0)
+    assert "SYNTH_SENTINEL_PARAGRAPH" in html, "synthesis text not rendered in email"
+    assert "Daily Synthesis" in html, "'Daily Synthesis' header not found in email"
 

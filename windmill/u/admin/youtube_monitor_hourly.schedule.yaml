@@ -13,7 +13,7 @@ enabled: true
 has_permissioned_as: false
 is_flow: false
 no_flow_overlap: false
-schedule: 0 0 */6 * * *
+schedule: 0 0 18 * * *
 script_path: u/admin/youtube_monitor
 timezone: Asia/Singapore
 ws_error_handler_muted: false

@@ -63,19 +63,6 @@ def _dispatch_idea_extractor(md_path: str, source: str,
         return ""
 
 
-def _send_telegram(bot_token: str, chat_id: str, text: str):    import urllib.request as _urlreq
-    import json as _json
-    try:
-        data = _json.dumps({"chat_id": chat_id, "text": text, "parse_mode": "Markdown"}).encode()
-        req = _urlreq.Request(
-            f"https://api.telegram.org/bot{bot_token}/sendMessage",
-            data=data,
-            headers={"Content-Type": "application/json"},
-        )
-        _urlreq.urlopen(req, timeout=10)
-    except Exception as e:
-        log.warning(f"[Telegram] Failed to send: {e}")
-
 # Section 1: key publication RSS feeds (48h cutoff)
 HEADLINE_FEEDS = [
     ("Reuters",      "https://news.google.com/rss/search?q=site:reuters.com&hl=en&gl=SG&ceid=SG:en"),
@@ -517,25 +504,6 @@ def main(
         server.sendmail(username, recipients, msg.as_string())
 
     log.info(f"Sent: {subject}")
-
-    if telegram_bot_token and telegram_owner_id:
-        tg_date = datetime.now(SGT).strftime("%a %-d %b")
-        tg_lines = []
-        for source, items in list(rss_headlines.items())[:5]:
-            if items:
-                item = items[0]
-                link = item.get("link", "")
-                title = item.get("title", "")
-                if link:
-                    tg_lines.append(f"• [{title}]({link}) — {source}")
-                else:
-                    tg_lines.append(f"• {title} — {source}")
-        tg_text = (
-            f"*Morning Digest — {tg_date}*\n\n"
-            + "\n".join(tg_lines)
-            + "\n\n_Full digest → email_"
-        )
-        _send_telegram(telegram_bot_token, telegram_owner_id, tg_text)
 
     # ── Write markdown digest ──────────────────────────────────────────────
     import os as _os

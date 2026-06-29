@@ -52,9 +52,9 @@ Everything below is live and running unattended unless noted.
 
 | Workflow | Schedule | Notes |
 |---|---|---|
-| Morning News Digest | 6:30 AM SGT daily | RSS (WSJ/Reuters/NYT) + newsletter AI summaries. Email + Telegram. |
-| YouTube Channel Monitor | Every 6 hours | 37 channels, RapidAPI transcripts, Deepseek summaries, 3-retry logic. |
-| Macro Research | 7:00 AM SGT Mon–Fri | Perplexity macro scan → Deepseek synthesis → `/research/macro/YYYY-MM-DD_HHMM.md` + Telegram push. **Live but previously undocumented.** |
+| Morning News Digest | 6:30 AM SGT daily | RSS (WSJ/Reuters/NYT) + newsletter AI summaries. Email + idea_extractor. Telegram retired 2026-06-29. |
+| YouTube Channel Monitor | Daily 18:00 SGT | 37 channels, RapidAPI transcripts, Deepseek summaries, 3-retry logic, daily synthesis narrative. Email only (Telegram retired 2026-06-29). |
+| Macro Research | 7:00 AM SGT Mon–Fri | Perplexity macro scan → Deepseek synthesis → `/research/macro/YYYY-MM-DD_HHMM.md` + email. Telegram retired 2026-06-29. **Live but previously undocumented.** |
 | Macro Daily Push | — | **Parked 2026-06-26** — main script retained for reference; disabled schedule removed (server + disk). `macro_research` handles the macro push. Its formatter `macro_daily_push_telegram` remains live (used by `macro_research`). |
 
 ### Portfolio System
@@ -62,7 +62,7 @@ Everything below is live and running unattended unless noted.
 | Component | Schedule | Notes |
 |---|---|---|
 | Daily Price Fetcher | 5:45 AM + 5:45 PM SGT, 7 days/week | yfinance EOD prices + USDHKD FX rate → `price_history`, `fx_rates` |
-| Portfolio Email | 6:00 AM + 6:00 PM SGT | ADR consolidation, top movers, Google News per mover. Email + Telegram. |
+| Portfolio Email | 6:00 AM + 6:00 PM SGT | ADR consolidation, top movers, Google News per mover. Email only. Telegram retired 2026-06-29. |
 | Weekly Portfolio Review | Saturday 8:00 AM SGT | Week P&L, Finnhub news, Deepseek commentary. Email + Telegram. |
 | Move Monitor | Hourly, Mon–Fri (HK + US sessions) | Alert on portfolio ±1.5% or position ±5%. Telegram. |
 | Fundamentals Fetcher | Sunday 6:00 PM SGT | Finnhub + yfinance → `fundamental_data` (P/E, targets, margins, ROE, ROIC) |
@@ -328,7 +328,7 @@ local` inside the hardened container (no Docker socket, no dind).
 Hermes has proven useful enough to graduate from A/B trial to a planned **integration layer**. The approved parent roadmap — [`docs/plans/2026-06-29_hermes-integration-roadmap.md`](plans/2026-06-29_hermes-integration-roadmap.md) — sequences three workstreams under **seven non-negotiable security invariants** (the sandbox is never weakened: Hermes stays read-only + off the `root_default`/`dind`/Windmill networks; no Docker socket; PII/secret tables stay denied; **analysis-only — no job dispatch**).
 
 - **WS-A — System visibility 🔲** Producers running *outside* the sandbox push Windmill job-health + container/system-health JSON into `/research/system/` (which Hermes already reads `:ro`). Reuses `health_check.py` + the `drive-backup.timer` host-timer pattern. **The Hermes container spec does not change** — LOCKED ORACLE O1–O8 still pass verbatim.
-- **WS-B — Analysis takeover 🔲** Clean producer/interpreter split: Windmill schedules + StraitsAgent keep *producing* artifacts and *dispatching* jobs; Hermes becomes the *interpreter*. StraitsAgent keeps webhook routing, confirmations, transactional commands (`/portfolio`, `/prices`, `/health`, `/thesis` write) and all Windmill dispatch. Overlapping analytical commands (`/analyze`, `/macro`, `/deepresearch`, and the interpretation half of `/research` `/rationalize` `/candidate`) soft-deprecate over three reversible, usage-gated phases.
+- **WS-B — Analysis takeover 🔲** Clean producer/interpreter split: Windmill schedules + StraitsAgent keep *producing* artifacts and *dispatching* jobs; Hermes becomes the *interpreter*. StraitsAgent keeps webhook routing, confirmations, transactional commands (`/portfolio`, `/prices`, `/health`, `/thesis` write) and all Windmill dispatch. Overlapping analytical commands (`/analyze`, `/macro`, `/deepresearch`, and the interpretation half of `/research` `/rationalize` `/candidate`) soft-deprecate over three reversible, usage-gated phases. **First increment delivered 2026-06-29:** 4 automations stopped from pushing Telegram (macro_research, morning_news_digest, portfolio_email, youtube_monitor); YouTube cadence daily 18:00 SGT with email-only delivery. (`docs/plans/2026-06-29_rationalise-straitsagent-pushes.md`)
 - **WS-C — Research `.md` quality 🔲** Overhaul the corpus Hermes reads: one unified machine-parseable front-matter schema, recency/staleness metadata, cross-file linking (extend `/research/index.json`), and structured metric tables in prose. Schema-design + sign-off first (Hard Rule 18 contract migration), then `macro_research` as the reference script, then roll-out — each script pairing formatter + round-trip test in one commit.
 
 Recommended order: **WS-A → WS-C → WS-B**. Each workstream spawns its own `EXECUTOR_CONTRACT`-compliant child plan when picked up.

@@ -6,8 +6,8 @@
 """
 Macro Research — comprehensive daily macro brief.
 Fetches 11 Finnhub ETF proxies + 30 FRED series + Fed RSS feeds + Google News.
-Analyses in 6 sections via Deepseek. Writes canonical .md, sends HTML email,
-dispatches macro_daily_push_telegram formatter for Telegram push.
+Analyses in 6 sections via Deepseek. Writes canonical .md, sends HTML email.
+Telegram dispatch retired 2026-06-29 (formatter retained on disk).
 """
 
 import calendar as _calendar
@@ -600,37 +600,6 @@ def _send_email(smtp_res: dict, recipient: str, subject: str, html_body: str):
         server.sendmail(username, [recipient], msg.as_string())
     log.info(f"[Email] Sent: {subject}")
 
-# ── Telegram formatter dispatch ───────────────────────────────────────────────
-
-def _dispatch_formatter(md_path: str, telegram_bot_token: str,
-                        telegram_owner_id: str, portfolio_db: dict,
-                        deepseek_key: str = "", wm_token: str = "") -> str:
-    token = wm_token or os.environ.get("WM_TOKEN", "")
-    if not token:
-        log.warning("[Dispatch] No WM_TOKEN — cannot dispatch macro_daily_push_telegram")
-        return ""
-    url  = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/macro_daily_push_telegram"
-    args = {
-        "md_path":            md_path,
-        "telegram_bot_token": telegram_bot_token,
-        "telegram_owner_id":  telegram_owner_id,
-        "portfolio_db":       portfolio_db,
-        "deepseek_key":       deepseek_key,
-    }
-    try:
-        resp = requests.post(
-            url,
-            headers={"Authorization": f"Bearer {token}",
-                     "Content-Type":  "application/json"},
-            json=args, timeout=10,
-        )
-        job_id = resp.text.strip().strip('"')
-        log.info(f"[Dispatch] macro_daily_push_telegram job_id={job_id}")
-        return job_id
-    except Exception as e:
-        log.warning(f"[Dispatch] Failed: {e}")
-        return ""
-
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main(
@@ -739,10 +708,6 @@ def main(
     )
     _send_email(smtp_resource, recipient_email,
                 f"Macro Research — {time_label}", html_body)
-
-    # ── Dispatch Telegram formatter ───────────────────────────────────────────
-    _dispatch_formatter(md_path, telegram_bot_token, telegram_owner_id,
-                        portfolio_db, deepseek_key, wm_token)
 
     total_words = sum(len(v.split()) for v in sections.values())
     return {

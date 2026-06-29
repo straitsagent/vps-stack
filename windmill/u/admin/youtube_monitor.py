@@ -178,7 +178,7 @@ def summarize(client: OpenAI, title: str, transcript: str) -> tuple[str, int, in
 
 # ── Email ────────────────────────────────────────────────────────────────────
 
-def build_email_html(videos: list, prompt_tokens: int, completion_tokens: int) -> str:
+def build_email_html(videos: list, synthesis: str, prompt_tokens: int, completion_tokens: int) -> str:
     now_sgt = datetime.now(SGT).strftime("%d %b %Y, %H:%M SGT")
     summarised = [v for v in videos if v.get("summary")]
     bare = [v for v in videos if not v.get("summary")]
@@ -198,6 +198,14 @@ def build_email_html(videos: list, prompt_tokens: int, completion_tokens: int) -
         f'{prompt_tokens:,} prompt + {completion_tokens:,} completion tokens · '
         f'est. ${est_cost:.4f}</p>'
     )
+
+    if synthesis:
+        _paras = [p.strip() for p in synthesis.split("\n\n") if p.strip()]
+        S += '<div style="margin:0 0 24px;padding:16px 18px;background:#f7f9fb;border-left:4px solid #2c3e50;">'
+        S += '<p style="margin:0 0 10px;font-size:13px;font-weight:bold;color:#2c3e50;text-transform:uppercase;letter-spacing:0.5px;">Daily Synthesis</p>'
+        for _p in _paras:
+            S += f'<p style="margin:0 0 10px;font-size:13px;color:#444;line-height:1.6;">{html_mod.escape(_p)}</p>'
+        S += '</div>'
 
     for v in summarised:
         pub_sgt = v["published_at"].astimezone(SGT).strftime("%H:%M SGT") if v["published_at"] else ""
@@ -299,37 +307,6 @@ def _synthesise_24h(videos: list, deepseek_key: str) -> str:
         return r.choices[0].message.content.strip()
     except Exception as e:
         log.warning(f"[Synthesise24h] Deepseek synthesis failed: {e}")
-        return ""
-
-
-# ── Main ─────────────────────────────────────────────────────────────────────
-
-def _dispatch_formatter(formatter_name: str, md_path: str,
-                        telegram_bot_token: str, telegram_owner_id: str,
-                        portfolio_db: dict, wm_token: str = "") -> str:
-    """Dispatch a Telegram formatter script fire-and-forget. Returns job_id or ''."""
-    token = wm_token or os.environ.get("WM_TOKEN", "")
-    if not token:
-        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
-        return ""
-    url = f"{WM_BASE_DISPATCH}/api/w/{WM_WORKSPACE_DISPATCH}/jobs/run/p/u/admin/{formatter_name}"
-    args = {
-        "md_path": md_path,
-        "telegram_bot_token": telegram_bot_token,
-        "telegram_owner_id": telegram_owner_id,
-        "portfolio_db": portfolio_db,
-    }
-    try:
-        resp = requests.post(
-            url, headers={"Authorization": f"Bearer {token}",
-                          "Content-Type": "application/json"},
-            json=args, timeout=10,
-        )
-        job_id = resp.text.strip().strip('"')
-        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
-        return job_id
-    except Exception as e:
-        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
         return ""
 
 
@@ -442,18 +419,14 @@ def main(
         log.info("No results to email (all pending retry).")
         return {"status": "pending_retry", "channels_checked": len(feeds), "retrying": len(attempt_counts)}
 
-    log.info("Sending email...")
-    html = build_email_html(results, total_prompt_tokens, total_completion_tokens)
     now_sgt = datetime.now(SGT).strftime("%d %b %Y, %H:%M SGT")
     n_summarised = sum(1 for v in results if v.get("summary"))
     n_bare = len(results) - n_summarised
-    subject = f"YouTube Digest — {now_sgt} ({n_summarised} new)" + (f" + {n_bare} no transcript" if n_bare else "")
-    _send_email(smtp_resource, recipient_email, subject, html)
 
     est_cost = (total_prompt_tokens / 1_000_000) * 0.14 + (total_completion_tokens / 1_000_000) * 0.28
     log.info(f"Deepseek: {total_prompt_tokens:,} prompt + {total_completion_tokens:,} completion tokens · est. ${est_cost:.4f}")
 
-    # ── Write canonical .md + dispatch Telegram formatter ────────────────────
+    # ── Write canonical .md + dispatch idea_extractor ────────────────────────
     import os as _os
     _os.makedirs("/research/youtube", exist_ok=True)
     run_time = datetime.now(SGT)
@@ -504,16 +477,15 @@ def main(
     _write_canonical_md(md_content, md_path)
     log.info(f"[md] Written {md_path}")
 
+    # ── Send email (renders the .md synthesis + per-video list) ──────────────
+    log.info("Sending email...")
+    html = build_email_html(results, synthesis, total_prompt_tokens, total_completion_tokens)
+    subject = f"YouTube Digest — {now_sgt} ({n_summarised} new)" + (f" + {n_bare} no transcript" if n_bare else "")
+    _send_email(smtp_resource, recipient_email, subject, html)
+
     if portfolio_db and wm_token:
         _dispatch_idea_extractor(
             md_path, "youtube", portfolio_db, deepseek_key, wm_token,
-        )
-
-    if telegram_bot_token and telegram_owner_id:
-        _dispatch_formatter(
-            "youtube_monitor_telegram", md_path,
-            telegram_bot_token, telegram_owner_id,
-            portfolio_db, wm_token,
         )
 
     return {

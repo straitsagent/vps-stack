@@ -30,36 +30,6 @@ ARTIFACT_MARKERS: dict[str, list[str]] = {
 }
 
 
-def _dispatch_formatter(formatter_name: str, md_path: str,
-                        telegram_bot_token: str, telegram_owner_id: str,
-                        portfolio_db: dict, wm_token: str = "") -> str:
-    """Dispatch a Telegram formatter script fire-and-forget. Returns job_id or ''."""
-    import os as _os
-    token = wm_token or _os.environ.get("WM_TOKEN", "")
-    if not token:
-        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
-        return ""
-    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/{formatter_name}"
-    args = {
-        "md_path": md_path,
-        "telegram_bot_token": telegram_bot_token,
-        "telegram_owner_id": telegram_owner_id,
-        "portfolio_db": portfolio_db,
-    }
-    try:
-        resp = requests.post(
-            url, headers={"Authorization": f"Bearer {token}",
-                          "Content-Type": "application/json"},
-            json=args, timeout=10,
-        )
-        job_id = resp.text.strip().strip('"')
-        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
-        return job_id
-    except Exception as e:
-        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
-        return ""
-
-
 def _send_email(gmail_smtp: dict, recipient_email: str, subject: str, html: str) -> None:
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
@@ -628,10 +598,4 @@ def main(
     _write_canonical_md(md_content, md_path)
     log.info(f"[md] Written {md_path}")
 
-    # ── Dispatch Telegram formatter ──────────────────────────────────────────
-    if telegram_bot_token and telegram_owner_id:
-        _dispatch_formatter(
-            "portfolio_email_telegram", md_path,
-            telegram_bot_token, telegram_owner_id,
-            portfolio_db, wm_token,
-        )
+
