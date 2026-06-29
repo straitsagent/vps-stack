@@ -31,6 +31,8 @@ What gets built next, in priority order:
 
 **✅ Live (out-of-band, security-led):** **OpenClaw sandboxed assistant** (Part 6) — a self-hosted, owner-only agent runtime with read-only access to the research corpus + Postgres. Deployed and secrets-consolidated 2026-06-27. Its overlap with the Part 4 ReAct layer is now ripe to reconsider.
 
+**✅ Live + integrating (security-led):** **Hermes agent** (Part 7) — confined autonomous agent, in active daily use, now graduating from A/B trial to a planned **integration layer**. Approved roadmap [`docs/plans/2026-06-29_hermes-integration-roadmap.md`](plans/2026-06-29_hermes-integration-roadmap.md) sequences three workstreams (system visibility → research-MD quality → analysis takeover) under seven security invariants that never weaken the sandbox.
+
 ---
 
 ## Part 1 — What's Running
@@ -317,7 +319,19 @@ local` inside the hardened container (no Docker socket, no dind).
 - **Channel** — dedicated Telegram bot, long-polling, `TELEGRAM_ALLOWED_USERS` set
   to owner chat ID. No Caddy route, no webhook, no public inbound exposure.
 
-**Status:** ✅ Live. A/B trial with OpenClaw. Next: daily usage comparison.
+**Self-managed cron jobs (owner-approved):** Hermes runs three of its own scheduled jobs (managed in its `/workspace` state, **not** the host crontab): a daily World Cup 2026 briefing, a daily portfolio health check (read-only SQL via `HERMES_RO_DSN`), and a cron dispatch monitor that watches its own jobs. All deliver to the owner over Telegram.
+
+**Status:** ✅ Live and in active daily use, alongside OpenClaw.
+
+### Integration Roadmap 🔲 (approved 2026-06-29)
+
+Hermes has proven useful enough to graduate from A/B trial to a planned **integration layer**. The approved parent roadmap — [`docs/plans/2026-06-29_hermes-integration-roadmap.md`](plans/2026-06-29_hermes-integration-roadmap.md) — sequences three workstreams under **seven non-negotiable security invariants** (the sandbox is never weakened: Hermes stays read-only + off the `root_default`/`dind`/Windmill networks; no Docker socket; PII/secret tables stay denied; **analysis-only — no job dispatch**).
+
+- **WS-A — System visibility 🔲** Producers running *outside* the sandbox push Windmill job-health + container/system-health JSON into `/research/system/` (which Hermes already reads `:ro`). Reuses `health_check.py` + the `drive-backup.timer` host-timer pattern. **The Hermes container spec does not change** — LOCKED ORACLE O1–O8 still pass verbatim.
+- **WS-B — Analysis takeover 🔲** Clean producer/interpreter split: Windmill schedules + StraitsAgent keep *producing* artifacts and *dispatching* jobs; Hermes becomes the *interpreter*. StraitsAgent keeps webhook routing, confirmations, transactional commands (`/portfolio`, `/prices`, `/health`, `/thesis` write) and all Windmill dispatch. Overlapping analytical commands (`/analyze`, `/macro`, `/deepresearch`, and the interpretation half of `/research` `/rationalize` `/candidate`) soft-deprecate over three reversible, usage-gated phases.
+- **WS-C — Research `.md` quality 🔲** Overhaul the corpus Hermes reads: one unified machine-parseable front-matter schema, recency/staleness metadata, cross-file linking (extend `/research/index.json`), and structured metric tables in prose. Schema-design + sign-off first (Hard Rule 18 contract migration), then `macro_research` as the reference script, then roll-out — each script pairing formatter + round-trip test in one commit.
+
+Recommended order: **WS-A → WS-C → WS-B**. Each workstream spawns its own `EXECUTOR_CONTRACT`-compliant child plan when picked up.
 
 ## Deleted / Parked
 
