@@ -342,6 +342,10 @@ Hermes has proven useful enough to graduate from A/B trial to a planned **integr
 
 Recommended order: **WS-A → WS-C → WS-B**. Each workstream spawns its own `EXECUTOR_CONTRACT`-compliant child plan when picked up.
 
+### The Reflexive Alpha System 🔲 (draft 2026-06-29) — the overarching objective
+
+The integration roadmap above wires Hermes *into* the stack. This parent roadmap sets the **why**: build an institutional-grade investment research and portfolio management system that reliably generates alpha, by making the stack **self-improving**. Three agents, each with a complementary strength: **Hermes = always-on conscience** (observes outputs, critiques against an institutional rubric, self-improves via `background_review`); **Claude Code = stateless hands** (builds/fixes anything, plan-driven, artifact-tested); **owner = director** (sets objective, approves). The keystone is **WS-1: a Hermes→Claude feedback channel** (`/docs/hermes/feedback/current.md` → read at my SessionStart) that closes the broken loop edge where the human currently relays Hermes' observations by hand. Then WS-2 (institutional review rubric as a Hermes skill), WS-3 (= integration WS-C corpus quality), WS-4 (heavy risk analytics via the SSH sandbox), WS-5 (the four institutional pillars, prioritised *by the loop itself*). The channel is **advisory, never imperative** (INV-8) and **injection-contained** (INV-9): Hermes proposes, the director disposes, I build through the normal gated pipeline. ([`docs/plans/2026-06-29_reflexive-alpha-system.md`](plans/2026-06-29_reflexive-alpha-system.md), building on Hermes' own [`docs/hermes/2026-06-28_institutional-grade-roadmap.md`](hermes/2026-06-28_institutional-grade-roadmap.md))
+
 ## Deleted / Parked
 
 ### Professional Intelligence — REMOVED
