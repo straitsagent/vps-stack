@@ -323,6 +323,15 @@ local` inside the hardened container (no Docker socket, no dind).
 
 **Status:** ✅ Live and in active daily use, alongside OpenClaw.
 
+### SSH Backend — Sandbox VPS 🔲 (approved 2026-06-29, executing tomorrow)
+
+Hermes cannot install system packages at runtime due to `read_only` rootfs (by design). The hermes-agent SSH backend (verified in v0.17.0 source: `tools/environments/ssh.py`) routes all terminal/file execution over ControlMaster SSH to a **separate, disposable sandbox VPS** — giving Hermes full sudo on the sandbox while the main VPS is never touched.
+
+- **Config:** `TERMINAL_ENV=ssh` + `TERMINAL_SSH_HOST/USER/KEY` in `hermes.env`; `openssh-client` added to Dockerfile; dedicated ed25519 key in `/workspace/.ssh/id_hermes` (persists in hermes_state volume)
+- **Sandbox:** Cheap VPS (Hetzner CPX11 ~€3.29/mo), `hermes` user with sudo, no firewall route back to main VPS
+- **Security:** Dedicated SSH key only; if sandbox is compromised, rebuild it — main VPS unaffected
+- **Plan:** [`docs/plans/2026-06-29_hermes-ssh-backend.md`](plans/2026-06-29_hermes-ssh-backend.md) — requires user to provision sandbox VPS first (P1–P3)
+
 ### Integration Roadmap 🔲 (approved 2026-06-29)
 
 Hermes has proven useful enough to graduate from A/B trial to a planned **integration layer**. The approved parent roadmap — [`docs/plans/2026-06-29_hermes-integration-roadmap.md`](plans/2026-06-29_hermes-integration-roadmap.md) — sequences three workstreams under **seven non-negotiable security invariants** (the sandbox is never weakened: Hermes stays read-only + off the `root_default`/`dind`/Windmill networks; no Docker socket; PII/secret tables stay denied; **analysis-only — no job dispatch**).
