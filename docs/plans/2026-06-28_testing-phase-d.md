@@ -21,6 +21,13 @@ harness at all: `morning_news_digest`, `portfolio_price_fetcher`, `fundamentals_
 
 This plan closes all three gaps in one pass.
 
+**Baseline note (added 2026-06-29):** The rationalise-straitsagent-pushes plan
+(commit `f136a1c`) executed before this plan. It removed Telegram dispatch from
+`macro_research`, `morning_news_digest`, `portfolio_email`, and `youtube_monitor`,
+and trimmed ~185 test cases in the process (E6). The test suite baseline entering
+Phase D is **495 passing** (not the ~680 assumed when this plan was first written).
+Key impacts on scope below.
+
 ## Scope
 
 ### Part 1 — Prune substring tests (Phase C remainder)
@@ -32,6 +39,10 @@ harness are tautological — they test the same path the ASD was derived from.
 Scripts: `macro_research`, `portfolio_email`, `portfolio_review`,
 `portfolio_rationalization`, `portfolio_move_monitor`, `portfolio_analyst_alert`.
 
+**Note:** the rationalise E6 already removed Telegram dispatch tests for `macro_research`
+and `portfolio_email`. Part 1 for those two scripts is a lighter lift — focus on any
+remaining substring tests that duplicate `_agree` fields (not dispatch-related).
+
 For each: identify substring tests in `test_windmill_scripts.py` that duplicate fields
 already asserted by the `_agree` test; remove them. Keep any substring test that covers a
 code path the harness does not (e.g., edge cases, error branches).
@@ -40,12 +51,13 @@ code path the harness does not (e.g., edge cases, error branches).
 
 | Script | Artifact type | Harness pattern |
 |--------|--------------|-----------------|
-| `morning_news_digest` | Email HTML + Telegram message | Same ASD + `_agree` + word-count pattern as Phase C scripts |
+| `morning_news_digest` | Email HTML only (Telegram dispatch removed by rationalise) | Same ASD + `_agree` + word-count pattern as Phase C scripts |
 | `portfolio_price_fetcher` | DB write — `price_history` rows | Fake DB cursor; assert correct ticker/date/close/currency written per position |
 | `fundamentals_fetcher` | DB write — fundamentals tables | Fake DB cursor; assert correct data written for a mocked API response |
 
 `morning_news_digest` is a delivery script — full artifact treatment (ASD, seams, `_agree`,
-word-count, Tier 0 markers). `portfolio_price_fetcher` and `fundamentals_fetcher` are data
+word-count, Tier 0 markers). The `_agree` test must assert on the **email HTML only**;
+Telegram dispatch was removed by the rationalise plan (no formatter to test). `portfolio_price_fetcher` and `fundamentals_fetcher` are data
 pipeline scripts — their artifact is a DB row; the harness verifies correct write behaviour
 under a mocked API + mocked cursor.
 
@@ -116,24 +128,24 @@ def run(cmd):
     r = subprocess.run(cmd, shell=True, capture_output=True, text=True, cwd="/root/agent")
     return r.returncode, r.stdout + r.stderr
 
-# O1: test suite passes; count ≥ 690 (680 baseline + ≥10 new tests from Part 2)
+# O1: test suite passes; count ≥ 505 (495 baseline post-rationalise + ≥10 new from Part 2)
 rc, out = run("python3 -m pytest tests/test_windmill_scripts.py -q 2>&1 | tail -5")
 assert rc == 0, f"Test suite failed:\n{out}"
 import re
 m = re.search(r"(\d+) passed", out)
-assert m and int(m.group(1)) >= 690, f"Expected ≥690 passed, got: {out}"
+assert m and int(m.group(1)) >= 505, f"Expected ≥505 passed, got: {out}"
 
 # O2: morning_news_digest _agree test exists
 rc, _ = run("grep -q 'test_morning_news.*agree\\|agree.*morning_news' tests/test_windmill_scripts.py")
 assert rc == 0, "morning_news_digest _agree test not found"
 
-# O3: price_fetcher DB-write test exists
-rc, _ = run("grep -q 'test_price_fetcher\\|test_portfolio_price_fetcher' tests/test_windmill_scripts.py")
-assert rc == 0, "portfolio_price_fetcher harness test not found"
+# O3: price_fetcher has an _agree artifact harness (not just substring tests — 4 already exist)
+rc, _ = run("grep -qE 'test_price_fetcher.*agree|agree.*price_fetcher' tests/test_windmill_scripts.py")
+assert rc == 0, "portfolio_price_fetcher _agree harness not found (substring tests don't count)"
 
-# O4: fundamentals_fetcher DB-write test exists
-rc, _ = run("grep -q 'test_fundamentals_fetcher' tests/test_windmill_scripts.py")
-assert rc == 0, "fundamentals_fetcher harness test not found"
+# O4: fundamentals_fetcher has an _agree artifact harness (not just substring tests — 4 already exist)
+rc, _ = run("grep -qE 'test_fundamentals.*agree|agree.*fundamentals' tests/test_windmill_scripts.py")
+assert rc == 0, "fundamentals_fetcher _agree harness not found (substring tests don't count)"
 
 print("LOCKED ORACLE: PASS")
 ```
@@ -154,15 +166,15 @@ echo "=== 1. test suite passes ==="
 python3 -m pytest tests/test_windmill_scripts.py -q 2>&1 | tail -5
 [ ${PIPESTATUS[0]} -eq 0 ] && echo PASS || { echo FAIL; fail=1; }
 
-echo "=== 2. pass count ≥ 690 ==="
+echo "=== 2. pass count ≥ 505 ==="
 count=$(python3 -m pytest tests/test_windmill_scripts.py -q 2>&1 | grep -oP '\d+ passed' | grep -oP '\d+')
-[ "$count" -ge 690 ] && echo "PASS: $count" || { echo "FAIL: $count"; fail=1; }
+[ "$count" -ge 505 ] && echo "PASS: $count" || { echo "FAIL: $count"; fail=1; }
 
 echo "=== 3. _agree tests exist for all Phase C + new scripts ==="
 for pattern in \
-  "agree.*morning_news\|morning_news.*agree" \
-  "test_price_fetcher\|test_portfolio_price_fetcher" \
-  "test_fundamentals_fetcher"; do
+  "agree.*morning_news|morning_news.*agree" \
+  "test_price_fetcher.*agree|agree.*price_fetcher" \
+  "test_fundamentals.*agree|agree.*fundamentals"; do
   grep -qP "$pattern" tests/test_windmill_scripts.py && echo "PASS: $pattern" || { echo "FAIL: $pattern"; fail=1; }
 done
 
@@ -185,7 +197,7 @@ print('PASS')
 - [ ] Part 2: `morning_news_digest` word-count ≥500 test passes
 - [ ] Part 2: `morning_news_digest` Tier 0 `ARTIFACT_MARKERS` entry added
 - [ ] Part 3: live delivery confirmed for all 7 delivery scripts; DB writes confirmed for 2 pipeline scripts
-- [ ] Suite ≥690 passing, 0 new failures
+- [ ] Suite ≥505 passing, 0 new failures
 - [ ] LOCKED ORACLE PASS (verbatim, unmodified)
 - [ ] Verify script ends `PASS`
 - [ ] TESTING.md rollout table complete (all columns ✅ for all 10 scripts)
