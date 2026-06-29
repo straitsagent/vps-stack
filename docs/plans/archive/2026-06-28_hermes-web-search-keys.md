@@ -1,7 +1,7 @@
 ---
 Subject: Fix Hermes web search tool — add 5 web search provider API keys
 Date: 2026-06-28
-Status: executing
+Status: done
 Planner model: opencode (mimo-v2.5-pro)
 Executor model: any
 Risk tier: LOW (env-only changes, no service restart of other containers, no DB or compose network changes)
@@ -33,7 +33,7 @@ unlock web search for the agent.
 - [x] **Step 2 — Re-pre-populate volume.** Copy the updated `.env` from host into `root_hermes_state` volume so `/workspace/.env` has the new keys.
 - [x] **Step 3 — Restart container.** `docker compose up -d --force-recreate hermes`.
 - [x] **Step 4 — Verify.** All 5 keys present in container env. No `check_web_api_key returned False` in post-restart logs.
-- [ ] **Step 5 — Live test.** User sends a web-search message to @StraitsHermesBot and receives a substantive response citing web sources.
+- [x] **Step 5 — Live test.** User sends a web-search message to @StraitsHermesBot and receives a substantive response citing web sources.
 
 ## Locked Oracle Tests (G1)
 
@@ -68,7 +68,7 @@ docker exec hermes sh -c 'tac /workspace/logs/errors.log | head -5' 2>/dev/null
 - [x] All 5 web search API keys in `/workspace/.env` (and `/root/secrets/hermes.env`)
 - [x] Container restarted, picks up new env
 - [x] Web search tool available (no `check_web_api_key returned False`)
-- [ ] Live test: user gets search results from the agent
+- [x] Live test: user gets search results from the agent (confirmed by owner; PERPLEXITY_API_KEY also added 2026-06-29)
 
 ## Execution
 
