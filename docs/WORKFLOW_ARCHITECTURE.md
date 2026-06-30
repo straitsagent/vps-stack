@@ -423,23 +423,24 @@ Key pairs the LLM is guided to distinguish:
 
 ---
 
-### Workflow 6.1 — Daily Health Check ✅ LIVE
+### Workflow 6.1 — Comprehensive System Monitor ✅ LIVE (updated 2026-06-30)
 
 **Script:** `u/admin/health_check`  
-**Formatter:** `u/admin/health_check_telegram`  
+**Formatter:** `u/admin/health_check_telegram` (retained on disk — dispatch removed)  
 **Schedule:** `u/admin/health_check_daily` — **8:00 AM SGT** daily  
-**Send to:** `<YOUR_RECIPIENT_EMAIL>` (email + Telegram)  
-**Canonical output:** `/research/health/YYYY-MM-DD_HHMM.md`
+**Send to:** `<YOUR_RECIPIENT_EMAIL>` (email only — Telegram retired)  
+**Canonical output:** `/research/health/YYYY-MM-DD_HHMM.md` (comprehensive deterministic report)
 
-**Artifact-render test:** `_render_health_check_artifacts(world)` in `agent/tests/test_windmill_scripts.py` — runs real `main()` with 10 seams mocked, asserts digest + diagnoses + spec violations + schedule labels appear in both email HTML and Telegram message. `test_hc_email_and_telegram_agree` is the cross-check. See `docs/TESTING.md` for pattern.
+**Host collector:** `scripts/system-metrics-collector.py` via `system-metrics.timer` (every 30min). Writes `/root/research/system/vps_health.json` with disk/memory/load/Docker/backup metrics. health_check reads it from `/research/system/vps_health.json`.
+
+**Artifact-render test:** `_render_health_check_artifacts(world)` in `agent/tests/test_windmill_scripts.py` — runs real `main()` with I/O seams mocked, asserts system resources + backup status + diagnoses + spec violations + schedule labels appear in email HTML. `test_hc_email_and_telegram_agree` is the cross-check. See `docs/TESTING.md` for pattern.
 
 **Inputs:**
 - `$res:u/admin/gmail_smtp`, `$var:u/admin/recipient_email`
-- `$var:u/admin/telegram_bot_token`, `$var:u/admin/telegram_owner_id`
 - `$res:u/admin/portfolio_db`, `$var:u/admin/wm_token`
-- `$var:u/admin/deepseek_key` (failure diagnosis), `$var:u/admin/xai_key` (Grok-4 digest)
+- `$var:u/admin/deepseek_key` (failure diagnosis)
 
-**Three notification layers:**
+**Notification layers:**
 
 | Layer | Mechanism | Catches |
 |---|---|---|

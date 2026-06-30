@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-06-30T02:30:02.511892+00:00",
+  "collected_at": "2026-06-30T02:38:13.182451+00:00",
   "disk": [
     {
       "mount": "/run",
@@ -172,15 +172,15 @@
   ],
   "memory": {
     "total_mib": 24031,
-    "used_mib": 5050,
-    "available_mib": 18981,
-    "pct_used": 21.0,
-    "pct_available": 79.0
+    "used_mib": 5126,
+    "available_mib": 18905,
+    "pct_used": 21.3,
+    "pct_available": 78.7
   },
   "load": {
-    "load_1m": 2.34,
-    "load_5m": 2.63,
-    "load_15m": 2.21,
+    "load_1m": 3.74,
+    "load_5m": 3.29,
+    "load_15m": 2.74,
     "cores": 8
   },
   "docker": {
@@ -190,8 +190,8 @@
     "total": 16,
     "containers": {
       "hermes": "Up 10 hours",
-      "root-portfolio_postgres-1": "Up 38 hours (healthy)",
-      "openclaw": "Up 44 hours",
+      "root-portfolio_postgres-1": "Up 39 hours (healthy)",
+      "openclaw": "Up 45 hours",
       "root-straitsagent-1": "Up 2 days",
       "root-affectionbot-1": "Up 2 days",
       "n8n-caddy-1": "Up 2 weeks",
@@ -216,7 +216,7 @@
     "timer_active": true
   },
   "uptime": {
-    "uptime_seconds": 4750610.27,
-    "uptime_formatted": "54d 23h 36m"
+    "uptime_seconds": 4751100.6,
+    "uptime_formatted": "54d 23h 45m"
   }
 }

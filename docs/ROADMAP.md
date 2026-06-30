@@ -85,7 +85,7 @@ Everything below is live and running unattended unless noted.
 
 | Component | Notes |
 |---|---|
-| Daily Health Check | 8:00 AM SGT — Deepseek diagnosis on STALE/FAILED; Telegram alert on crash; host deadman at 08:30 SGT via systemd |
+| Daily Health Check | 8:00 AM SGT — comprehensive system monitor: Windmill workflow status + VPS host health (disk/memory/load/Docker) + Drive backup status. Deterministic alerts via threshold rules. Host deadman at 08:30 SGT via systemd. Telegram notification retired. |
 | Windmill Error Alert | On failure — email + Telegram + Deepseek 1-line diagnosis |
 | Affection Ping | Hourly 8AM–10PM SGT — random sticker (11 packs) + Deepseek caption → Telegram group. Logs to `affection_outbox`. Runs on its own bot (`StraitsAffectionBot` via `u/admin/affection_bot_token`), separate from the main agent. |
 
@@ -336,7 +336,7 @@ Hermes cannot install system packages at runtime due to `read_only` rootfs (by d
 
 Hermes has proven useful enough to graduate from A/B trial to a planned **integration layer**. The approved parent roadmap — [`docs/plans/2026-06-29_hermes-integration-roadmap.md`](plans/2026-06-29_hermes-integration-roadmap.md) — sequences three workstreams under **seven non-negotiable security invariants** (the sandbox is never weakened: Hermes stays read-only + off the `root_default`/`dind`/Windmill networks; no Docker socket; PII/secret tables stay denied; **analysis-only — no job dispatch**).
 
-- **WS-A — System visibility 🔲** Producers running *outside* the sandbox push Windmill job-health + container/system-health JSON into `/research/system/` (which Hermes already reads `:ro`). Reuses `health_check.py` + the `drive-backup.timer` host-timer pattern. **The Hermes container spec does not change** — LOCKED ORACLE O1–O8 still pass verbatim.
+- **WS-A — System visibility 🟡 (partially delivered 2026-06-30)** Producers running *outside* the sandbox push Windmill job-health + container/system-health JSON into `/research/system/` (which Hermes already reads `:ro`). Reuses `health_check.py` + the `drive-backup.timer` host-timer pattern. **The Hermes container spec does not change** — LOCKED ORACLE O1–O8 still pass verbatim. Delivered: host collector writes vps_health.json every 30min; health_check reads it and surfaces VPS + backup status in email and canonical .md.
 - **WS-B — Analysis takeover 🔲** Clean producer/interpreter split: Windmill schedules + StraitsAgent keep *producing* artifacts and *dispatching* jobs; Hermes becomes the *interpreter*. StraitsAgent keeps webhook routing, confirmations, transactional commands (`/portfolio`, `/prices`, `/health`, `/thesis` write) and all Windmill dispatch. Overlapping analytical commands (`/analyze`, `/macro`, `/deepresearch`, and the interpretation half of `/research` `/rationalize` `/candidate`) soft-deprecate over three reversible, usage-gated phases. **First increment delivered 2026-06-29:** 4 automations stopped from pushing Telegram (macro_research, morning_news_digest, portfolio_email, youtube_monitor); YouTube cadence daily 18:00 SGT with email-only delivery. ([`docs/plans/archive/2026-06-29_rationalise-straitsagent-pushes.md`](plans/archive/2026-06-29_rationalise-straitsagent-pushes.md))
 - **WS-C — Research `.md` quality 🔲** Overhaul the corpus Hermes reads: one unified machine-parseable front-matter schema, recency/staleness metadata, cross-file linking (extend `/research/index.json`), and structured metric tables in prose. Schema-design + sign-off first (Hard Rule 18 contract migration), then `macro_research` as the reference script, then roll-out — each script pairing formatter + round-trip test in one commit.
 
@@ -473,6 +473,6 @@ Every Windmill notification uses a **canonical markdown → dedicated formatter*
 | `u/admin/portfolio_rationalization_telegram` | `u/admin/portfolio_rationalization` | ✅ Live |
 | `u/admin/portfolio_move_monitor_telegram` | `u/admin/portfolio_move_monitor` | ✅ Live |
 | `u/admin/portfolio_analyst_alert_telegram` | `u/admin/portfolio_analyst_alert` | ✅ Live |
-| `u/admin/health_check_telegram` | `u/admin/health_check` | ✅ Live |
+| `u/admin/health_check_telegram` | `u/admin/health_check` | ⚠️ Retained on disk — dispatch removed 2026-06-30 (system monitor; Telegram retired) |
 | `u/admin/youtube_monitor_telegram` | `u/admin/youtube_monitor` | ⚠️ Retained on disk — dispatch removed 2026-06-29 (Hermes will consume `.md`) |
 | `u/admin/position_sentinel_telegram` | `u/admin/position_sentinel` | ✅ Live (9th formatter) |
