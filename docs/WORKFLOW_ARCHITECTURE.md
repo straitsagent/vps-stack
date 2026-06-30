@@ -2929,7 +2929,7 @@ Only written when a rating change fires.
 **Not part of the md-driven formatter architecture.** This is a standalone hourly sticker ping, not a financial report. Rule 16 (≥500-word report) is exempt — see `shared/override_log.md`.
 
 **Script:** `u/admin/affection_ping`
-**Schedule:** `0 0 8-22 * * *` (8AM–10PM SGT hourly)
+**Schedule:** `0 */2 9-23 * * *` (9AM–11PM SGT every 2 hours)
 **Output:** One `sendSticker` API call with a Deepseek-generated one-sentence caption to the configured Telegram group.
 
 **Pseudocode:**

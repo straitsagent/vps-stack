@@ -10,7 +10,7 @@ enabled: true
 has_permissioned_as: false
 is_flow: false
 no_flow_overlap: true
-schedule: 0 0 8-22 * * *
+schedule: 0 */2 9-23 * * *
 script_path: u/admin/affection_ping
 timezone: Asia/Singapore
 ws_error_handler_muted: false
