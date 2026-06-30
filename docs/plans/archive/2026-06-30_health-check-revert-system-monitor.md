@@ -1,7 +1,7 @@
 ---
 Subject: Expand health_check into a comprehensive Windmill + VPS system monitor; remove LLM analysis; deprecate StraitsAgent health Telegram ping
 Date: 2026-06-30
-Status: executing
+Status: done
 Planner model: claude-opus-4-8
 Risk tier: MEDIUM-HIGH (modifies one working delivery workflow + formatter + schedule + tests; ADDS a host-side systemd collector writing into the read-only research seam)
 Hard Rules in force: [4, 7, 12, 15, 16, 17, 18, 20, 22]
