@@ -49,17 +49,30 @@ cd /root/windmill && wmill sync pull --yes
 
 ## Google Drive Backup (Automated)
 
-A daily backup of the portfolio DB + uncommitted files runs via systemd timer at 04:00 SGT.
+A daily backup of non-git assets runs via systemd timer at 04:00 SGT (`drive-backup.timer`).
+Git-tracked files (windmill, docs, scripts, agent, hermes, openclaw, docker-compose, etc.) are
+**not** backed up here — they are recoverable from the git remote. The backup covers only what
+git does not.
 
-**What's backed up:**
-- PostgreSQL dump of the `portfolio` database
-- `research/` output artifacts
-- Untracked Windmill files (new scripts, utils)
-- Credential files (`.env`, `secrets/keys.md`, `secrets/windmill-sa-key.json`)
-- rclone config
+**What's backed up** (each to its own subfolder under the dated folder):
+- `portfolio_db.sql.gz` — PostgreSQL dump of the `portfolio` database (live price_history/positions/fx_rates)
+- `secrets/` — all credential/env files (gitignored by design)
+- `research/` — runtime LLM output artifacts (not committed)
+- `config/` — rclone.conf, drive-backup.service/timer, Claude settings + commands
+- `hermes_state/` — the `root_hermes_state` Docker volume: Hermes' authoritative `/workspace/.env`,
+  `config.yaml`, self-authored skills, cron jobs, and memory. Read from the host at
+  `/var/lib/docker/volumes/root_hermes_state/_data`. Caches excluded (`.cache`, `.npm`, `audio_cache`,
+  `node_modules`, and `skills/.hub` — the 32.5M regenerable skills-hub catalog cache).
 
-**Location:** Google Drive → `vps-backup/YYYY-MM-DD/`
-**Retention:** 7 days (older folders auto-purged)
+**Auth:** rclone remote `gdrive-oauth` uses an OAuth token (rclone's built-in app) in
+`/root/.config/rclone/rclone.conf`. The refresh token auto-renews; it only breaks if access is
+revoked in the Google account. (A service-account approach was tried 2026-06-29 but fails —
+service accounts have no personal-Drive storage quota.) See `shared/override_log.md` for history.
+
+**Files are synced directly (no tarball).** Directories are mirrored with `rclone copy`.
+
+**Location:** Google Drive → `<date>/` (no `vps-backup/` prefix)
+**Retention:** 7 days (older dated folders auto-purged)
 
 ### Manual run
 
@@ -70,23 +83,23 @@ sudo bash /root/scripts/drive-backup.sh
 ### Verify latest backup
 
 ```bash
-rclone ls gdrive-oauth:vps-backup/$(date +%Y-%m-%d)/
+rclone lsf gdrive-oauth:$(date +%Y-%m-%d)/
 ```
 
 ### Restore from backup
 
 ```bash
-# List available backups
-rclone lsf gdrive-oauth:vps-backup/
+# List available dated backups
+rclone lsf gdrive-oauth: --dirs-only
 
-# Download a specific date's backup
+# Restore the portfolio DB
 TMP=$(mktemp -d)
-rclone copy "gdrive-oauth:vps-backup/YYYY-MM-DD/uncommitted.tar.gz" "$TMP/"
-rclone copy "gdrive-oauth:vps-backup/YYYY-MM-DD/portfolio_db.sql.gz" "$TMP/"
-# Extract files
-tar xzf "$TMP/uncommitted.tar.gz" -C /root
-# Restore DB
+rclone copy "gdrive-oauth:YYYY-MM-DD/portfolio_db.sql.gz" "$TMP/"
 gunzip < "$TMP/portfolio_db.sql.gz" | docker exec -i root-portfolio_postgres-1 psql -U portfolio_user -d portfolio
+
+# Restore a directory (e.g. secrets, research, or hermes_state)
+rclone copy "gdrive-oauth:YYYY-MM-DD/secrets/"      /root/secrets/
+rclone copy "gdrive-oauth:YYYY-MM-DD/hermes_state/" /var/lib/docker/volumes/root_hermes_state/_data/
 ```
 
 ### Timer management
@@ -102,6 +115,36 @@ systemctl disable drive-backup.timer
 # Re-enable
 systemctl enable drive-backup.timer
 systemctl start drive-backup.timer
+```
+
+---
+
+## Hermes: Config & Env (read before editing)
+
+Hermes' configuration has two layers and a security guard that commonly cause confusion.
+
+**Env vars — two sources, `/workspace/.env` wins:**
+- `/root/secrets/hermes.env` is injected as container env via `env_file:` in compose. It is a
+  **fallback** — it fills in keys not otherwise set.
+- `/workspace/.env` (inside the persistent `root_hermes_state` volume) is loaded by hermes-agent
+  with `override=True` (`hermes_cli/env_loader.py`), so **it is the authoritative source** — its
+  values win, and Hermes maintains it directly. It persists across restarts/recreates/rebuilds
+  (it's in the volume, not the image) and is captured by the daily backup (`hermes_state/`).
+- To change env durably: edit `/workspace/.env` (authoritative), and keep `hermes.env` in sync as
+  the fallback. Plain env-var changes need a gateway restart to take effect (see below).
+
+**`config.yaml` is guarded from agent self-modification (by design):**
+- `/workspace/config.yaml` is the active config. The agent's **file-patch/write tools are refused**
+  write access to it (`tools/file_tools.py::_check_sensitive_path`) so a prompt-injected agent
+  cannot disable its own exec-approval. This is intentional — do not weaken it.
+- Sanctioned ways to change config: `hermes config set <key> <value>` (CLI, works), or a human
+  edits the file directly. The error "Refusing to write to Hermes config file" is this guard, not a bug.
+
+**Restarting the gateway** (Hermes runs as a Docker container, NOT a systemd `--user` service):
+```bash
+docker compose -f /root/docker-compose.yml up -d --force-recreate hermes   # re-reads env_file
+# or, to just restart without re-reading env_file:
+docker compose -f /root/docker-compose.yml restart hermes
 ```
 
 ---
