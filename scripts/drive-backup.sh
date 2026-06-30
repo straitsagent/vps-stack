@@ -63,6 +63,7 @@ if [ -d "$HERMES_VOL" ]; then
     rclone copy "$HERMES_VOL" "$DEST/hermes_state/" \
         --exclude '.cache/**' --exclude '.npm/**' \
         --exclude 'audio_cache/**' --exclude 'node_modules/**' \
+        --exclude 'skills/.hub/**' \
         2>&1 | logger -t "$LOG_TAG"
     log "hermes_state sync complete"
 else
