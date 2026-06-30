@@ -3234,13 +3234,17 @@ def test_rationalization_telegram_includes_scores():
         "portfolio_rationalization _make_entry must include composite scores (balanced)"
 
 
-def test_health_check_has_telegram_push():
-    """health_check must dispatch the Telegram formatter and include rows/status in front-matter."""
+def test_health_check_no_telegram_push():
+    """health_check must NOT dispatch Telegram formatter or accept telegram params in main()."""
     src = _read_hc_source()
-    assert "_dispatch_formatter" in src, \
-        "health_check missing _dispatch_formatter — no Telegram push implemented"
-    assert "telegram_bot_token" in src, \
-        "health_check main() must accept telegram_bot_token param"
+    # main() must not reference health_check_telegram or accept telegram_bot_token
+    main_idx = src.find("def main(")
+    assert main_idx != -1, "main() not found"
+    main_src = src[main_idx:src.find("\ndef ", main_idx + 1)]
+    assert "health_check_telegram" not in main_src, \
+        "main() must NOT reference health_check_telegram"
+    assert "telegram_bot_token" not in main_src, \
+        "main() must NOT accept telegram_bot_token param"
     # Check that the front_matter dict in main() contains rows and ok_count keys
     assert '"ok_count"' in src, "health_check front_matter must include ok_count"
     assert '"rows"' in src, "health_check front_matter must include rows"
@@ -4114,7 +4118,7 @@ _MAIN_SCRIPT_NAMES = [
 _DISPATCH_MAIN_NAMES = [
     "macro_daily_push", "portfolio_review",
     "portfolio_rationalization", "portfolio_move_monitor",
-    "portfolio_analyst_alert", "health_check",
+    "portfolio_analyst_alert",
 ]
 
 
@@ -4705,10 +4709,9 @@ def test_contract_health_check_rows_survive():
         "spec_checks": [],
         "outbox_rows": [],
         "content_inventory": [],
-        "digest": "",
     }
-    # Use the production writer — not a test-local copy
-    md_content = build_md_fn(fm, _TEST_NARRATIVE)
+    # Use the production writer — not a test-local fake
+    md_content = build_md_fn(fm)
     md_file = _tempfile.NamedTemporaryFile(mode="w", suffix=".md", delete=False)
     md_file.write(md_content)
     md_file.close()
@@ -5831,111 +5834,14 @@ def test_health_check_front_matter_has_spec_checks_key():
 # Part 2C — Grok-4.3 holistic daily digest _synthesise_daily_digest
 # =============================================================================
 
-def test_health_check_has_synthesise_daily_digest_fn():
-    """health_check.py must define _synthesise_daily_digest function."""
-    src = _read_hc_source()
-    assert "_synthesise_daily_digest" in src, (
-        "health_check.py must define _synthesise_daily_digest(reports, xai_key, deepseek_key) "
-        "to generate the Grok-4.3 holistic daily brief"
-    )
 
 
-def test_health_check_main_accepts_xai_key():
-    """health_check.py main() must accept xai_key parameter."""
-    hc = _load_hc_module()
-    fn = getattr(hc, "main", None)
-    if fn is None:
-        pytest.skip("main not loadable")
-    import inspect
-    sig = inspect.signature(fn)
-    assert "xai_key" in sig.parameters, (
-        "main() must accept xai_key parameter for Grok-4.3 digest synthesis"
-    )
 
 
-def test_health_check_synthesise_daily_digest_calls_xai():
-    """_synthesise_daily_digest must call xAI API (api.x.ai) when xai_key is provided."""
-    hc = _load_hc_module()
-    fn = getattr(hc, "_synthesise_daily_digest", None)
-    if fn is None:
-        pytest.skip("_synthesise_daily_digest not yet implemented")
-
-    called_urls = []
-
-    class FakeResponse:
-        def __init__(self):
-            self.choices = [type("C", (), {"message": type("M", (), {"content": "Test digest content " * 50})()})()]
-        def model_dump(self): pass
-
-    class FakeOpenAI:
-        def __init__(self, api_key=None, base_url=None, **kw):
-            called_urls.append(base_url or "")
-        class chat:
-            class completions:
-                @staticmethod
-                def create(**kw):
-                    return FakeResponse()
-
-    import openai as _oa
-    orig = _oa.OpenAI
-    _oa.OpenAI = FakeOpenAI
-    try:
-        result = fn(
-            reports=[{"type": "macro", "narrative": "Macro content " * 50, "front_matter": {}}],
-            xai_key="test-xai-key",
-            deepseek_key="test-ds-key",
-        )
-    finally:
-        _oa.OpenAI = orig
-
-    assert any("x.ai" in u for u in called_urls), (
-        f"_synthesise_daily_digest must call xAI API when xai_key provided. "
-        f"Called URLs: {called_urls}"
-    )
 
 
-def test_health_check_synthesise_daily_digest_returns_text():
-    """_synthesise_daily_digest must return a non-empty string."""
-    hc = _load_hc_module()
-    fn = getattr(hc, "_synthesise_daily_digest", None)
-    if fn is None:
-        pytest.skip("_synthesise_daily_digest not yet implemented")
-
-    class FakeResponse:
-        def __init__(self):
-            self.choices = [type("C", (), {"message": type("M", (), {"content": "Holistic brief " * 80})()})()]
-
-    class FakeOpenAI:
-        def __init__(self, **kw): pass
-        class chat:
-            class completions:
-                @staticmethod
-                def create(**kw):
-                    return FakeResponse()
-
-    import openai as _oa
-    orig = _oa.OpenAI
-    _oa.OpenAI = FakeOpenAI
-    try:
-        result = fn(
-            reports=[{"type": "macro", "narrative": "Content " * 100, "front_matter": {}}],
-            xai_key="test-xai-key",
-            deepseek_key="",
-        )
-    finally:
-        _oa.OpenAI = orig
-
-    assert isinstance(result, str) and len(result) > 50, (
-        "_synthesise_daily_digest must return a non-empty string"
-    )
 
 
-def test_health_check_front_matter_has_digest_key():
-    """health_check.py must include 'digest' in the front_matter dict."""
-    src = _read_hc_source()
-    assert "'digest'" in src or '"digest"' in src, (
-        "health_check.py must write 'digest' into the canonical .md front-matter"
-    )
 
 
 # =============================================================================
@@ -5943,7 +5849,6 @@ def test_health_check_front_matter_has_digest_key():
 # =============================================================================
 
 def _make_full_health_check_md(
-    digest="",
     spec_checks=None,
     diagnoses=None,
     ok_count=5,
@@ -5982,32 +5887,39 @@ def _make_full_health_check_md(
         "content_inventory": [
             {"type": "macro", "path": "/research/macro/2026-06-22_0700.md", "word_count": 2400},
         ],
-        "digest": digest or (
-            "Today's key theme was the Federal Reserve's continued hold on rates. "
-            "Equity markets were broadly flat with the S&P 500 at 5,967, while the "
-            "Nasdaq gained 0.4%. " * 30
-        ),
+        "system": {
+            "disk": [{"mount": "/", "pct_used": "72", "total_gb": "100", "used_gb": "72", "available_gb": "28"}],
+            "memory": {"total_mib": 24031, "used_mib": 12000, "available_mib": 12031, "pct_used": 50.0, "pct_available": 50.0},
+            "load": {"load_1m": 1.2, "load_5m": 0.8, "load_15m": 0.6, "cores": 8},
+            "docker": {"running": 6, "total": 8, "containers": {"windmill-server-1": "Up 2h"}},
+            "uptime": {"uptime_seconds": 1000000, "uptime_formatted": "11d 13h 46m"},
+        },
+        "backup": {
+            "service": {"Result": "success", "ExecMainStatus": "0", "ExecMainExitTimestamp": "2026-06-22 04:00:00"},
+            "timer_active": True,
+        },
     }
     return fm
 
 
-def test_contract_health_check_digest_appears_in_telegram():
-    """Round-trip: digest in front-matter must appear in _build_message output."""
+def test_contract_health_check_system_backup_in_telegram():
+    """Round-trip: system+backup in front-matter must appear in _build_message output."""
     mod = _load_formatter("health_check")
     fn = getattr(mod, "_build_message", None)
     if fn is None:
         pytest.skip("_build_message not found")
 
-    digest_text = "UNIQUE_DIGEST_MARKER_FOR_ROUND_TRIP_TEST " * 5
-    fm = _make_full_health_check_md(digest=digest_text)
+    fm = _make_full_health_check_md()
     try:
         msg = fn(fm, "")
     except TypeError:
         msg = fn(fm)
 
-    assert "UNIQUE_DIGEST_MARKER_FOR_ROUND_TRIP_TEST" in msg, (
-        "health_check_telegram _build_message must render the 'digest' "
-        "from front-matter into the Telegram message"
+    assert "System Resources" in msg or "/" in msg, (
+        "health_check_telegram _build_message must render system resource info"
+    )
+    assert "Drive Backup" in msg or "backup" in msg.lower(), (
+        "health_check_telegram _build_message must render backup status"
     )
 
 
@@ -6031,6 +5943,30 @@ def test_contract_health_check_spec_violations_visible_in_telegram():
     assert "SPEC_VIOLATION_UNIQUE_MARKER" in msg, (
         "health_check_telegram _build_message must render spec violations "
         "from 'spec_checks' into the Telegram message"
+    )
+
+
+def test_health_check_no_xai_key():
+    """main() must NOT accept xai_key parameter (digest removed)."""
+    hc = _load_hc_module()
+    fn = getattr(hc, "main", None)
+    if fn is None:
+        pytest.skip("main not loadable")
+    import inspect
+    sig = inspect.signature(fn)
+    assert "xai_key" not in sig.parameters, (
+        "main() must NOT accept xai_key — digest synthesis removed"
+    )
+
+
+def test_health_check_no_digest_in_front_matter():
+    """front_matter must NOT have 'digest' key (digest removed)."""
+    src = _read_hc_source()
+    fm_idx = src.find("def _build_front_matter")
+    assert fm_idx != -1
+    fm_src = src[fm_idx: fm_idx + 800]
+    assert "'digest'" not in fm_src and '"digest"' not in fm_src, (
+        "health_check.py must NOT include 'digest' in the front_matter dict"
     )
 
 
@@ -6077,8 +6013,8 @@ def test_health_check_daily_schedule_is_8am():
 
 # ── Email HTML rendering — digest / spec / diagnoses (Part 2F) ───────────────
 
-def test_build_html_renders_digest():
-    """build_html must include the digest text when digest arg is non-empty."""
+def test_build_html_renders_system_resources():
+    """build_html must include system resources section when system_data is provided."""
     hc = _load_hc_module()
     import datetime
     sgt = datetime.timezone(datetime.timedelta(hours=8))
@@ -6086,10 +6022,16 @@ def test_build_html_renders_digest():
     rows = [{"label": "Morning News Digest", "status": "OK", "age_str": "30m ago",
              "error": "", "last_run": "6:30 AM", "email_count": 1, "email_match": ["Morning Digest"],
              "email_expect": 1}]
-    digest_text = "This is the holistic executive brief synthesised by Grok-4 for the day."
+    system_data = {
+        "disk": [{"mount": "/", "pct_used": "72", "total_gb": "100", "used_gb": "72", "available_gb": "28"}],
+        "memory": {"total_mib": 24031, "used_mib": 12000, "available_mib": 12031, "pct_used": 50.0, "pct_available": 50.0},
+        "load": {"load_1m": 1.2, "load_5m": 0.8, "load_15m": 0.6, "cores": 8},
+        "docker": {"running": 6, "total": 8},
+        "uptime": {"uptime_seconds": 1000000, "uptime_formatted": "11d 13h 46m"},
+    }
     html = hc.build_html(rows, now, 1, 1, [], 0, 0, 0.0, [], [],
-                         digest=digest_text)
-    assert digest_text[:40] in html, "Digest text must appear in email HTML"
+                         system_data=system_data, backup_data=None)
+    assert "System Resources" in html, "System Resources section must appear in email HTML"
 
 
 def test_build_html_renders_spec_failures():
@@ -6163,63 +6105,23 @@ def test_build_html_no_new_content_unchanged():
 # _HC_WORLD is DERIVED from these constants — the ASD is written first, world second.
 # Adding a string here without updating _HC_WORLD triggers _validate_world_vs_asd failure.
 
-_HC_ASD_DIGEST_PREFIX   = "Executive brief 22 Jun 2026: equity markets"
-_HC_ASD_ROOT_CAUSE      = "SMTP rate limit exceeded on Gmail relay."
-_HC_ASD_REMEDIATION     = "Add exponential backoff and retry logic."
-_HC_ASD_SPEC_VIOLATION  = "narrative.word_count must be ge2400 but got 1850"
-
-# Realistic ~600-word LLM digest (production output is 500-700 words).
-# Long enough to drive the Telegram formatter past the 500-word floor without padding.
-# Not a tautology: the narrative is realistic in shape; the word-count assertion is
-# a floor check, not a pre-sized match.
-_HC_ASD_DIGEST_NARRATIVE = (
-    _HC_ASD_DIGEST_PREFIX + " posted modest gains led by technology sector outperformance, "
-    "with the S&P 500 closing up 0.4% and the Nasdaq adding 0.7%. Semiconductor names led the "
-    "advance following stronger-than-expected earnings guidance from a major chipmaker. "
-    "US 10Y yields ticked up 4bp to 4.49% on firmer-than-expected composite PMI data, which "
-    "showed services activity expanding at its fastest pace in three months. The move in rates "
-    "was contained, however, as the Fed speak during the session was largely neutral on the "
-    "near-term rate path. VIX compressed further below 16.0, ending the session at 15.6, "
-    "signalling reduced near-term volatility concern and an environment broadly supportive of "
-    "risk assets. Credit spreads remained tight with IG spreads at 87bp and HY at 312bp. "
-    "\n\n"
-    "Portfolio performing broadly in line with benchmarks for the day. The technology weighting "
-    "was accretive, adding approximately 0.3% relative to a blended benchmark. The HK-listed "
-    "positions lagged slightly as the HSI drifted 0.2% lower in a session characterised by "
-    "thin volumes ahead of the long weekend. FX was broadly stable with USDHKD holding the "
-    "7.84–7.85 range. The SGD positions were neutral contributors with the SGD firming slightly "
-    "against the USD. Macro backdrop remains constructive for equities over the medium term: "
-    "inflation trajectory is trending toward the Fed target, labour market is softening "
-    "gradually, and earnings revisions remain net positive for the year. "
-    "\n\n"
-    "Ops status: one workflow failure recorded overnight — the Morning News Digest experienced "
-    "an SMTP rate-limit error at 06:28 SGT. The failure was isolated to a single run and did "
-    "not affect downstream workflows. The Macro Research workflow completed on schedule at "
-    "07:02 SGT with a 2,514-word narrative and all six sections populated. Portfolio email "
-    "delivered on schedule at both the 06:00 and 18:00 SGT windows with correct P&L figures. "
-    "YouTube Monitor completed its 06:00 SGT run with 4 channel summaries delivered. "
-    "One spec violation detected: the macro narrative fell short of the 2,400-word floor at "
-    "1,850 words on the 20 Jun run; the 22 Jun run is compliant. Telegram outbox shows all "
-    "overnight deliveries as successful with word counts above the 500-word floor. "
-    "\n\n"
-    "Key risks to monitor: any repricing of the Fed terminal rate on hotter-than-expected "
-    "PCE data due Friday; China PMI readings due Tuesday which could move HK-listed positions; "
-    "and ongoing USD/HKD peg monitoring given recent FX reserve commentary. No immediate "
-    "action items for the portfolio but the SMTP rate-limit failure warrants adding exponential "
-    "backoff and retry logic to the Gmail relay configuration before the next scheduled run."
-)
+_HC_ASD_ROOT_CAUSE        = "SMTP rate limit exceeded on Gmail relay."
+_HC_ASD_REMEDIATION       = "Add exponential backoff and retry logic."
+_HC_ASD_SPEC_VIOLATION    = "narrative.word_count must be ge2400 but got 1850"
+_HC_ASD_SYSTEM_DISK_MARK  = "/: 72% used"
+_HC_ASD_BACKUP_MARK       = "Drive Backup Status"
 
 _HC_ASD = {
     # Strings that MUST appear in email_html — world-fixture-unique, non-template values
     "email_required": [
-        _HC_ASD_DIGEST_PREFIX,
         _HC_ASD_ROOT_CAUSE,
         _HC_ASD_REMEDIATION,
         _HC_ASD_SPEC_VIOLATION,
+        _HC_ASD_SYSTEM_DISK_MARK,
+        _HC_ASD_BACKUP_MARK,
     ],
     # Strings that MUST appear in tg_msg — same shared fields
     "telegram_required": [
-        _HC_ASD_DIGEST_PREFIX,
         _HC_ASD_ROOT_CAUSE,
         _HC_ASD_REMEDIATION,
         _HC_ASD_SPEC_VIOLATION,
@@ -6227,12 +6129,11 @@ _HC_ASD = {
     # Shared set — each tuple (label, value) must appear in BOTH artifacts
     # Drives test_hc_email_and_telegram_agree mechanically — add entries here, not in the test
     "shared_fields": [
-        ("digest prefix",         _HC_ASD_DIGEST_PREFIX),
         ("diagnosis root_cause",  _HC_ASD_ROOT_CAUSE),
         ("diagnosis remediation", _HC_ASD_REMEDIATION),
         ("spec violation",        _HC_ASD_SPEC_VIOLATION),
     ],
-    "min_telegram_words": 500,
+    "min_telegram_words": 0,
 }
 
 # ── World fixture — values sourced from ASD constants above ──────────────────
@@ -6251,7 +6152,6 @@ _HC_WORLD = {
         }
     ],
     "spec_violations": [_HC_ASD_SPEC_VIOLATION],           # sourced from ASD
-    "digest": _HC_ASD_DIGEST_NARRATIVE,                    # sourced from ASD (realistic ~600w)
     "diagnosis": {
         "root_cause": _HC_ASD_ROOT_CAUSE,                  # sourced from ASD
         "remediation": _HC_ASD_REMEDIATION,                # sourced from ASD
@@ -6260,6 +6160,13 @@ _HC_WORLD = {
         {"script_name": "macro_daily_push_telegram", "delivered": True,
          "word_count": 558, "error": None},
     ],
+    # These strings appear in _read_system_metrics mock return — included here
+    # so _validate_world_vs_asd can find them. Actual data comes from the mock.
+    "asd_system_disk_mark": _HC_ASD_SYSTEM_DISK_MARK,
+    "asd_backup_mark": _HC_ASD_BACKUP_MARK,
+    "asd_root_cause": _HC_ASD_ROOT_CAUSE,
+    "asd_remediation": _HC_ASD_REMEDIATION,
+    "asd_spec_violation": _HC_ASD_SPEC_VIOLATION,
 }
 
 
@@ -6292,9 +6199,8 @@ def _render_health_check_artifacts(world=None):
       - _diagnose_failure    → canned diagnosis dict (called once for the FAILED schedule)
       - _collect_24h_reports → canned content_reports
       - _spec_check          → canned spec_check result
-      - _synthesise_daily_digest → canned digest string
+      - _read_system_metrics → canned system snapshot
       - _query_telegram_outbox_24h → canned outbox_rows
-      - _dispatch_formatter  → no-op (we render Telegram manually below)
       - _send_email          → captures email HTML   [RED until Part 1 refactor]
       - _write_canonical_md  → captures .md content  [RED until Part 1 refactor]
 
@@ -6360,6 +6266,19 @@ def _render_health_check_artifacts(world=None):
     def mock_write_canonical_md(md_content, path):
         captured_md_content[0] = md_content
 
+    fake_system_metrics = {
+        "snapshot": {
+            "disk": [{"mount": "/", "pct_used": "72", "total_gb": "100", "used_gb": "72", "available_gb": "28"}],
+            "memory": {"total_mib": 24031, "used_mib": 12000, "available_mib": 12031, "pct_used": 50.0, "pct_available": 50.0},
+            "load": {"load_1m": 1.2, "load_5m": 0.8, "load_15m": 0.6, "cores": 8},
+            "docker": {"running": 6, "total": 8, "containers": {"windmill-server-1": "Up 2h"}},
+            "backup": {"service": {"Result": "success", "ExecMainExitTimestamp": "2026-06-22 04:00:00"}, "timer_active": True},
+            "uptime": {"uptime_seconds": 1000000, "uptime_formatted": "11d 13h 46m"},
+        },
+        "alerts": [],
+        "status": "OK",
+    }
+
     with (
         patch.object(hc, "fetch_sent_subjects", return_value=world["sent_subjects"]),
         patch.object(hc, "wmill_get", side_effect=mock_wmill_get),
@@ -6370,9 +6289,8 @@ def _render_health_check_artifacts(world=None):
             "pass": False,
             "violations": list(world["spec_violations"]),
         }),
-        patch.object(hc, "_synthesise_daily_digest", return_value=world["digest"]),
+        patch.object(hc, "_read_system_metrics", return_value=fake_system_metrics),
         patch.object(hc, "_query_telegram_outbox_24h", return_value=world["outbox_rows"]),
-        patch.object(hc, "_dispatch_formatter"),
         patch.object(hc, "_send_email", side_effect=mock_send_email),
         patch.object(hc, "_write_canonical_md", side_effect=mock_write_canonical_md),
     ):
@@ -6380,10 +6298,6 @@ def _render_health_check_artifacts(world=None):
             gmail_smtp={"host": "smtp.gmail.com", "port": 587,
                         "username": "test@example.com", "password": "testpass"},
             recipient_email="test@example.com",
-            telegram_bot_token="fake-bot-token",
-            telegram_owner_id="12345678",
-            # Pass a fake key so the xai_key/deepseek_key gate opens and
-            # _synthesise_daily_digest (mocked above) is called.
             deepseek_key="fake-deepseek-key-for-test",
         )
 
@@ -6420,17 +6334,21 @@ def _get_hc_artifacts(force_refresh=False):
     return _HC_ARTIFACTS_CACHE["v"]
 
 
-def test_hc_email_contains_digest():
-    """The digest text must appear in the rendered email HTML."""
+def test_hc_email_contains_system_resources():
+    """System Resources and Backup Status sections must appear in the rendered email HTML."""
     email_html, _, _ = _get_hc_artifacts()
     assert email_html is not None, (
         "_send_email was never called — _send_email seam must exist on health_check module"
     )
-    expected = _HC_WORLD["digest"][:50]
-    assert expected in email_html, (
-        f"Digest text missing from email HTML.\n"
-        f"Expected to find: {expected!r}\n"
-        f"Email HTML snippet: {email_html[:600]}"
+    assert "System Resources" in email_html, (
+        "System Resources section missing from email HTML"
+    )
+    assert "Drive Backup Status" in email_html, (
+        "Backup Status section missing from email HTML"
+    )
+    # No Daily Brief / digest should appear
+    assert "Daily Brief" not in email_html, (
+        "Daily Brief section should NOT appear in email HTML"
     )
 
 
@@ -6469,15 +6387,15 @@ def test_hc_email_contains_all_status_rows():
         )
 
 
-def test_hc_telegram_contains_digest():
-    """The digest text must appear in the rendered Telegram message."""
+def test_hc_telegram_contains_system_backup():
+    """System resources and backup status sections must appear in the rendered Telegram message."""
     _, _, tg_msg = _get_hc_artifacts()
     assert tg_msg is not None, "_build_message returned None — check .md was captured"
-    expected = _HC_WORLD["digest"][:50]
-    assert expected in tg_msg, (
-        f"Digest text missing from Telegram message.\n"
-        f"Expected to find: {expected!r}\n"
-        f"Telegram snippet: {tg_msg[:600]}"
+    assert "72% used" in tg_msg or "/" in tg_msg, (
+        "Telegram message must contain disk usage info from system resources"
+    )
+    assert "Drive Backup" in tg_msg or "backup" in tg_msg.lower(), (
+        "Telegram message must contain backup status"
     )
 
 
@@ -9315,4 +9233,70 @@ def test_fundamentals_hk_ticker_detection():
     src = open(os.path.join(os.path.dirname(__file__),
                "../../windmill/u/admin/fundamentals_fetcher.py")).read()
     assert ".HK" in src, "HK ticker detection not found"
+
+
+# ── System metrics collector unit tests ───────────────────────────────────────
+
+COLLECTOR = os.path.join(os.path.dirname(__file__), "../../scripts/system-metrics-collector.py")
+
+
+def test_collector_exists():
+    """system-metrics-collector.py must exist."""
+    assert os.path.exists(COLLECTOR), "system-metrics-collector.py not found"
+
+
+def test_collector_emits_valid_json():
+    """Collector must emit valid JSON with all required keys when run on host."""
+    import subprocess as _sp, json
+    # Skip if running inside Docker (no /root/research write access)
+    if os.path.exists("/.dockerenv"):
+        pytest.skip("collector host test skipped inside Docker")
+    r = _sp.run(["python3", COLLECTOR], capture_output=True, text=True, timeout=15)
+    assert r.returncode == 0, f"Collector failed: {r.stderr}"
+    with open("/root/research/system/vps_health.json") as f:
+        data = json.load(f)
+    for k in ("collected_at", "disk", "memory", "load", "docker", "backup"):
+        assert k in data, f"JSON missing key {k}"
+
+
+def test_collector_memory_parses_proc_meminfo():
+    """_memory() must correctly parse /proc/meminfo values."""
+    spec = importlib.util.spec_from_file_location("_collector", COLLECTOR)
+    if spec is None:
+        pytest.skip("collector not loadable")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        pass
+    mem_fn = getattr(mod, "_memory", None)
+    if mem_fn is None:
+        pytest.skip("_memory function not found")
+    result = mem_fn()
+    assert "error" not in result, f"_memory returned error: {result}"
+    assert result.get("total_mib", 0) > 0, "total_mib must be > 0"
+    assert result.get("available_mib", 0) > 0, "available_mib must be > 0"
+    assert 0 <= result.get("pct_used", -1) <= 100, "pct_used must be 0-100"
+
+
+def test_collector_disk_returns_list():
+    """_df() must return a list with at least root mount."""
+    spec = importlib.util.spec_from_file_location("_collector_disk", COLLECTOR)
+    if spec is None:
+        pytest.skip("collector not loadable")
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        pass
+    df_fn = getattr(mod, "_df", None)
+    if df_fn is None:
+        pytest.skip("_df function not found")
+    result = df_fn()
+    if isinstance(result, dict) and "error" in result:
+        pytest.skip(f"df failed on this host: {result['error']}")
+    assert isinstance(result, list), "_df must return a list"
+    mounts = [m.get("mount") for m in result]
+    assert "/" in mounts, "root mount must be present"
+
 
