@@ -63,11 +63,61 @@ SYSTEM_PROMPT_BASE = (
     "summary, leave the query empty and set the date range — this returns all messages in that window."
 )
 
-def build_system_prompt() -> str:
+def _load_memory_blocks(chat_id: str) -> str:
+    """Read short-term and long-term memory for chat_id, render as frozen blocks."""
+    if not DB_URL:
+        return ""
+    blocks = []
+    try:
+        with _db_lock:
+            cur = _get_db().cursor(cursor_factory=psycopg2.extras.RealDictCursor)
+            cur.execute(
+                "SELECT content, synth_at, n_msgs FROM affection_long_term_memory WHERE chat_id = %s",
+                (chat_id,),
+            )
+            lt = cur.fetchone()
+            cur.execute(
+                "SELECT content, synth_at, n_msgs, window_start, window_end "
+                "FROM affection_short_term_memory WHERE chat_id = %s",
+                (chat_id,),
+            )
+            st = cur.fetchone()
+            cur.close()
+        if lt:
+            ts = lt["synth_at"].strftime("%Y-%m-%d %H:%M SGT") if lt.get("synth_at") else "?"
+            blocks.append(
+                f"══════════════════════════════════════════════\n"
+                f"LONG-TERM MEMORY (synthesised {ts} from {lt['n_msgs']} messages)\n"
+                f"══════════════════════════════════════════════\n"
+                f"{lt['content']}"
+            )
+        if st:
+            ts = st["synth_at"].strftime("%Y-%m-%d %H:%M SGT") if st.get("synth_at") else "?"
+            window = ""
+            if st.get("window_start") and st.get("window_end"):
+                window = f"Window: {st['window_start'].strftime('%Y-%m-%d')} → {st['window_end'].strftime('%Y-%m-%d')}"
+            blocks.append(
+                f"══════════════════════════════════════════════\n"
+                f"SHORT-TERM MEMORY (synthesised {ts} from {st['n_msgs']} messages)\n"
+                f"{window}\n"
+                f"══════════════════════════════════════════════\n"
+                f"{st['content']}"
+            )
+    except Exception as e:
+        print(f"[affection] memory block load error: {e!r}")
+    return "\n\n".join(blocks)
+
+
+def build_system_prompt(chat_id: str = "") -> str:
     now = datetime.now(SGT)
     ts = now.strftime("%A, %d %B %Y, %I:%M %p SGT")
+    memory_section = ""
+    if chat_id:
+        mem = _load_memory_blocks(chat_id)
+        if mem:
+            memory_section = f"\n\n{mem}"
     return (
-        f"{SYSTEM_PROMPT_BASE}\n\n"
+        f"{SYSTEM_PROMPT_BASE}{memory_section}\n\n"
         f"Current time: {ts}. You are in Singapore and the user is in Singapore. "
         f"Use this date/time for recency in search queries — never guess the year or month."
     )
@@ -193,7 +243,7 @@ def remember(chat_id: str, role: str, content=None, tool_call_id=None, tool_call
     _persist_message(chat_id, role, content, tool_call_id, tool_calls)
 
 def build_messages(chat_id: str) -> list[dict]:
-    return [{"role": "system", "content": build_system_prompt()}] + list(memory.get(chat_id, []))
+    return [{"role": "system", "content": build_system_prompt(chat_id)}] + list(memory.get(chat_id, []))
 
 # ── API helpers ───────────────────────────────────────────────────────────────
 _limits = httpx.Limits(max_keepalive_connections=4, max_connections=8)
