@@ -4050,20 +4050,6 @@ def test_youtube_formatter_no_email_pointer():
     assert not _has_email_pointer(msg), "youtube Telegram must not say '→ email' or 'full digest in email'"
 
 
-def test_youtube_formatter_uses_synthesis_narrative():
-    """youtube_monitor_telegram._build_message must use the synthesis narrative as the body."""
-    mod = _load_formatter("youtube_monitor")
-    fn = getattr(mod, "_build_message", None)
-    assert fn is not None
-    synthesis = "This synthesis covers AI semiconductor themes extensively. " + _TEST_NARRATIVE
-    fm = {"script": "youtube_monitor", "date_str": "20 Jun", "n_summarised": 1,
-          "videos": [{"title": "Test", "watch_url": "https://youtu.be/x",
-                      "channel_name": "Chan", "summary": "Unrelated per-video summary text."}]}
-    msg = fn(fm, synthesis)
-    assert "AI semiconductor themes extensively" in msg, \
-        "youtube Telegram body must come from the synthesis narrative, not per-video summaries"
-
-
 def test_youtube_formatter_includes_clickable_links():
     """youtube_monitor Telegram must include watch URLs as clickable links."""
     mod = _load_formatter("youtube_monitor")
@@ -4075,28 +4061,6 @@ def test_youtube_formatter_includes_clickable_links():
     msg = fn(fm, _TEST_NARRATIVE)
     assert "youtu.be/testxyz" in msg or "https://youtu.be/testxyz" in msg, \
         "youtube Telegram must include clickable watch URLs"
-
-
-def test_youtube_monitor_collect_24h_fn_exists():
-    """youtube_monitor.py must have _collect_24h_videos function for 24h digest aggregation."""
-    src_path = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/youtube_monitor.py")
-    with open(src_path) as f:
-        src = f.read()
-    assert "_collect_24h_videos" in src, \
-        "youtube_monitor.py must define _collect_24h_videos to aggregate last-24h .md reports"
-
-
-def test_youtube_monitor_synthesise_24h_fn_exists():
-    """youtube_monitor.py must have _synthesise_24h function that calls Deepseek."""
-    src_path = os.path.join(os.path.dirname(__file__), "../../windmill/u/admin/youtube_monitor.py")
-    with open(src_path) as f:
-        src = f.read()
-    assert "_synthesise_24h" in src, \
-        "youtube_monitor.py must define _synthesise_24h to generate the 24h synthesis narrative"
-    fn_idx = src.find("def _synthesise_24h")
-    context = src[fn_idx: fn_idx + 400]
-    assert "deepseek" in context.lower() or "deepseek-chat" in context.lower() or "OpenAI" in context, \
-        "_synthesise_24h must call Deepseek"
 
 
 # ─────────────────────────────────────────────────────────────────────────────
@@ -8438,14 +8402,17 @@ _YTM_ASD = {
         _YTM_ASD_VIDEO_TITLE,
         _YTM_ASD_CHANNEL_NAME,
         _YTM_ASD_WATCH_URL,
-        "the implications of this scaling breakthrough",
+        _YTM_ASD_VIDEO_SUMMARY,
     ],
     "shared_fields": [
-        ("video title",  _YTM_ASD_VIDEO_TITLE),
-        ("channel name", _YTM_ASD_CHANNEL_NAME),
-        ("watch url",    _YTM_ASD_WATCH_URL),
+        ("video title",   _YTM_ASD_VIDEO_TITLE),
+        ("channel name",  _YTM_ASD_CHANNEL_NAME),
+        ("watch url",     _YTM_ASD_WATCH_URL),
+        ("video summary", "latest model demonstrates significant reasoning improvements over the V3 baseline"),
     ],
-    "min_telegram_words": 500,
+    # Telegram dispatch retired + 24h synthesis removed (2026-06-30) — body is now the
+    # per-video summaries (short), so the ≥500-word synthesis expectation no longer applies.
+    "min_telegram_words": 0,
 }
 
 _YTM_WORLD = {
@@ -8532,8 +8499,6 @@ def _render_youtube_monitor_artifacts(world: dict):
          patch.object(mod, "fetch_fresh_videos",  return_value=[video]), \
          patch.object(mod, "get_transcript",      return_value=world["transcript"]), \
          patch.object(mod, "summarize",           return_value=(summary, 100, 50)), \
-         patch.object(mod, "_collect_24h_videos", return_value=fm_videos), \
-         patch.object(mod, "_synthesise_24h",     return_value=world["synthesis"]), \
          patch.object(mod, "_send_email",         side_effect=_fake_send_email), \
          patch.object(mod, "_write_canonical_md", side_effect=_fake_write_md), \
          patch.object(mod, "datetime",            _DatetimeStub), \
@@ -8561,14 +8526,16 @@ def _render_youtube_monitor_artifacts(world: dict):
     front_matter  = json.loads(fm_match.group(1)) if fm_match else {}
     after_fm      = md_content[fm_match.end():] if fm_match else md_content
     detail_idx    = after_fm.find("<!-- DETAIL -->")
-    narrative_txt = after_fm[:detail_idx].strip() if detail_idx != -1 else after_fm.strip()
+    # Per-video summaries live BELOW the marker (synthesis removed 2026-06-30) — that is the tg body.
+    body_txt      = (after_fm[detail_idx + len("<!-- DETAIL -->"):].strip()
+                     if detail_idx != -1 else after_fm.strip())
 
     tg_path = (pathlib.Path(__file__).parent.parent.parent
                / "windmill" / "u" / "admin" / "youtube_monitor_telegram.py")
     tg_spec = importlib.util.spec_from_file_location("youtube_monitor_telegram", tg_path)
     tg_mod  = importlib.util.module_from_spec(tg_spec)
     tg_spec.loader.exec_module(tg_mod)
-    tg_msg = tg_mod._build_message(front_matter, narrative_txt)
+    tg_msg = tg_mod._build_message(front_matter, body_txt)
 
     return email_html, md_content, tg_msg
 
@@ -8803,21 +8770,20 @@ def _load_youtube_mod():
     return mod
 
 
-def test_youtube_email_renders_synthesis():
-    """build_email_html must render the synthesis narrative when passed a synthesis string."""
+def test_youtube_email_omits_synthesis():
+    """build_email_html must NOT render any Daily Synthesis block; per-video summaries remain."""
     mod = _load_youtube_mod()
     if mod is None or not hasattr(mod, "build_email_html"):
         pytest.skip("youtube_monitor not loadable")
     from datetime import datetime, timezone
     results = [
         {"title": "Video A", "channel_name": "Channel1",
-         "watch_url": "https://youtu.be/a", "summary": "Summary A",
+         "watch_url": "https://youtu.be/a", "summary": "PER_VIDEO_SENTINEL_SUMMARY",
          "published_at": datetime.now(timezone.utc)},
     ]
-    synthesis = "SYNTH_SENTINEL_PARAGRAPH"
-    html = mod.build_email_html(results, synthesis, 0, 0)
-    assert "SYNTH_SENTINEL_PARAGRAPH" in html, "synthesis text not rendered in email"
-    assert "Daily Synthesis" in html, "'Daily Synthesis' header not found in email"
+    html = mod.build_email_html(results, 0, 0)
+    assert "Daily Synthesis" not in html, "'Daily Synthesis' block must be removed from the email"
+    assert "PER_VIDEO_SENTINEL_SUMMARY" in html, "per-video summary must still render in the email"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

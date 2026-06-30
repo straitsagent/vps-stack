@@ -22,6 +22,22 @@ Fix needed: [yes/no — what needs to change in the script]
 
 ---
 
+Date: 2026-06-30
+Workflow: youtube_monitor (remove daily synthesis commentary)
+Action: Logging a Hard Rule 17 live-verify deferral. The synthesis-removal change (plan
+docs/plans/archive/2026-06-30_youtube-remove-synthesis.md) was verified by the authoritative
+artifact-render harness — `_render_youtube_monitor_artifacts` runs the real `main()` with I/O faked
+only at the edges and asserts the rendered email omits the "Daily Synthesis" block while keeping the
+per-video summaries (`test_youtube_email_omits_synthesis`, `test_youtube_monitor_email_and_telegram_agree`,
+`test_youtube_monitor_md_content_valid`). LOCKED ORACLE 6/6 PASS; full suite 502 passed.
+Reason for deferral: a clean off-schedule live run was not performed — the local `wmill` CLI config
+carries a placeholder baseUrl and a manual trigger would send a real owner email + incur LLM cost for
+marginal additional assurance over the authoritative artifact test.
+Fix needed: No — the next scheduled run (daily 18:00 SGT) produces the live email + on-disk
+/research/youtube/<ts>.md, which constitutes the live confirmation. Both scripts already pushed to Windmill.
+
+---
+
 Date: 2026-06-29
 Component: drive-backup / rclone gdrive-oauth remote
 Action: Manually re-authorized rclone Google Drive OAuth token; switched from custom GCP OAuth client to rclone's built-in OAuth app

@@ -15,7 +15,6 @@ logging.basicConfig(level=logging.INFO, format='%(levelname)s %(message)s')
 log = logging.getLogger(__name__)
 
 
-
 class smtp(TypedDict):
     host: str
     port: int
@@ -178,7 +177,7 @@ def summarize(client: OpenAI, title: str, transcript: str) -> tuple[str, int, in
 
 # ── Email ────────────────────────────────────────────────────────────────────
 
-def build_email_html(videos: list, synthesis: str, prompt_tokens: int, completion_tokens: int) -> str:
+def build_email_html(videos: list, prompt_tokens: int, completion_tokens: int) -> str:
     now_sgt = datetime.now(SGT).strftime("%d %b %Y, %H:%M SGT")
     summarised = [v for v in videos if v.get("summary")]
     bare = [v for v in videos if not v.get("summary")]
@@ -198,14 +197,6 @@ def build_email_html(videos: list, synthesis: str, prompt_tokens: int, completio
         f'{prompt_tokens:,} prompt + {completion_tokens:,} completion tokens · '
         f'est. ${est_cost:.4f}</p>'
     )
-
-    if synthesis:
-        _paras = [p.strip() for p in synthesis.split("\n\n") if p.strip()]
-        S += '<div style="margin:0 0 24px;padding:16px 18px;background:#f7f9fb;border-left:4px solid #2c3e50;">'
-        S += '<p style="margin:0 0 10px;font-size:13px;font-weight:bold;color:#2c3e50;text-transform:uppercase;letter-spacing:0.5px;">Daily Synthesis</p>'
-        for _p in _paras:
-            S += f'<p style="margin:0 0 10px;font-size:13px;color:#444;line-height:1.6;">{html_mod.escape(_p)}</p>'
-        S += '</div>'
 
     for v in summarised:
         pub_sgt = v["published_at"].astimezone(SGT).strftime("%H:%M SGT") if v["published_at"] else ""
@@ -234,80 +225,6 @@ def build_email_html(videos: list, synthesis: str, prompt_tokens: int, completio
     S += '<p style="color:#bbb;font-size:11px;">Windmill · straitsagent@gmail.com</p>'
     S += '</body></html>'
     return S
-
-
-# ── 24h synthesis ────────────────────────────────────────────────────────────
-
-_SYNTHESIS_PROMPT = (
-    "You are a financial media analyst. Below are YouTube video summaries published in the last "
-    "24 hours across investment-focused channels. Write a comprehensive 600-700 word digest covering: "
-    "(1) the main investment themes and market narratives discussed, (2) specific stocks, sectors, "
-    "or macro trends highlighted across videos, (3) key takeaways and what is most actionable for "
-    "an equity portfolio weighted heavily to US and Hong Kong tech. Be specific — name the stocks, "
-    "quote the arguments, and assess whether the collective signal is bullish, bearish, or mixed. "
-    "No preamble, no bullet points, no headers — continuous analytical prose only.\n\nVideos:\n{videos}"
-)
-
-
-def _collect_24h_videos(md_dir: str, current_videos: list) -> list:
-    """Return deduplicated list of all videos from .md files in md_dir modified in last 24h,
-    merged with current_videos (the just-processed batch not yet written to disk)."""
-    import re as _re
-    cutoff = datetime.now(SGT).timestamp() - 86400
-    seen_urls: set = set()
-    all_videos: list = []
-    for v in current_videos:
-        url = v.get("watch_url", "")
-        if url and url not in seen_urls:
-            seen_urls.add(url)
-            all_videos.append(v)
-    if os.path.isdir(md_dir):
-        for fname in sorted(os.listdir(md_dir)):
-            if not fname.endswith(".md"):
-                continue
-            fpath = os.path.join(md_dir, fname)
-            try:
-                if os.path.getmtime(fpath) < cutoff:
-                    continue
-                content = open(fpath).read()
-                fm_match = _re.search(r"```json\s*\n([\s\S]*?)\n```", content)
-                if not fm_match:
-                    continue
-                fm = json.loads(fm_match.group(1))
-                for v in fm.get("videos", []):
-                    url = v.get("watch_url", "")
-                    if url and url not in seen_urls:
-                        seen_urls.add(url)
-                        all_videos.append(v)
-            except Exception:
-                continue
-    return all_videos
-
-
-def _synthesise_24h(videos: list, deepseek_key: str) -> str:
-    """Generate ≥500-word 24h YouTube digest via Deepseek. Returns empty string on failure."""
-    summarised = [v for v in videos if v.get("summary") and "[No transcript" not in v.get("summary", "")]
-    if not summarised:
-        return ""
-    video_lines = []
-    for v in summarised:
-        title   = v.get("title", "Untitled")
-        channel = v.get("channel_name", "")
-        summary = v.get("summary", "").strip()
-        video_lines.append(f"**{title}** ({channel})\n{summary}")
-    prompt = _SYNTHESIS_PROMPT.format(videos="\n\n".join(video_lines))
-    try:
-        client = OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com")
-        r = client.chat.completions.create(
-            model="deepseek-chat",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.3,
-            max_tokens=1400,
-        )
-        return r.choices[0].message.content.strip()
-    except Exception as e:
-        log.warning(f"[Synthesise24h] Deepseek synthesis failed: {e}")
-        return ""
 
 
 def _dispatch_idea_extractor(md_path: str, source: str,
@@ -457,29 +374,17 @@ def main(
         )
     detail_block = "\n\n---\n\n".join(detail_sections)
 
-    # Collect all 24h videos and synthesise into ≥500-word narrative
-    log.info("[Synthesise24h] Collecting last-24h YouTube .md reports...")
-    all_24h_videos = _collect_24h_videos("/research/youtube", fm_videos)
-    log.info(f"[Synthesise24h] {len(all_24h_videos)} unique videos in last 24h")
-    synthesis = _synthesise_24h(all_24h_videos, deepseek_key)
-    if synthesis:
-        log.info(f"[Synthesise24h] Synthesis generated ({len(synthesis.split())} words)")
-    else:
-        log.warning("[Synthesise24h] No synthesis generated — falling back to per-video summaries")
-        synthesis = detail_block
-
     md_content = (
         f"```json\n{json.dumps(front_matter, indent=2)}\n```\n\n"
-        f"{synthesis}\n\n"
         "<!-- DETAIL -->\n\n"
         f"{detail_block}\n"
     )
     _write_canonical_md(md_content, md_path)
     log.info(f"[md] Written {md_path}")
 
-    # ── Send email (renders the .md synthesis + per-video list) ──────────────
+    # ── Send email (per-video summaries) ──────────────
     log.info("Sending email...")
-    html = build_email_html(results, synthesis, total_prompt_tokens, total_completion_tokens)
+    html = build_email_html(results, total_prompt_tokens, total_completion_tokens)
     subject = f"YouTube Digest — {now_sgt} ({n_summarised} new)" + (f" + {n_bare} no transcript" if n_bare else "")
     _send_email(smtp_resource, recipient_email, subject, html)
 

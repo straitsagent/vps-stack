@@ -1,7 +1,7 @@
 ---
 Subject: Remove the daily synthesis commentary from youtube_monitor (email + .md); keep per-video summaries
 Date: 2026-06-30
-Status: executing
+Status: done
 Planner model: claude-opus-4-8
 Risk tier: MEDIUM (modifies one working delivery workflow + its formatter + tests; .md body contract change)
 Hard Rules in force: [7, 12, 15, 16, 17, 18, 20, 22]

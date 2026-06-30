@@ -53,7 +53,7 @@ Everything below is live and running unattended unless noted.
 | Workflow | Schedule | Notes |
 |---|---|---|
 | Morning News Digest | 6:30 AM SGT daily | RSS (WSJ/Reuters/NYT) + newsletter AI summaries. Email + idea_extractor. Telegram retired 2026-06-29. |
-| YouTube Channel Monitor | Daily 18:00 SGT | 37 channels, RapidAPI transcripts, Deepseek summaries, 3-retry logic, daily synthesis narrative. Email only (Telegram retired 2026-06-29). |
+| YouTube Channel Monitor | Daily 18:00 SGT | 37 channels, RapidAPI transcripts, Deepseek per-video summaries, 3-retry logic. Email only (Telegram retired 2026-06-29; 24h synthesis commentary removed 2026-06-30). |
 | Macro Research | 7:00 AM SGT Mon–Fri | Perplexity macro scan → Deepseek synthesis → `/research/macro/YYYY-MM-DD_HHMM.md` + email. Telegram retired 2026-06-29. **Live but previously undocumented.** |
 | Macro Daily Push | — | **Parked 2026-06-26** — main script retained for reference; disabled schedule removed (server + disk). `macro_research` handles the macro push. Its formatter `macro_daily_push_telegram` remains live (used by `macro_research`). |
 

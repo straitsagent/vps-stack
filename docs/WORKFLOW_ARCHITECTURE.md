@@ -213,21 +213,15 @@ for each video with a transcript:
 merge new video_ids into existing set, trim to 1000, POST back to
 u/admin/youtube_processed_state via Windmill variables API
 
-── Step 6b: Compute synthesis ────────────────────────────────────
-call Deepseek deepseek-chat with all per-video summaries:
-    prompt: synthesise N video summaries into a cohesive daily narrative
-    → synthesis (string, ≥500w)
-
-── Step 6c: Write canonical .md ─────────────────────────────────
+── Step 6b: Write canonical .md ─────────────────────────────────
 write /research/youtube/YYYY-MM-DD_HHMM.md:
-    JSON front-matter block (video_count, synthesis excerpt, cost)
-    ≥500-word synthesis narrative
+    JSON front-matter block (date_str, n_summarised, videos)
     <!-- DETAIL --> separator
-    per-video detail
+    per-video summaries
+    (24h synthesis commentary removed 2026-06-30 — per-video summaries only)
 
-── Step 7: Send email (after synthesis is computed) ─────────────
-build HTML email:
-    Daily Synthesis block (highlighted callout, synthesis narrative split into paragraphs)
+── Step 7: Send email ────────────────────────────────────────────
+build HTML email (no Daily Synthesis block — removed 2026-06-30):
     Per-video blocks, sorted by published_at descending:
         CHANNEL NAME (bold, uppercase)
         Video title (hyperlinked to watch_url)
@@ -240,11 +234,6 @@ send via Gmail SMTP
 **Output email:**
 ```
 Subject: YouTube Digest — DD Mon YYYY, HH:MM SGT (N new videos)
-
-DAILY SYNTHESIS
-[synthesis narrative — ≥500 words, cohesive cross-channel brief]
-
----
 
 CHANNEL NAME
 Video title (linked to YouTube)
@@ -457,7 +446,7 @@ Key pairs the LLM is guided to distinguish:
 | `u/admin/portfolio_email_daily` | Portfolio Email (AM) | 26h / 72h† | weekday_only |
 | `u/admin/portfolio_price_fetcher_evening` | Portfolio Price Fetcher (PM) | 26h / 72h† | weekday_only |
 | `u/admin/portfolio_email_evening` | Portfolio Email (PM) | 26h / 72h† | weekday_only |
-| `u/admin/youtube_monitor_hourly` | YouTube Monitor (daily 18:00 SGT) | 26h | Has LLM — daily synthesis. Schedule changed 2026-06-29 |
+| `u/admin/youtube_monitor_hourly` | YouTube Monitor (daily 18:00 SGT) | 26h | Has LLM — per-video summaries (24h synthesis removed 2026-06-30). Schedule changed 2026-06-29 |
 
 † 72h on Sat/Sun/Mon — portfolio scripts intentionally skip weekends
 
