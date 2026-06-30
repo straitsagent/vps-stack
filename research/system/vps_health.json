@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-06-30T15:00:06.249054+00:00",
+  "collected_at": "2026-06-30T16:00:05.726845+00:00",
   "disk": [
     {
       "mount": "/run",
@@ -11,7 +11,7 @@
     {
       "mount": "/",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
@@ -53,49 +53,49 @@
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/1830b685f1dba4f88c1bb35e65375e7ded5490846a9238268823e88946502c3b",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/2041ffea270c2ac312efd31bfb1bdeba14bf1dbf57fd27bdae0690bf2044d6ee",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/8cbcd8a8ea7baef887fc345ee5a1a5abcdbef9f4991102743bdc770e17daedbe",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/78f43cd848d9c5e6382cecc9f531bd796274d83c5f028dfbefcff0a6cf0a2a40",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/c79fb1a7a5ec45666aa48c9ccc4ce907945ddb858bad2d7db858bdf8e2d26973",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/429c2a56883c62a09cc8d98c772a623a02b292f42ba94fbed888cac8c69b79bc",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/2200a555fa2724ef062ecfb92f94c35c0cd85b6206f5109447fde4e112c84785",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
@@ -109,78 +109,78 @@
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/09830e5d2a24006b70410e0b2e06f788927a3b5529f628f8c63eab29244bc44b",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/943d3ab774cbf20e3183c606fce0134bd6df8195ef72814c497e6cce5a34dd69",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/10e91835b744e72210921258eb401a5006ccc42277296e6f41b334b08febc5c1",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/5136c4cc97cf743e6e23636e9301b8d5faeefc6625945f63b95c08390f5bc38b",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/36d7179b53513323953301b900b729104cdb01572117291f5c0edf11064d0232",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/07c177690b24d00f5c20478da54d06b59996be8735301cf62987e14da86a7f26",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/e3d902e1a83e35e4124d274f556cbb73d2d89e8c323ec763528e01e57e4828dd",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/b98516d9b7d020ff4ee886e0b4d0448594d0abe7bea8947fbdde0a91622406d8",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     },
     {
       "mount": "/var/lib/docker/rootfs/overlayfs/377c7f936af66cee4c0084ab3b6302db84ec59f3e27b9e020cf8d70c84fbd38a",
       "total_gb": "193",
-      "used_gb": "51",
+      "used_gb": "50",
       "available_gb": "143",
       "pct_used": "26"
     }
   ],
   "memory": {
     "total_mib": 24031,
-    "used_mib": 5993,
-    "available_mib": 18038,
+    "used_mib": 5973,
+    "available_mib": 18058,
     "pct_used": 24.9,
     "pct_available": 75.1
   },
   "load": {
-    "load_1m": 1.13,
-    "load_5m": 1.17,
-    "load_15m": 1.22,
+    "load_1m": 0.93,
+    "load_5m": 1.11,
+    "load_15m": 1.09,
     "cores": 8
   },
   "docker": {
@@ -189,7 +189,7 @@
     "restarting": 0,
     "total": 16,
     "containers": {
-      "hermes": "Up 8 hours",
+      "hermes": "Up 9 hours",
       "root-portfolio_postgres-1": "Up 2 days (healthy)",
       "openclaw": "Up 2 days",
       "root-straitsagent-1": "Up 3 days",
@@ -216,7 +216,7 @@
     "timer_active": true
   },
   "uptime": {
-    "uptime_seconds": 4795614.05,
-    "uptime_formatted": "55d 12h 6m"
+    "uptime_seconds": 4799213.3,
+    "uptime_formatted": "55d 13h 6m"
   }
 }
