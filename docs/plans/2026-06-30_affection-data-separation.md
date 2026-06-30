@@ -1,7 +1,7 @@
 ---
 Subject: Separate affection bot data into its own `affection` Postgres database (prerequisite for affection memory)
 Date: 2026-06-30
-Status: draft
+Status: executing
 Planner model: claude-opus-4-8
 Executor model: any
 Risk tier: MEDIUM-HIGH (live data migration of 2 tables + 365 rows; repoints a running bot container + a live Windmill script/schedule; touches backup)
