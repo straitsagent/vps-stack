@@ -1,7 +1,7 @@
 ---
 Subject: Daily + weekly auto-synthesis of conversation memory for affection bot
 Date: 2026-06-30
-Status: executing
+Status: done
 Planner model: deepseek-v4-flash (opencode); reviewed + revised by claude-opus-4-8 2026-06-30
 Executor model: any
 Risk tier: LOW-MEDIUM (no secrets, no gmail_smtp, no Telegram-send; cron writes to the **affection** DB via the affection_db resource)
