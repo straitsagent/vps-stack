@@ -1,0 +1,11 @@
+[Unit]
+Description=System metrics collector — writes vps_health.json
+
+[Service]
+Type=oneshot
+ExecStart=/root/scripts/system-metrics-collector.py
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

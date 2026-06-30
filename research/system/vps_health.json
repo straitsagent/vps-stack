@@ -1,0 +1,222 @@
+{
+  "collected_at": "2026-06-30T02:22:02.744345+00:00",
+  "disk": [
+    {
+      "mount": "/run",
+      "total_gb": "3",
+      "used_gb": "1",
+      "available_gb": "3",
+      "pct_used": "1"
+    },
+    {
+      "mount": "/",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/dev/shm",
+      "total_gb": "12",
+      "used_gb": "0",
+      "available_gb": "12",
+      "pct_used": "0"
+    },
+    {
+      "mount": "/run/lock",
+      "total_gb": "1",
+      "used_gb": "0",
+      "available_gb": "1",
+      "pct_used": "0"
+    },
+    {
+      "mount": "/boot",
+      "total_gb": "1",
+      "used_gb": "1",
+      "available_gb": "1",
+      "pct_used": "15"
+    },
+    {
+      "mount": "/boot/efi",
+      "total_gb": "1",
+      "used_gb": "1",
+      "available_gb": "1",
+      "pct_used": "6"
+    },
+    {
+      "mount": "/run/user/0",
+      "total_gb": "3",
+      "used_gb": "1",
+      "available_gb": "3",
+      "pct_used": "1"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/1830b685f1dba4f88c1bb35e65375e7ded5490846a9238268823e88946502c3b",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/2041ffea270c2ac312efd31bfb1bdeba14bf1dbf57fd27bdae0690bf2044d6ee",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/8cbcd8a8ea7baef887fc345ee5a1a5abcdbef9f4991102743bdc770e17daedbe",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/78f43cd848d9c5e6382cecc9f531bd796274d83c5f028dfbefcff0a6cf0a2a40",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/c79fb1a7a5ec45666aa48c9ccc4ce907945ddb858bad2d7db858bdf8e2d26973",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/429c2a56883c62a09cc8d98c772a623a02b292f42ba94fbed888cac8c69b79bc",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/2200a555fa2724ef062ecfb92f94c35c0cd85b6206f5109447fde4e112c84785",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/run/user/1000",
+      "total_gb": "3",
+      "used_gb": "1",
+      "available_gb": "3",
+      "pct_used": "1"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/09830e5d2a24006b70410e0b2e06f788927a3b5529f628f8c63eab29244bc44b",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/943d3ab774cbf20e3183c606fce0134bd6df8195ef72814c497e6cce5a34dd69",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/10e91835b744e72210921258eb401a5006ccc42277296e6f41b334b08febc5c1",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/5136c4cc97cf743e6e23636e9301b8d5faeefc6625945f63b95c08390f5bc38b",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/36d7179b53513323953301b900b729104cdb01572117291f5c0edf11064d0232",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/07c177690b24d00f5c20478da54d06b59996be8735301cf62987e14da86a7f26",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/e3d902e1a83e35e4124d274f556cbb73d2d89e8c323ec763528e01e57e4828dd",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/b98516d9b7d020ff4ee886e0b4d0448594d0abe7bea8947fbdde0a91622406d8",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    },
+    {
+      "mount": "/var/lib/docker/rootfs/overlayfs/c2e142087d27762ab45592369ee4490046223750c4b4044b65cbf9567aad35ac",
+      "total_gb": "193",
+      "used_gb": "50",
+      "available_gb": "144",
+      "pct_used": "26"
+    }
+  ],
+  "memory": {
+    "total_mib": 24031,
+    "used_mib": 5048,
+    "available_mib": 18983,
+    "pct_used": 21.0,
+    "pct_available": 79.0
+  },
+  "load": {
+    "load_1m": 2.15,
+    "load_5m": 1.97,
+    "load_15m": 1.76,
+    "cores": 8
+  },
+  "docker": {
+    "running": 16,
+    "exited": 0,
+    "restarting": 0,
+    "total": 16,
+    "containers": {
+      "hermes": "Up 10 hours",
+      "root-portfolio_postgres-1": "Up 38 hours (healthy)",
+      "openclaw": "Up 44 hours",
+      "root-straitsagent-1": "Up 2 days",
+      "root-affectionbot-1": "Up 2 days",
+      "n8n-caddy-1": "Up 2 weeks",
+      "root-windmill_worker-1": "Up 9 days",
+      "root-windmill_worker-3": "Up 9 days",
+      "root-windmill_worker-2": "Up 9 days",
+      "root-caddy-1": "Up 2 weeks",
+      "root-windmill_worker_native-1": "Up 9 days",
+      "root-windmill_server-1": "Up 12 days",
+      "root-windmill_extra-1": "Up 4 weeks",
+      "root-db-1": "Up 4 weeks (healthy)",
+      "root-dind-1": "Up 4 weeks (healthy)",
+      "n8n-n8n-1": "Up 7 weeks"
+    }
+  },
+  "backup": {
+    "service": {
+      "Result": "success",
+      "ExecMainExitTimestamp": "Mon 2026-06-29 22:02:55 CEST",
+      "ExecMainStatus": "0"
+    },
+    "timer_active": true
+  },
+  "uptime": {
+    "uptime_seconds": 4750130.32,
+    "uptime_formatted": "54d 23h 28m"
+  }
+}
