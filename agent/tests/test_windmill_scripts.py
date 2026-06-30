@@ -6726,6 +6726,201 @@ def test_affection_ping_group_id_is_negative():
 
 
 # =============================================================================
+# ── Affection memory synthesis tests ──────────────────────────────────────────
+
+SYNTHESIS_SCRIPT = os.path.join(
+    os.path.dirname(__file__), "../../windmill/u/admin/affection_memory_synthesis.py"
+)
+AFFECTION_BOT = os.path.join(
+    os.path.dirname(__file__), "../../affection/main.py"
+)
+
+
+def _load_synthesis_mod():
+    for pkg in ("psycopg2", "requests"):
+        sys.modules.setdefault(pkg, MagicMock())
+    spec = importlib.util.spec_from_file_location("_synth", SYNTHESIS_SCRIPT)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        spec.loader.exec_module(mod)
+    except Exception:
+        pass
+    return mod
+
+
+def _load_bot_mod():
+    for pkg in ("fastapi", "httpx", "uvicorn"):
+        sys.modules.setdefault(pkg, MagicMock())
+    spec = importlib.util.spec_from_file_location("_bot", AFFECTION_BOT)
+    mod = importlib.util.module_from_spec(spec)
+    try:
+        mod.DB_URL = "postgresql://test@localhost:5432/test"
+        mod._db_conn = None
+        spec.loader.exec_module(mod)
+    except Exception:
+        pass
+    return mod
+
+
+def test_short_term_synthesis_reads_7d_window():
+    mod = _load_synthesis_mod()
+    if not hasattr(mod, "_build_short_prompt"):
+        pytest.skip("_build_short_prompt not found")
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    messages = [
+        {"role": "user", "content": f"Day {d}", "ts": (now - timedelta(days=d)).isoformat()}
+        for d in range(8)
+    ]
+    prompt = mod._build_short_prompt("test-chat", messages)
+    assert "Day 0" in prompt
+    assert "Day 7" in prompt
+    assert "Day 8" not in prompt
+
+
+def test_short_term_synthesis_stores_output():
+    mod = _load_synthesis_mod()
+    if not hasattr(mod, "_upsert"):
+        pytest.skip("_upsert not found")
+    fake_db = {}
+    def fake_upsert(db, table, chat_id, content, n_msgs, window_start=None, window_end=None):
+        fake_db["table"] = table
+        fake_db["chat_id"] = chat_id
+    orig_upsert = mod._upsert
+    mod._upsert = fake_upsert
+    mod._get_short_messages = lambda db, cid, nd: [{"role": "user", "content": "hi", "ts": "2026-06-30T00:00:00"}]
+    mod._call_deepseek = lambda prompt, key, max_t: "synthesised content"
+    mod._synthesise_short("test-chat", {}, "fake-key")
+    mod._upsert = orig_upsert
+    assert fake_db.get("table") == "affection_short_term_memory"
+    assert fake_db.get("chat_id") == "test-chat"
+
+
+def test_short_term_synthesis_idempotent():
+    mod = _load_synthesis_mod()
+    if not hasattr(mod, "_synthesise_short"):
+        pytest.skip("_synthesise_short not found")
+    rows = []
+    def fake_upsert(db, table, chat_id, content, n_msgs, window_start=None, window_end=None):
+        rows.append({"table": table, "chat_id": chat_id})
+    mod._get_short_messages = lambda db, cid, nd: [{"role": "user", "content": "x", "ts": "2026-06-30T00:00:00"}]
+    mod._call_deepseek = lambda prompt, key, max_t: "content"
+    orig_up = mod._upsert
+    mod._upsert = fake_upsert
+    mod._synthesise_short("chat-1", {}, "key")
+    mod._synthesise_short("chat-1", {}, "key")
+    mod._upsert = orig_up
+    assert len(rows) == 2
+
+
+def test_synthesis_loops_all_chat_ids():
+    mod = _load_synthesis_mod()
+    if not hasattr(mod, "main"):
+        pytest.skip("main not found")
+    processed = []
+    def fake_short(cid, db, key):
+        processed.append(cid)
+    mod._synthesise_short = fake_short
+    mod._synthesise_long = fake_short
+    mod._get_chat_ids = lambda db: ["chat-a", "chat-b"]
+    mod._connect = lambda db: None
+    result = mod.main(mode="short", affection_db={}, deepseek_key="key")
+    assert "chat-a" in processed and "chat-b" in processed
+    assert result.get("status") == "ok"
+
+
+def test_long_term_synthesis_reads_all_history():
+    mod = _load_synthesis_mod()
+    if not hasattr(mod, "_build_long_prompt"):
+        pytest.skip("_build_long_prompt not found")
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    messages = [
+        {"role": "user", "content": f"Msg {d}", "ts": (now - timedelta(days=d)).isoformat()}
+        for d in range(30)
+    ]
+    prompt = mod._build_long_prompt("test-chat", messages, None)
+    assert "Msg 0" in prompt
+    assert "Msg 29" in prompt
+
+
+def test_long_term_synthesis_includes_prior_memory():
+    mod = _load_synthesis_mod()
+    if not hasattr(mod, "_build_long_prompt"):
+        pytest.skip("_build_long_prompt not found")
+    messages = [{"role": "user", "content": "new msg", "ts": "2026-06-30T00:00:00"}]
+    prompt = mod._build_long_prompt("test-chat", messages, "PRIOR_MEMORY_CONTENT_UNIQUE")
+    assert "PRIOR_MEMORY_CONTENT_UNIQUE" in prompt
+    assert "integrate" in prompt.lower()
+
+
+def test_long_term_synthesis_truncates_at_cap():
+    mod = _load_synthesis_mod()
+    if not hasattr(mod, "MAX_MSGS_LONG"):
+        pytest.skip("MAX_MSGS_LONG not found")
+    cap = mod.MAX_MSGS_LONG
+    from datetime import datetime, timezone, timedelta
+    now = datetime.now(timezone.utc)
+    messages = [
+        {"role": "user", "content": f"Msg {d}", "ts": (now - timedelta(days=d)).isoformat()}
+        for d in range(cap + 100)
+    ]
+    prompt = mod._build_long_prompt("test-chat", messages[:cap], None)
+    assert f"Msg {cap - 1}" in prompt
+    assert f"Msg {cap}" not in prompt
+
+
+def test_synthesis_prompt_hardens_against_injection():
+    mod = _load_synthesis_mod()
+    if not hasattr(mod, "_INJECTION_GUARD"):
+        pytest.skip("_INJECTION_GUARD not found")
+    guard = mod._INJECTION_GUARD
+    assert "never record" in guard.lower() or "never obey" in guard.lower()
+
+
+def test_injection_build_system_prompt_includes_memory():
+    bot = _load_bot_mod()
+    if not hasattr(bot, "build_system_prompt"):
+        pytest.skip("build_system_prompt not found")
+    fake_memory = (
+        "LONG-TERM MEMORY (synthesised 2026-06-29 from 100 messages)\n"
+        "John and Jane are a couple.\n\n"
+        "SHORT-TERM MEMORY (synthesised 2026-06-30 from 15 messages)\n"
+        "This week: John started a new project."
+    )
+    with patch.object(bot, "_load_memory_blocks", return_value=fake_memory):
+        prompt = bot.build_system_prompt("test-chat")
+    assert "LONG-TERM MEMORY" in prompt
+    assert "SHORT-TERM MEMORY" in prompt
+    assert "John and Jane" in prompt
+
+
+def test_injection_build_system_prompt_skips_when_empty():
+    bot = _load_bot_mod()
+    if not hasattr(bot, "build_system_prompt"):
+        pytest.skip("build_system_prompt not found")
+    with patch.object(bot, "_load_memory_blocks", return_value=""):
+        prompt = bot.build_system_prompt("test-chat")
+    assert "LONG-TERM MEMORY" not in prompt
+    assert "SHORT-TERM MEMORY" not in prompt
+
+
+def test_injection_orders_long_then_short():
+    bot = _load_bot_mod()
+    if not hasattr(bot, "build_system_prompt"):
+        pytest.skip("build_system_prompt not found")
+    fake_memory = (
+        "LONG-TERM MEMORY ...\n\n"
+        "SHORT-TERM MEMORY ..."
+    )
+    with patch.object(bot, "_load_memory_blocks", return_value=fake_memory):
+        prompt = bot.build_system_prompt("test-chat")
+    lt_idx = prompt.find("LONG-TERM MEMORY")
+    st_idx = prompt.find("SHORT-TERM MEMORY")
+    assert lt_idx >= 0 and st_idx >= 0
+    assert lt_idx < st_idx
+
+
 # macro_research — Artifact-render harness (Phase C testing rollout)
 # =============================================================================
 
