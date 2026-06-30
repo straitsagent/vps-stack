@@ -7,6 +7,11 @@ schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   type: object
   properties:
+    affection_db:
+      type: object
+      description: ''
+      default: {}
+      properties: {}
     affection_group_id:
       type: string
       description: ''
@@ -22,11 +27,6 @@ schema:
       description: ''
       default: null
       originalType: string
-    portfolio_db:
-      type: object
-      description: ''
-      default: {}
-      properties: {}
     telegram_bot_token:
       type: string
       description: ''
@@ -39,6 +39,7 @@ schema:
       originalType: string
   required:
     - telegram_bot_token
+    - telegram_owner_id
     - affection_group_id
     - affection_sticker_packs
     - deepseek_key

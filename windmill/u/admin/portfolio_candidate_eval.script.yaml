@@ -13,70 +13,91 @@ schema:
     brave_key:
       type: string
       description: Brave Search API key — passed to research_tool
-      default: $var:u/admin/brave_key
+      default: ''
+      originalType: string
     deepseek_key:
       type: string
       description: Deepseek API key (fallback synthesiser)
-      default: $var:u/admin/deepseek_key
+      default: null
+      originalType: string
     exa_key:
       type: string
       description: Exa neural search API key — passed to research_tool
-      default: $var:u/admin/exa_key
+      default: ''
+      originalType: string
     finnhub_key:
       type: string
       description: Finnhub API key — passed to stock_data_fetcher for peer comparisons
-      default: $var:u/admin/finnhub_key
+      default: ''
+      originalType: string
     gmail_smtp:
       type: object
       description: Gmail SMTP credentials
-      default: $res:u/admin/gmail_smtp
+      default: null
+      properties: {}
     perplexity_key:
       type: string
       description: Perplexity Search API key — passed to research_tool
-      default: $var:u/admin/perplexity_key
+      default: ''
+      originalType: string
     portfolio_db:
       type: object
       description: PostgreSQL portfolio database
-      default: $res:u/admin/portfolio_db
+      default: null
+      properties: {}
     recipient_email:
       type: string
       description: Email address to send the verdict card to
-      default: $var:u/admin/recipient_email
+      default: ''
+      originalType: string
     replacement_ticker:
       type: string
       description: Optional ticker to exit simultaneously; Gate 2 recomputed net of
         this exit
       default: ''
+      originalType: string
     serper_key:
       type: string
       description: Serper.dev API key — passed to research_tool
-      default: $var:u/admin/serper_key
+      default: ''
+      originalType: string
     tavily_key:
       type: string
       description: Tavily Search API key — passed to research_tool
-      default: $var:u/admin/tavily_key
+      default: ''
+      originalType: string
     thesis_text:
       type: string
       description: Optional user-supplied investment thesis text
       default: ''
+      originalType: string
     ticker:
       type: string
       description: Candidate stock ticker symbol (e.g. AAPL, 9988.HK)
+      default: null
+      originalType: string
     universe_tickers:
       type: array
       description: Optional list of peer tickers to use as Gate 3 benchmark universe
       default: []
       items:
         type: string
+      originalType: string[]
+    watchlist_pull:
+      type: boolean
+      description: ''
+      default: false
     wm_token:
       type: string
       description: Windmill API token — used to dispatch stock_data_fetcher and
         research_tool on absent/stale data
-      default: $var:u/admin/wm_token
+      default: ''
+      originalType: string
     xai_key:
       type: string
       description: xAI / Grok API key
-      default: $var:u/admin/xai_key
+      default: null
+      originalType: string
   required:
     - ticker
     - portfolio_db

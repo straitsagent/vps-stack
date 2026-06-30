@@ -17,73 +17,89 @@ schema:
       type: string
       description: Brave Search API key (standard + deep, freshness=pm)
       default: ''
+      originalType: string
     deepseek_key:
       type: string
       description: Deepseek API key for query decomposition
+      default: ''
+      originalType: string
     depth:
       type: string
       description: brief ~$0.05 | standard ~$0.10 | deep ~$0.20
-      enum:
-        - brief
-        - standard
-        - deep
+      default: standard
+      originalType: string
     exa_key:
       type: string
       description: Exa neural search API key (standard/deep only)
+      default: ''
+      originalType: string
     finnhub_key:
       type: string
       description: Finnhub API key for company news (US tickers)
+      default: ''
+      originalType: string
     fred_key:
       type: string
       description: FRED API key for macro data series (standard + deep,
         research_type=macro only)
       default: ''
+      originalType: string
     gmail_smtp:
       type: object
       description: Gmail SMTP resource for email delivery
+      default: {}
+      properties: {}
     perplexity_key:
       type: string
       description: Perplexity Search API key
+      default: ''
+      originalType: string
     portfolio_db:
       type: object
       description: PostgreSQL resource (optional, used only if ticker provided)
+      default: {}
+      properties: {}
     question:
       type: string
       description: Research question, e.g. 'CoreWeave competitive position'
+      default: ''
+      originalType: string
+    recipient_email:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
     research_type:
       type: string
       description: stock=equity analysis, strategy=competitive, macro=macro/sovereign,
         project=project finance
-      enum:
-        - stock
-        - strategy
-        - macro
-        - project
+      default: stock
+      originalType: string
     serper_key:
       type: string
       description: Serper.dev API key for news search (all depths)
       default: ''
+      originalType: string
     tavily_key:
       type: string
       description: Tavily Search API key (standard + deep, time_range=month)
       default: ''
+      originalType: string
     ticker:
       type: string
       description: Optional ticker (e.g. CRWV, 9988.HK) — activates stock-specific
         sources and DB context
       default: ''
+      originalType: string
     wm_token:
       type: string
       description: Windmill API token — used to dispatch stock_data_fetcher on
         stale/absent DB data
       default: ''
+      originalType: string
     xai_key:
       type: string
       description: xAI/Grok API key
-  required:
-    - question
-    - research_type
-    - depth
-    - perplexity_key
-    - xai_key
-    - deepseek_key
+      default: ''
+      originalType: string
+  required: []

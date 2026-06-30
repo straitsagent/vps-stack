@@ -211,7 +211,7 @@ def main(
     affection_group_id: str,
     affection_sticker_packs: str,
     deepseek_key: str,
-    portfolio_db: dict = {},
+    affection_db: dict = {},
 ) -> dict:
     """Hourly affection sticker ping. Returns a dict describing the send."""
     now = datetime.now(SGT)
@@ -250,7 +250,7 @@ def main(
         log.warning(f"[Affection] Sticker send failed: {err}")
 
     _log_affection(
-        portfolio_db, affection_group_id, pack_name, file_id, caption,
+        affection_db, affection_group_id, pack_name, file_id, caption,
         "deepseek-chat", delivered, err,
     )
 
