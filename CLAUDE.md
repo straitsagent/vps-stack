@@ -202,6 +202,7 @@ Claude Code is configured with hooks and permissions that enforce the Hard Rules
 **Custom skills** (`~/.claude/commands/`)
 - `/deploy-windmill` — full Windmill deployment checklist: resource preflight → design approval gate (for existing scripts) → push → live test with output inspection → docs + git commit
 - `/digest` — digest-specific build checklist: confirm current live state → design approval → resource preflight → implement with recency date validation → live test with article date inspection → git commit
+- `/verify-implementations` — post-implementation verification sweep: independently re-run each plan's LOCKED ORACLE + verify script (never trust the log), check the artifact (G3), fix loose ends, update docs, archive, commit + push. Honest waiver (override_log) over a fake pass; STOP + report on failure. Call after opencode/another model implements an approved plan.
 
 **Hookify block rules** (`~/.claude/hookify.*.local.md`)
 - `hookify.block-wmill-sync-push.local.md` — **blocks** any Bash call matching `wmill sync push` (Hard Rule 9)
