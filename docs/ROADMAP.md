@@ -44,9 +44,9 @@ Everything below is live and running unattended unless noted.
 ### Foundation
 
 - Windmill at `http://<YOUR_VPS_IP>:8080` — Python scripts, cron schedules, resource system
-- PostgreSQL (`portfolio_postgres`) — schema applied, 33 positions seeded. **33 tables total** — see Reference.
+- PostgreSQL (`portfolio_postgres`, same instance, 2 databases: `portfolio` + `affection`) — `portfolio` schema applied, 33 positions seeded. **31 tables in portfolio DB, 2 tables in affection DB (separate).** Affection bot data isolated from financial data.
 - GCP service account — Drive + Sheets APIs enabled
-- Windmill resources: `u/admin/gmail_smtp`, `u/admin/portfolio_db`, `u/admin/deepseek_key`, `u/admin/rapidapi_key`, `u/admin/finnhub_key`, `u/admin/perplexity_key`, `u/admin/xai_key`, `u/admin/exa_key`
+- Windmill resources: `u/admin/gmail_smtp`, `u/admin/portfolio_db`, `u/admin/affection_db` (new 2026-06-30), `u/admin/deepseek_key`, `u/admin/rapidapi_key`, `u/admin/finnhub_key`, `u/admin/perplexity_key`, `u/admin/xai_key`, `u/admin/exa_key`
 
 ### Daily Intelligence
 

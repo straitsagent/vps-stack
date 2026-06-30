@@ -2950,9 +2950,9 @@ Only written when a rating change fires.
 8. return {sent_at, group_id, sticker_pack, file_id, caption, delivered, error}
 ```
 
-**DB table:** `affection_outbox` (isolated from `telegram_outbox` — no `word_count` column, not audited by `health_check`).
+**DB table:** `affection_outbox` in the `affection` database (separate from `portfolio` since 2026-06-30 — Hermes/OpenClaw cannot reach it). Isolated from `telegram_outbox` — no `word_count` column, not audited by `health_check`.
 
-**Windmill variables:** `u/admin/affection_group_id` (negative group chat_id), `u/admin/affection_sticker_packs` (11 packs: `BubuDudu`, `Kittylove`, `PusheenTheCat`, `LoveDove`, `catlove2`, `LoveKitten`, `Cute_couple`, `PenguinsLove`, `BunnyAndBear`, `BearAndBunny`, `peachlovesgoma`).
+**Windmill variables:** `u/admin/affection_group_id` (negative group chat_id), `u/admin/affection_sticker_packs` (11 packs: `BubuDudu`, `Kittylove`, `PusheenTheCat`, `LoveDove`, `catlove2`, `LoveKitten`, `Cute_couple`, `PenguinsLove`, `BunnyAndBear`, `BearAndBunny`, `peachlovesgoma`). Windmill resource `u/admin/affection_db` (postgresql, points at the `affection` database).
 
 ---
 

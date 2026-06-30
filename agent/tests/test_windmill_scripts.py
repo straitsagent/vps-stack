@@ -6679,7 +6679,7 @@ def test_affection_ping_skips_outside_window(monkeypatch):
         affection_group_id="-4830227987",
         affection_sticker_packs="MultiPack",
         deepseek_key="key",
-        portfolio_db={},
+        affection_db={},
     )
     assert result.get("skipped") is True, f"Should skip at 3AM, got: {result}"
 
@@ -6706,7 +6706,7 @@ def test_affection_ping_no_sticker_pack_resolved(monkeypatch):
             affection_group_id="-4830227987",
             affection_sticker_packs="NonexistentPack",
             deepseek_key="key",
-            portfolio_db={},
+            affection_db={},
         )
 
 
