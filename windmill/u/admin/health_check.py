@@ -49,99 +49,6 @@ def _dispatch_formatter(formatter_name: str, md_path: str,
     except Exception as e:
         log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
         return ""
-
-
-def _build_health_narrative(rows: list, ok_count: int, total: int,
-                             llm_rows: list, total_cost: float,
-                             now_sgt: datetime) -> str:
-    """Generate a ≥500-word narrative description of the health check results."""
-    date_str = now_sgt.strftime("%A, %-d %B %Y at %-I:%M %p SGT")
-    failed = [r for r in rows if r.get("status") != "OK"]
-    ok_rows = [r for r in rows if r.get("status") == "OK"]
-
-    paras = []
-
-    # Overview paragraph
-    overview_status = "all automated workflows are operating within expected parameters" if not failed else \
-        f"{len(failed)} of {total} automated workflows require attention"
-    paras.append(
-        f"This automated health check was executed on {date_str}. "
-        f"The monitoring system checks each scheduled workflow against its expected run interval and "
-        f"confirms that completed jobs returned successful results. At the time of this report, "
-        f"{overview_status}. The portfolio automation stack spans {total} core scheduled workflows "
-        f"covering market data ingestion, portfolio reporting, news monitoring, and system monitoring. "
-        f"A workflow is marked OK when its most recent completed job finished successfully and ran "
-        f"within the configured maximum-age window. STALE indicates the last successful run was "
-        f"outside the expected window; FAILED indicates the most recent job returned an error result."
-    )
-
-    # Per-schedule detail paragraphs
-    for row in rows:
-        label = row.get("label", "Unknown")
-        status = row.get("status", "?")
-        age_str = row.get("age_str", "unknown")
-        error = row.get("error", "")
-        if status == "OK":
-            paras.append(
-                f"{label}: status OK. Last completed run was {age_str}. "
-                f"The workflow completed successfully within its configured monitoring window. "
-                f"No errors were recorded in the most recent completed job. This schedule "
-                f"is operating normally and no manual intervention is required at this time."
-            )
-        else:
-            detail = f" The reported error was: {error}." if error else ""
-            paras.append(
-                f"{label}: status {status}.{detail} "
-                f"The most recent detected run was {age_str}. "
-                f"This schedule is currently outside its expected run window or returned an error. "
-                f"Recommended action: open the Windmill UI, navigate to this schedule, and inspect "
-                f"the most recent completed and failed jobs for stack traces or dependency errors. "
-                f"Common causes include temporary API unavailability, credential expiry, or "
-                f"network connectivity issues with external data providers."
-            )
-
-    # LLM cost paragraph
-    if llm_rows:
-        cost_str = f"${total_cost:.4f}"
-        job_names = ", ".join(r.get("label", "?") for r in llm_rows)
-        paras.append(
-            f"LLM API usage in the past 24 hours was recorded for the following workflows: "
-            f"{job_names}. The aggregate estimated API cost across all LLM-enabled workflows "
-            f"for this period was {cost_str}. Token consumption is tracked per job run to "
-            f"allow cost monitoring and budget management. If token usage appears abnormally "
-            f"high, inspect the prompt construction in the affected workflow for unexpected "
-            f"token inflation from oversized context or runaway retries."
-        )
-    else:
-        paras.append(
-            f"No LLM API token usage was recorded in the past 24 hours across the monitored "
-            f"workflows. This is expected on weekends or days when no LLM-enabled workflows ran. "
-            f"Token usage is tracked for billing monitoring and typically reflects Deepseek API "
-            f"calls made by the YouTube monitor and portfolio review workflows."
-        )
-
-    # Summary paragraph
-    if not failed:
-        paras.append(
-            f"Overall assessment: the automation stack is fully operational. "
-            f"All {total} monitored workflows are running on schedule and returning clean results. "
-            f"No manual intervention is required. The next scheduled health check will run in "
-            f"approximately 24 hours. If any workflow begins failing before then, a separate "
-            f"error alert will be triggered via the Windmill error notification system."
-        )
-    else:
-        paras.append(
-            f"Overall assessment: {len(failed)} workflow(s) require immediate attention. "
-            f"The affected workflows are: {', '.join(r.get('label', '?') for r in failed)}. "
-            f"Please investigate as soon as possible to prevent data gaps. The portfolio "
-            f"intelligence system depends on timely execution of all scheduled workflows for "
-            f"accurate reporting. Extended downtime in any single workflow may cause stale "
-            f"data to propagate into portfolio emails and rationalization scores."
-        )
-
-    return "\n\n".join(paras)
-
-
 def _diagnose_failure(label: str, path: str, status: str, error: str,
                       age_str: str, deepseek_key: str) -> dict:
     """Call Deepseek to diagnose a STALE/FAILED schedule. Returns {root_cause, remediation}."""
@@ -300,58 +207,6 @@ def _spec_check(report: dict) -> dict:
     }
 
 
-def _synthesise_daily_digest(reports: list, xai_key: str, deepseek_key: str) -> str:
-    """Call Grok-4 (fallback Deepseek) to produce a holistic 700-1000 word daily brief."""
-    import openai as _oai
-    sections = []
-    for r in reports:
-        narrative = r.get("narrative", "")[:2000]
-        if narrative:
-            sections.append(f"=== {r.get('type', 'unknown').upper()} ===\n{narrative}")
-    if not sections:
-        return ""
-    context = "\n\n".join(sections)
-    system_msg = (
-        "You are the chief of staff for an investor. Below is everything the personal "
-        "intelligence system produced in the last 24 hours — macro research, portfolio "
-        "AM/PM updates, weekly review and rationalization (if present), YouTube channel "
-        "summaries, and the news digest.\n\n"
-        "Write a single coherent executive daily brief of 700–1000 words divided into "
-        "numbered sections with clear headings. Use bullet points within sections for "
-        "conciseness. Include an executive summary paragraph at the start and a conclusion "
-        "paragraph at the end. Synthesise the cross-cutting themes: what changed, what "
-        "matters most today, where sources agree or conflict, and what warrants attention. "
-        "End with a complete sentence."
-    )
-    user_msg = f"Content produced in the last 24 hours:\n\n{context}"
-    msgs = [{"role": "system", "content": system_msg}, {"role": "user", "content": user_msg}]
-    if xai_key:
-        try:
-            client = _oai.OpenAI(api_key=xai_key, base_url="https://api.x.ai/v1")
-            resp = client.chat.completions.create(
-                model="grok-4",
-                messages=msgs,
-                temperature=0.3,
-                max_tokens=1500,
-            )
-            return resp.choices[0].message.content.strip()
-        except Exception as exc:
-            log.warning(f"[Digest] Grok-4 failed ({exc}), falling back to Deepseek")
-    if deepseek_key:
-        try:
-            client = _oai.OpenAI(api_key=deepseek_key, base_url="https://api.deepseek.com")
-            resp = client.chat.completions.create(
-                model="deepseek-chat",
-                messages=msgs,
-                temperature=0.3,
-                max_tokens=1500,
-            )
-            return resp.choices[0].message.content.strip()
-        except Exception as exc:
-            log.warning(f"[Digest] Deepseek fallback also failed: {exc}")
-    return ""
-
-
 def _query_telegram_outbox_24h(portfolio_db: dict) -> list:
     """Query telegram_outbox for sends in the last 24 hours.
     Returns list of dicts: {script_name, delivered, word_count, error, sent_at}.
@@ -505,7 +360,7 @@ def _send_email(gmail_smtp: dict, recipient_email: str, subject: str, html: str)
 
 def _build_front_matter(tg_date: str, ok_count: int, total: int, fm_rows: list,
                         token_usage: list, outbox_rows: list, diagnoses: list,
-                        spec_checks: list, content_inventory: list, digest: str) -> dict:
+                        spec_checks: list, content_inventory: list) -> dict:
     """Assemble the canonical front-matter dict (single source for email + Telegram)."""
     return {
         "tg_date":           tg_date,
@@ -517,17 +372,78 @@ def _build_front_matter(tg_date: str, ok_count: int, total: int, fm_rows: list,
         "diagnoses":         diagnoses,
         "spec_checks":       spec_checks,
         "content_inventory": content_inventory,
-        "digest":            digest,
     }
 
 
-def _build_md_content(front_matter: dict, narrative: str) -> str:
-    """Render the canonical .md string from front_matter + narrative (pure function)."""
-    return (
-        f"```json\n{json.dumps(front_matter, indent=2)}\n```\n\n"
-        f"{narrative}\n\n"
-        "<!-- DETAIL -->\n"
-    )
+def _build_md_content(fm: dict) -> str:
+    """Render the canonical .md string — comprehensive deterministic report (pure function)."""
+    sections = []
+    sections.append(f"```json\n{json.dumps(fm, indent=2)}\n```\n")
+
+    # Schedule Status
+    sections.append("## Schedule Status")
+    for row in fm.get("rows", []):
+        icon = "✅" if row.get("status") == "OK" else ("❌" if row.get("status") == "FAILED" else "⚠️")
+        sections.append(f"{icon} **{row['label']}**: {row['status']} — {row.get('age_str','?')}{' — ' + row['error'] if row.get('error') else ''}")
+    sections.append(f"\n{sum(1 for r in fm.get('rows',[]) if r.get('status')=='OK')}/{len(fm.get('rows',[]))} OK\n")
+
+    # System Resources
+    sysd = fm.get("system", {})
+    if sysd:
+        sections.append("## System Resources")
+        if isinstance(sysd.get("disk"), list):
+            sections.append("### Disk")
+            for m in sysd["disk"]:
+                sections.append(f"- {m['mount']}: {m['pct_used']}% used ({m['used_gb']}/{m['total_gb']})")
+        mem = sysd.get("memory", {})
+        if mem and "error" not in mem:
+            sections.append(f"### Memory\n- {mem.get('used_mib','?')}MiB used / {mem.get('total_mib','?')}MiB total ({mem.get('pct_available','?')}% available)")
+        ld = sysd.get("load", {})
+        if ld and "error" not in ld:
+            sections.append(f"### Load\n- 1m: {ld.get('load_1m',0):.1f}  5m: {ld.get('load_5m',0):.1f}  15m: {ld.get('load_15m',0):.1f}  ({ld.get('cores',1)} cores)")
+        dock = sysd.get("docker", {})
+        if dock and "error" not in dock:
+            sections.append(f"### Docker\n- {dock.get('running',0)} running / {dock.get('total',0)} total")
+
+    # Backup Status
+    bup = fm.get("backup", {})
+    if bup:
+        sections.append("## Backup Status")
+        svc = bup.get("service", {})
+        sections.append(f"- Result: {svc.get('Result','unknown')}")
+        sections.append(f"- Timer active: {bup.get('timer_active',False)}")
+        sections.append(f"- Last run: {svc.get('ExecMainExitTimestamp','unknown')}")
+
+    # Token Usage
+    tok = fm.get("token_usage", [])
+    if tok:
+        sections.append("## Token Usage — Last 24h")
+        total_c = 0.0
+        for t in tok:
+            sections.append(f"- {t.get('job','?')} ({t.get('model','?')}): {t.get('tokens',0):,} tokens — ${t.get('cost_usd',0):.4f}")
+            total_c += t.get('cost_usd', 0)
+        sections.append(f"**Total cost: ${total_c:.4f}**")
+
+    # Spec Checks
+    sc = fm.get("spec_checks", [])
+    failing = [s for s in sc if not s.get("pass")]
+    if failing:
+        sections.append("## Spec Check Failures")
+        for s in failing:
+            for v in s.get("violations", []):
+                sections.append(f"- ⚠️ {s['output']}: {v}")
+    elif sc:
+        sections.append(f"## Spec Check Results\nAll {len(sc)} outputs passed ✅")
+
+    # AI Diagnoses
+    diag = fm.get("diagnoses", [])
+    if diag:
+        sections.append("## AI Diagnoses")
+        for d in diag:
+            sections.append(f"- **{d['label']}**: Cause: {d.get('root_cause','?')} — Fix: {d.get('remediation','?')}")
+
+    sections.append("<!-- DETAIL -->")
+    return "\n\n".join(sections) + "\n"
 
 
 def _write_canonical_md(md_content: str, path: str) -> None:
@@ -548,7 +464,7 @@ ARTIFACT_MARKERS: dict[str, list[str]] = {
     "Portfolio":        ["Total Value", "P&L"],
     "Macro Research":   ["VIX", "10Y"],
     "Weekly Review":    ["Week P&L", "Top Movers"],
-    "Health Check":     ["Schedules", "Telegram Outbox", "Digest"],
+    "Health Check":     ["Schedules", "Telegram Outbox", "System Resources", "Backup Status"],
     "Move Monitor":     ["triggered", "threshold"],
     "Analyst Alert":    ["upgrade", "downgrade", "target"],
     "YouTube Monitor":  ["channel", "transcript"],
@@ -651,7 +567,7 @@ def _write_artifact_verification(portfolio_db: dict, script_name: str, email_ok:
 
 def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_completion,
                total_cost, sent_subjects, extra_categories,
-               digest="", spec_checks=None, diagnoses=None):
+               system_data=None, backup_data=None, spec_checks=None, diagnoses=None):
     date_str = now_sgt.strftime("%A, %-d %B %Y")
     time_str = now_sgt.strftime("%-I:%M %p SGT")
     all_ok = ok_count == total
@@ -769,17 +685,79 @@ def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_com
         </tr>
       </table>"""
 
-    # ── Daily Brief (digest) ─────────────────────────────────────────────────
-    digest_section = ""
-    if digest:
-        digest_html = digest.replace("\n\n", "</p><p style='margin:8px 0'>").replace("\n", "<br>")
-        digest_section = f"""
+    # ── System Resources ──────────────────────────────────────────────────────
+    system_section = ""
+    if system_data:
+        rows_sys = []
+        if isinstance(system_data.get("disk"), list):
+            for m in system_data["disk"]:
+                pct = float(m.get("pct_used", 0))
+                color = RED if pct >= 95 else (ORANGE if pct >= 85 else GREEN)
+                rows_sys.append(f"""<tr style="border-bottom:1px solid #f5f5f5">
+          <td style="padding:5px 12px;font-size:13px;color:{GRAY}">{m['mount']}</td>
+          <td style="padding:5px 12px;font-size:13px;color:{color}">{m['pct_used']}%</td>
+          <td style="padding:5px 12px;font-size:13px;color:{GRAY}">{m['used_gb']} / {m['total_gb']}</td>
+        </tr>""")
+        mem = system_data.get("memory", {})
+        mem_pct_avail = mem.get("pct_available", 100)
+        mem_color = RED if mem_pct_avail < 5 else (ORANGE if mem_pct_avail < 10 else GREEN)
+        load = system_data.get("load", {})
+        load_1m = load.get("load_1m", 0)
+        cores = load.get("cores", 1)
+        load_color = RED if load_1m > cores * 2 else (ORANGE if load_1m > cores else GREEN)
+        sys_html = f"""<table style="border-collapse:collapse;margin-bottom:8px">{''.join(rows_sys)}
+        </table>
+        <table style="border-collapse:collapse">
+          <tr style="border-bottom:1px solid #f5f5f5">
+            <td style="padding:5px 12px;font-size:13px;color:{GRAY}">Memory</td>
+            <td style="padding:5px 12px;font-size:13px;color:{mem_color}">{mem.get('used_mib','?')}MiB used / {mem.get('total_mib','?')}MiB total ({mem_pct_avail}% avail)</td>
+          </tr>
+          <tr style="border-bottom:1px solid #f5f5f5">
+            <td style="padding:5px 12px;font-size:13px;color:{GRAY}">Load</td>
+            <td style="padding:5px 12px;font-size:13px;color:{load_color}">1m:{load_1m:.1f} 5m:{load.get('load_5m',0):.1f} 15m:{load.get('load_15m',0):.1f} ({cores} cores)</td>
+          </tr>
+          <tr style="border-bottom:1px solid #f5f5f5">
+            <td style="padding:5px 12px;font-size:13px;color:{GRAY}">Docker</td>
+            <td style="padding:5px 12px;font-size:13px;color:{GREEN}">{system_data.get('docker',{}).get('running',0)} running / {system_data.get('docker',{}).get('total',0)} total</td>
+          </tr>
+          <tr>
+            <td style="padding:5px 12px;font-size:13px;color:{GRAY}">Uptime</td>
+            <td style="padding:5px 12px;font-size:13px;color:{GRAY}">{system_data.get('uptime',{}).get('uptime_formatted','?')}</td>
+          </tr>
+        </table>"""
+        system_section = f"""
       <h3 style="margin:28px 0 8px;font-size:12px;color:{GRAY};letter-spacing:0.08em;text-transform:uppercase">
-        Daily Brief
+        System Resources
       </h3>
-      <div style="font-size:14px;line-height:1.6;color:#1c2024;background:#f9f9f9;padding:14px 16px;border-left:3px solid #4a90d9;border-radius:3px">
-        <p style="margin:0">{digest_html}</p>
-      </div>"""
+      {sys_html}"""
+
+    # ── Backup Status ─────────────────────────────────────────────────────────
+    backup_section = ""
+    if backup_data:
+        svc = backup_data.get("service", {})
+        backup_result = svc.get("Result", "unknown")
+        backup_status_color = RED if backup_result != "success" else GREEN
+        backup_status_text = "OK" if backup_result == "success" else f"FAILED ({backup_result})"
+        timer_active = backup_data.get("timer_active", False)
+        timer_status_color = GREEN if timer_active else RED
+        backup_section = f"""
+      <h3 style="margin:28px 0 8px;font-size:12px;color:{GRAY};letter-spacing:0.08em;text-transform:uppercase">
+        Drive Backup Status
+      </h3>
+      <table style="border-collapse:collapse">
+        <tr style="border-bottom:1px solid #f5f5f5">
+          <td style="padding:5px 12px;font-size:13px;color:{GRAY}">Service Result</td>
+          <td style="padding:5px 12px;font-size:13px;color:{backup_status_color}">{backup_status_text}</td>
+        </tr>
+        <tr style="border-bottom:1px solid #f5f5f5">
+          <td style="padding:5px 12px;font-size:13px;color:{GRAY}">Timer Active</td>
+          <td style="padding:5px 12px;font-size:13px;color:{timer_status_color}">{'Yes' if timer_active else 'No'}</td>
+        </tr>
+        <tr>
+          <td style="padding:5px 12px;font-size:13px;color:{GRAY}">Last Run</td>
+          <td style="padding:5px 12px;font-size:13px;color:{GRAY}">{svc.get('ExecMainExitTimestamp','unknown')}</td>
+        </tr>
+      </table>"""
 
     # ── Spec Check Failures ──────────────────────────────────────────────────
     spec_section = ""
@@ -825,7 +803,7 @@ def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_com
   <h2 style="margin-bottom:2px">Automation Health — {date_str}</h2>
   <p style="color:{GRAY};margin:0 0 4px;font-size:14px">{time_str}</p>
   <p style="font-size:16px;font-weight:bold;color:{summary_color};margin:0 0 20px">{summary_text}</p>
-  {digest_section}
+  {system_section}{backup_section}
 
   <table style="border-collapse:collapse;width:100%">
     <thead>
@@ -849,7 +827,111 @@ def build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_com
 </body></html>"""
 
 
-def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: str = "", telegram_owner_id: str = "", portfolio_db: dict = {}, wm_token: str = "", deepseek_key: str = "", xai_key: str = ""):
+SYS_METRICS_PATH = "/research/system/vps_health.json"
+SYS_METRICS_MAX_AGE_MIN = 90
+
+
+def _read_system_metrics() -> dict:
+    """Read host system metrics from collector JSON, apply thresholds.
+    Returns {"snapshot": dict|None, "alerts": list, "status": str}."""
+    result = {"snapshot": None, "alerts": [], "status": "OK"}
+    if not os.path.exists(SYS_METRICS_PATH):
+        result["alerts"].append("CRIT: system metrics JSON missing")
+        result["status"] = "CRIT"
+        return result
+    try:
+        with open(SYS_METRICS_PATH) as f:
+            data = json.load(f)
+        result["snapshot"] = data
+    except Exception as e:
+        result["alerts"].append(f"CRIT: failed to parse system metrics JSON: {e}")
+        result["status"] = "CRIT"
+        return result
+
+    # Staleness check
+    try:
+        collected = datetime.fromisoformat(data["collected_at"])
+        age_min = (datetime.now(timezone.utc) - collected).total_seconds() / 60
+        if age_min > SYS_METRICS_MAX_AGE_MIN:
+            result["alerts"].append(f"WARN: system metrics stale ({age_min:.0f} min > {SYS_METRICS_MAX_AGE_MIN} max)")
+            if result["status"] == "OK":
+                result["status"] = "WARN"
+    except Exception as e:
+        result["alerts"].append(f"CRIT: cannot parse collected_at: {e}")
+        result["status"] = "CRIT"
+
+    # Disk thresholds
+    disk = data.get("disk", [])
+    if isinstance(disk, list):
+        for m in disk:
+            try:
+                pct = float(m.get("pct_used", 0))
+                if pct >= 95:
+                    result["alerts"].append(f"CRIT: disk {m['mount']} at {pct}%")
+                    result["status"] = "CRIT"
+                elif pct >= 85:
+                    result["alerts"].append(f"WARN: disk {m['mount']} at {pct}%")
+                    if result["status"] == "OK":
+                        result["status"] = "WARN"
+            except (ValueError, KeyError):
+                pass
+
+    # Memory thresholds
+    mem = data.get("memory", {})
+    if "error" not in mem:
+        try:
+            pct_avail = float(mem.get("pct_available", 100))
+            if pct_avail < 5:
+                result["alerts"].append(f"CRIT: memory {pct_avail}% available")
+                result["status"] = "CRIT"
+            elif pct_avail < 10:
+                result["alerts"].append(f"WARN: memory {pct_avail}% available")
+                if result["status"] == "OK":
+                    result["status"] = "WARN"
+        except (ValueError, TypeError):
+            pass
+
+    # Load thresholds
+    ld = data.get("load", {})
+    if "error" not in ld:
+        try:
+            load_1m = float(ld.get("load_1m", 0))
+            cores = int(ld.get("cores", 1))
+            if load_1m > cores * 2:
+                result["alerts"].append(f"CRIT: load 1m {load_1m:.1f} > {cores*2} (2× cores)")
+                result["status"] = "CRIT"
+            elif load_1m > cores:
+                result["alerts"].append(f"WARN: load 1m {load_1m:.1f} > {cores} cores")
+                if result["status"] == "OK":
+                    result["status"] = "WARN"
+        except (ValueError, TypeError):
+            pass
+
+    # Docker — flag containers not running/Up
+    dock = data.get("docker", {})
+    if "error" not in dock:
+        containers = dock.get("containers", {})
+        non_running = {n: s for n, s in containers.items()
+                       if not s.startswith("Up")}
+        if non_running:
+            result["alerts"].append(f"WARN: {len(non_running)} container(s) not running: {non_running}")
+            if result["status"] == "OK":
+                result["status"] = "WARN"
+
+    # Backup — flag failures / stale (> 48h)
+    bup = data.get("backup", {})
+    bup_svc = bup.get("service", {})
+    if bup_svc.get("Result") and bup_svc["Result"] != "success":
+        result["alerts"].append(f"CRIT: drive-backup failed ({bup_svc['Result']})")
+        result["status"] = "CRIT"
+    if not bup.get("timer_active"):
+        result["alerts"].append("CRIT: drive-backup timer not active")
+        result["status"] = "CRIT"
+
+    return result
+
+
+def main(gmail_smtp: dict = {}, recipient_email: str = "", portfolio_db: dict = {}, wm_token: str = "", deepseek_key: str = ""):
     sgt = pytz.timezone("Asia/Singapore")
     now_sgt = datetime.now(sgt)
     now_utc = datetime.now(timezone.utc)
@@ -1004,7 +1086,6 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
     content_reports = []
     spec_checks = []
     content_inventory = []
-    digest = ""
     try:
         content_reports = _collect_24h_reports(now_sgt)
         spec_checks = [_spec_check(r) for r in content_reports]
@@ -1016,13 +1097,6 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
                                "word_count": r["word_count"]} for r in content_reports]
     except Exception as exc:
         log.warning(f"[ContentEngine] Collect/spec failed: {exc}")
-    if xai_key or deepseek_key:
-        try:
-            digest = _synthesise_daily_digest(content_reports, xai_key, deepseek_key)
-            if digest:
-                log.info(f"[Digest] {len(digest.split())} words synthesised")
-        except Exception as exc:
-            log.warning(f"[Digest] Synthesis failed: {exc}")
 
     # ── Build token_usage + shared front-matter (single source for email + Telegram) ─
     token_usage = [
@@ -1050,20 +1124,25 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
                          + "; ".join(f"{r['script_name']}:{r.get('error','undelivered')}"
                                      for r in failures))
 
+    # ── Read system metrics (host-collected) ──────────────────────────────────
+    system_metrics = _read_system_metrics()
+
     front_matter = _build_front_matter(
         tg_date=now_sgt.strftime("%-d %b"),
         ok_count=ok_count, total=total,
         fm_rows=fm_rows, token_usage=token_usage,
         outbox_rows=outbox_rows, diagnoses=diagnoses,
         spec_checks=spec_checks, content_inventory=content_inventory,
-        digest=digest,
     )
+    front_matter["system"] = system_metrics.get("snapshot", {})
+    front_matter["backup"] = system_metrics.get("snapshot", {}).get("backup", {})
 
     # ── Build HTML email from single source (front_matter drives shared fields) ─
     subject = f"Health Check — {now_sgt.strftime('%-d %b %Y')} | {ok_count}/{total} OK"
     html = build_html(rows, now_sgt, ok_count, total, llm_rows, total_prompt, total_completion,
                       total_cost, sent_subjects, EXTRA_CATEGORIES,
-                      digest=front_matter["digest"],
+                      system_data=front_matter.get("system"),
+                      backup_data=front_matter.get("backup"),
                       spec_checks=front_matter["spec_checks"],
                       diagnoses=front_matter["diagnoses"])
 
@@ -1110,18 +1189,10 @@ def main(gmail_smtp: dict = {}, recipient_email: str = "", telegram_bot_token: s
             passed = sum(1 for r in tier0_results if r.get("pass") is True)
             log.info(f"[Tier0] {passed}/{len(tier0_results)} scripts passed artifact body check")
 
-    # ── Write canonical .md and dispatch Telegram formatter ─────────────────
-    if telegram_bot_token and telegram_owner_id:
-        narrative = _build_health_narrative(rows, ok_count, total, llm_rows, total_cost, now_sgt)
-        md_path = f"/research/health/{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"
-        md_content = _build_md_content(front_matter, narrative)
-        _write_canonical_md(md_content, md_path)
-
-        _dispatch_formatter(
-            "health_check_telegram", md_path,
-            telegram_bot_token, telegram_owner_id,
-            portfolio_db, wm_token or token,
-        )
+    # ── Write canonical .md (comprehensive deterministic report) ──────────────
+    md_path = f"/research/health/{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"
+    md_content = _build_md_content(front_matter)
+    _write_canonical_md(md_content, md_path)
 
     return {
         "ok_count":   ok_count,
