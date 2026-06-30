@@ -16,8 +16,13 @@ agent:
 
 platform_toolsets:
   telegram: [hermes-telegram]
+  discord: [hermes-discord]
 
 platforms:
   telegram:
     reply_to_mode: "first"
     guest_mode: false
+  discord:
+    require_mention: true
+    auto_thread: true
+    reactions: true

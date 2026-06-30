@@ -1114,5 +1114,29 @@
     "word_count": 737,
     "source_count": 82,
     "est_cost_usd": 0.0416
+  },
+  {
+    "id": "2026-06-27_aapl",
+    "date": "2026-06-27",
+    "question": "",
+    "research_type": "stock",
+    "depth": "standard",
+    "ticker": "AAPL",
+    "file_path": "/research/stocks/2026-06-27_standard_aapl.md",
+    "word_count": 8,
+    "source_count": 12,
+    "est_cost_usd": 0.0
+  },
+  {
+    "id": "2026-06-27_aapl",
+    "date": "2026-06-27",
+    "question": "",
+    "research_type": "stock",
+    "depth": "standard",
+    "ticker": "AAPL",
+    "file_path": "/research/stocks/2026-06-27_standard_aapl.md",
+    "word_count": 8,
+    "source_count": 12,
+    "est_cost_usd": 0.0
   }
 ]
