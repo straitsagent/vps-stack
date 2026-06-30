@@ -43,3 +43,23 @@ ALTER SEQUENCE affection_outbox_id_seq OWNED BY affection_outbox.id;
 ALTER TABLE ONLY affection_outbox ALTER COLUMN id SET DEFAULT nextval('affection_outbox_id_seq'::regclass);
 ALTER TABLE ONLY affection_outbox ADD CONSTRAINT affection_outbox_pkey PRIMARY KEY (id);
 CREATE INDEX IF NOT EXISTS idx_affection_outbox_sent_at ON affection_outbox USING btree (sent_at DESC);
+
+-- Short-term memory — daily synthesis of last 7 days (≤3KB per chat)
+CREATE TABLE IF NOT EXISTS affection_short_term_memory (
+    chat_id text NOT NULL PRIMARY KEY,
+    content text NOT NULL,
+    n_msgs integer NOT NULL DEFAULT 0,
+    window_start timestamptz,
+    window_end timestamptz,
+    synth_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE affection_short_term_memory OWNER TO affection_user;
+
+-- Long-term memory — weekly synthesis of all history (≤5KB per chat)
+CREATE TABLE IF NOT EXISTS affection_long_term_memory (
+    chat_id text NOT NULL PRIMARY KEY,
+    content text NOT NULL,
+    n_msgs integer NOT NULL DEFAULT 0,
+    synth_at timestamptz NOT NULL DEFAULT now()
+);
+ALTER TABLE affection_long_term_memory OWNER TO affection_user;
