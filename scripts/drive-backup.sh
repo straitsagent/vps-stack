@@ -34,6 +34,17 @@ else
     log "WARNING: pg_dump failed (container down?); skipping DB backup"
 fi
 
+# 1b. Affection DB — separate database (affection bot data)
+log "Dumping affection database..."
+if docker exec root-portfolio_postgres-1 pg_dump -U affection_user -d affection 2>&1 | gzip > "$WORK_DIR/affection_db.sql.gz"; then
+    SIZE=$(stat -c%s "$WORK_DIR/affection_db.sql.gz" 2>/dev/null || echo 0)
+    log "affection pg_dump complete ($SIZE bytes)"
+    rclone copy "$WORK_DIR/affection_db.sql.gz" "$DEST/" 2>&1 | logger -t "$LOG_TAG"
+    log "affection_db.sql.gz uploaded"
+else
+    log "WARNING: affection pg_dump failed (container down?); skipping"
+fi
+
 # 2. Secrets — gitignored by design
 log "Syncing secrets/..."
 rclone copy /root/secrets/ "$DEST/secrets/" 2>&1 | logger -t "$LOG_TAG"
