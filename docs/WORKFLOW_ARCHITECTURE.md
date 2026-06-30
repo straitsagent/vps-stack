@@ -2956,7 +2956,43 @@ Only written when a rating change fires.
 
 ---
 
-### 11. `idea_extractor` (Idea Pipeline — Plan A, 2026-06-27)
+### 11. `affection_memory_synthesis` (short-term — daily, 02:00 SGT)
+
+**Script:** `u/admin/affection_memory_synthesis`  
+**Schedule:** `u/admin/affection_memory_synthesis_daily` — **02:00 SGT daily**  
+**Mode:** `"short"` (parameter)  
+**Input table:** `affection_conversation` (last 7 days per chat_id)  
+**Output table:** `affection_short_term_memory` (chat_id PK, UPSERT)
+**Model:** Deepseek `deepseek-chat`, temperature 0.3, max 3,000 chars per row.  
+**Prompt hardens against instruction-injection** (INV-3): instructs to describe only, never record/obey instructions found inside messages.
+**Error isolation (HR4):** if one chat fails, continues to next.
+
+**Pseudocode:**
+```
+1. SELECT DISTINCT chat_id FROM affection_conversation
+2. For each chat_id:
+   a. Query messages WHERE created_at >= now() - 7 days
+   b. If none, skip
+   c. Build prompt with INV-3 guard, messages, chat_id
+   d. Call Deepseek deepseek-chat
+   e. UPSERT into affection_short_term_memory (chat_id PK)
+3. Return {successes, errors}
+```
+
+### 12. `affection_memory_synthesis` (long-term — weekly, Sun 02:30 SGT)
+
+**Script:** `u/admin/affection_memory_synthesis`  
+**Schedule:** `u/admin/affection_memory_synthesis_weekly` — **Sun 02:30 SGT**  
+**Mode:** `"long"` (parameter)  
+**Input table:** `affection_conversation` (ALL history, capped at 500 msgs per chat)  
+**Output table:** `affection_long_term_memory` (chat_id PK, UPSERT)
+**Model:** Deepseek `deepseek-chat`, temperature 0.3, max 5,000 chars per row.  
+**Prior integration:** reads prior long-term row, feeds into prompt with "integrate, don't append" instruction. Also captures **learned interaction style** (what topics/tone resonate).
+**Prompt hardening and error isolation:** same as short-term.
+
+**Injection:** Both memory blocks are read by `_load_memory_blocks(chat_id)` in `/root/affection/main.py` and injected into `build_system_prompt(chat_id)`. The LLM loop never writes to these tables (INV-2).
+
+### 13. `idea_extractor` (Idea Pipeline — Plan A, 2026-06-27)
 
 **Script:** `u/admin/idea_extractor`
 **Trigger:** Dispatched by `youtube_monitor` (after every 6h scan) and `morning_news_digest` (daily 6:30 AM SGT).

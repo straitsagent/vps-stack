@@ -5,5 +5,20 @@ kind: script
 schema:
   $schema: https://json-schema.org/draft/2020-12/schema
   type: object
-  properties: {}
+  properties:
+    affection_db:
+      type: object
+      description: ''
+      default: {}
+      properties: {}
+    deepseek_key:
+      type: string
+      description: ''
+      default: ''
+      originalType: string
+    mode:
+      type: string
+      description: ''
+      default: short
+      originalType: string
   required: []

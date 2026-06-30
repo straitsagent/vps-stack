@@ -88,6 +88,8 @@ Everything below is live and running unattended unless noted.
 | Daily Health Check | 8:00 AM SGT — comprehensive system monitor: Windmill workflow status + VPS host health (disk/memory/load/Docker) + Drive backup status. Deterministic alerts via threshold rules. Host deadman at 08:30 SGT via systemd. Telegram notification retired. |
 | Windmill Error Alert | On failure — email + Telegram + Deepseek 1-line diagnosis |
 | Affection Ping | 2-hourly 9AM–11PM SGT — random sticker (11 packs) + Deepseek caption → Telegram group. Logs to `affection_outbox`. Runs on its own bot (`StraitsAffectionBot` via `u/admin/affection_bot_token`), separate from the main agent. |
+| Short-Term Memory Synthesis (affection) | Daily 02:00 SGT — Deepseek `deepseek-chat` synthesis of last 7 days of `affection_conversation` per chat_id. UPSERTs into `affection_short_term_memory`. |
+| Long-Term Memory Synthesis (affection) | Weekly Sun 02:30 SGT — Deepseek synthesis of all `affection_conversation` (capped 500 msgs) per chat_id, integrates prior memory. UPSERTs into `affection_long_term_memory`. |
 
 ### Telegram Agent
 
