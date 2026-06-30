@@ -140,6 +140,8 @@ def _build_message(front_matter: dict, narrative: str = "") -> str:
     diagnoses   = front_matter.get("diagnoses", [])
     spec_checks = front_matter.get("spec_checks", [])
     digest      = front_matter.get("digest", "")
+    system_data = front_matter.get("system", {})
+    backup_data = front_matter.get("backup", {})
 
     icon = "✅" if ok_count == total else "⚠️"
     lines = [f"*Health Check — {tg_date} | {ok_count}/{total} OK {icon}*", ""]
@@ -160,6 +162,46 @@ def _build_message(front_matter: dict, narrative: str = "") -> str:
         st_icon = "✅" if status == "OK" else "❌"
         detail  = f" — {error}" if error else (f" — {age_str}" if age_str else "")
         lines.append(f"{st_icon} *{label}*{detail}")
+
+    # ── System Resources ────────────────────────────────────────────────────────
+    if system_data:
+        lines.append("\n*System Resources:*")
+        disk = system_data.get("disk", [])
+        if isinstance(disk, list):
+            for m in disk:
+                pct = float(m.get("pct_used", 0))
+                icon_d = "🟢" if pct < 85 else ("🟡" if pct < 95 else "🔴")
+                lines.append(f"{icon_d} {m['mount']}: {m['pct_used']}% used ({m['used_gb']}/{m['total_gb']})")
+        mem = system_data.get("memory", {})
+        if mem and "error" not in mem:
+            pct_avail = mem.get("pct_available", 100)
+            icon_m = "🟢" if pct_avail >= 10 else ("🟡" if pct_avail >= 5 else "🔴")
+            lines.append(f"{icon_m} Memory: {mem.get('used_mib','?')}MiB/{mem.get('total_mib','?')}MiB ({pct_avail}% avail)")
+        ld = system_data.get("load", {})
+        if ld and "error" not in ld:
+            load_1m = ld.get("load_1m", 0)
+            cores = ld.get("cores", 1)
+            icon_l = "🟢" if load_1m <= cores else ("🟡" if load_1m <= cores * 2 else "🔴")
+            lines.append(f"{icon_l} Load: 1m={load_1m:.1f} 5m={ld.get('load_5m',0):.1f} ({cores}c)")
+        dock = system_data.get("docker", {})
+        if dock and "error" not in dock:
+            lines.append(f"🐳 Docker: {dock.get('running',0)}/{dock.get('total',0)} running")
+        upt = system_data.get("uptime", {})
+        if upt and "error" not in upt:
+            lines.append(f"⏱ Uptime: {upt.get('uptime_formatted','?')}")
+
+    # ── Backup Status ───────────────────────────────────────────────────────────
+    if backup_data:
+        lines.append("\n*Drive Backup Status:*")
+        svc = backup_data.get("service", {})
+        result = svc.get("Result", "unknown")
+        icon_b = "🟢" if result == "success" else "🔴"
+        lines.append(f"{icon_b} Service: {result}")
+        timer_active = backup_data.get("timer_active", False)
+        lines.append(f"{'✅' if timer_active else '❌'} Timer: {'active' if timer_active else 'inactive'}")
+        ts = svc.get("ExecMainExitTimestamp", "")
+        if ts:
+            lines.append(f"  Last run: {ts}")
 
     # ── Spec check results (failures only) ────────────────────────────────────
     spec_failures = [s for s in spec_checks if not s.get("pass")]
