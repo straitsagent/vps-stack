@@ -128,27 +128,44 @@ Sequenced so each makes the next more valuable. Each spawns its own executable c
 
 The single highest-leverage change. Without it there is no loop; with it, everything else compounds.
 
+**The artifact: dated feedback documents.** Anything Hermes writes into `/docs/hermes/feedback/` is *feedback*.
+Each document is **dated** — `/docs/hermes/feedback/YYYY-MM-DD_<slug>.md` — matching the existing `/docs/hermes/`
+convention (`2026-06-28_institutional-grade-roadmap.md`, `2026-06-29_software-install-request.md`). This gives an
+**append-only audit trail**: every observation Hermes ever made is preserved and timestamped, never overwritten.
+The loop's state (what's open vs resolved) lives *inside* the findings (each finding's `status`), not in a single
+mutable file — so history is never lost and you can always see what the system thought on any given day.
+
 **Deliverables (child plan):**
-1. **Schema** for `/docs/hermes/feedback/current.md` — a structured, machine-and-human-readable critique doc:
-   front-matter (`generated_at`, `objective_version`, `severity_counts`) + a list of *findings*, each with:
-   `id`, `severity` (blocker/major/minor/idea), `pillar` (risk/resilience/compliance/reporting/research-quality),
-   `observation` (what Hermes saw), `evidence` (file path, DB query, or report excerpt — never a bare claim),
-   `proposed_action` (what a fix looks like), `status` (open/acknowledged/in-progress/done/rejected).
+1. **Schema** for a dated feedback document `/docs/hermes/feedback/YYYY-MM-DD_<slug>.md` — structured,
+   machine-and-human-readable: front-matter (`date`, `generated_at`, `objective_version`, `severity_counts`) +
+   a list of *findings*, each with: `id` (stable, date-prefixed so it dedups across documents — e.g.
+   `2026-06-30-risk-01`), `severity` (blocker/major/minor/idea), `pillar`
+   (risk/resilience/compliance/reporting/research-quality), `observation` (what Hermes saw), `evidence` (file
+   path, DB query, or report excerpt — never a bare claim), `proposed_action` (what a fix looks like), `status`
+   (open/acknowledged/in-progress/done/rejected).
 2. **Producer:** a Hermes cron job (authored in its `/workspace`, owner-approved via the suggestion-accept flow)
-   that runs daily, reviews the day's outputs + DB state against the objective, and writes/updates `current.md`.
-   Uses `[SILENT]`-style discipline: a finding appears only when evidence supports it.
-3. **Consumer:** extend the SessionStart hook (`/root/scripts/session-git-check.py` or a sibling) to read
-   `current.md` and inject open findings into my context at session start — clearly labelled as advisory
-   (INV-8/INV-9). High-severity findings surface first.
-4. **Acknowledgement back-channel:** when I act on a finding, I (or the director) flip its `status` and write a
-   one-line resolution. Hermes reads that on its next tick and stops re-reporting it (dedup, like cron `[SILENT]`).
-   This makes the loop *converge* instead of repeating.
+   that runs daily, reviews the day's outputs + DB state against the objective, and writes a **new dated feedback
+   document** (one per run that has something to say). Uses `[SILENT]`-style discipline: it writes a document only
+   when evidence supports at least one finding — a quiet day produces no file, not an empty one. Before writing a
+   new finding, Hermes scans prior dated documents and carries forward only findings still `open` (by stable `id`),
+   so it re-raises an unresolved issue without spamming a fresh one each day.
+3. **Consumer:** extend the SessionStart hook (`/root/scripts/session-git-check.py` or a sibling) to read the
+   feedback directory, aggregate **open findings across all dated documents** (newest first, high-severity first),
+   and inject them into my context at session start — clearly labelled as advisory (INV-8/INV-9). Resolved/rejected
+   findings are not surfaced.
+4. **Acknowledgement back-channel:** when I act on a finding, I (or the director) flip its `status` to
+   `in-progress`/`done`/`rejected` **in the dated document where it lives** and write a one-line resolution +
+   resolving commit SHA. Hermes reads that on its next tick and stops re-carrying it forward (dedup by `id`, like
+   cron `[SILENT]`). This makes the loop *converge* instead of repeating, while the dated trail preserves the full
+   history of what was raised and how it was resolved.
 
-**Reuse:** Hermes' existing `/docs/hermes` write mount; the SessionStart-hook pattern; the cron suggestion-accept
-consent flow; the `research/index.json` manifest idea.
+**Reuse:** Hermes' existing `/docs/hermes` write mount; the dated-doc convention already used in `/docs/hermes/`;
+the SessionStart-hook pattern; the cron suggestion-accept consent flow; the `research/index.json` manifest idea
+(an optional `feedback/index.json` could list open findings for fast hook reads).
 
-**Success = ** a finding Hermes writes at 3am appears in my next session unprompted, I fix it, the status flips,
-and Hermes confirms the fix on its next tick — all without the director re-typing the observation.
+**Success = ** a finding Hermes writes at 3am (in that day's dated document) appears in my next session unprompted,
+I fix it, I flip its status in that document with the commit SHA, and Hermes confirms the fix on its next tick and
+stops carrying it forward — all without the director re-typing the observation, and with the full dated trail intact.
 
 ### WS-2 — Sharpen the conscience: institutional review rubric  (depends on WS-1)
 
