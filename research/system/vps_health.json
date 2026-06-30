@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-06-30T02:38:13.182451+00:00",
+  "collected_at": "2026-06-30T02:40:50.760996+00:00",
   "disk": [
     {
       "mount": "/run",
@@ -172,15 +172,15 @@
   ],
   "memory": {
     "total_mib": 24031,
-    "used_mib": 5126,
-    "available_mib": 18905,
-    "pct_used": 21.3,
-    "pct_available": 78.7
+    "used_mib": 5104,
+    "available_mib": 18927,
+    "pct_used": 21.2,
+    "pct_available": 78.8
   },
   "load": {
-    "load_1m": 3.74,
-    "load_5m": 3.29,
-    "load_15m": 2.74,
+    "load_1m": 2.41,
+    "load_5m": 2.96,
+    "load_15m": 2.7,
     "cores": 8
   },
   "docker": {
@@ -216,7 +216,7 @@
     "timer_active": true
   },
   "uptime": {
-    "uptime_seconds": 4751100.6,
-    "uptime_formatted": "54d 23h 45m"
+    "uptime_seconds": 4751258.37,
+    "uptime_formatted": "54d 23h 47m"
   }
 }
