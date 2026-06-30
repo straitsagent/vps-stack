@@ -55,7 +55,21 @@ rclone copy "$WORK_DIR/config/" "$DEST/config/" 2>&1 | logger -t "$LOG_TAG"
 rclone copy /root/.claude/commands/ "$DEST/config/claude-commands/" 2>&1 | logger -t "$LOG_TAG"
 log "Config files uploaded"
 
-# 5. Purge dated backup folders older than RETENTION_DAYS
+# 5. Hermes agent state — the hermes_state Docker volume (authoritative /workspace/.env,
+#    config.yaml, self-authored skills, cron jobs, memory). Caches excluded (regenerable).
+HERMES_VOL=/var/lib/docker/volumes/root_hermes_state/_data
+if [ -d "$HERMES_VOL" ]; then
+    log "Syncing hermes_state volume (excluding caches)..."
+    rclone copy "$HERMES_VOL" "$DEST/hermes_state/" \
+        --exclude '.cache/**' --exclude '.npm/**' \
+        --exclude 'audio_cache/**' --exclude 'node_modules/**' \
+        2>&1 | logger -t "$LOG_TAG"
+    log "hermes_state sync complete"
+else
+    log "WARNING: hermes_state volume not found at $HERMES_VOL; skipping"
+fi
+
+# 6. Purge dated backup folders older than RETENTION_DAYS
 log "Cleaning up backups older than $RETENTION_DAYS days..."
 CUTOFF=$(date -d "-$RETENTION_DAYS days" +%Y-%m-%d)
 rclone lsf "$REMOTE:" --dirs-only 2>/dev/null | while read -r dir; do
