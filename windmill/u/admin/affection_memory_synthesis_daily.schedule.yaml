@@ -1,0 +1,13 @@
+args:
+  deepseek_key: $var:u/admin/deepseek_key
+  affection_db: $res:u/admin/affection_db
+  mode: "short"
+cron_version: v2
+enabled: true
+has_permissioned_as: false
+is_flow: false
+no_flow_overlap: false
+schedule: 0 0 2 * * *
+script_path: u/admin/affection_memory_synthesis
+timezone: Asia/Singapore
+ws_error_handler_muted: false
