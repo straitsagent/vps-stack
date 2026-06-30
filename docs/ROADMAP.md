@@ -294,6 +294,65 @@ A self-hosted, owner-only AI agent runtime (`openclaw` container, model `openai/
 
 ---
 
+## Part 7 — Agent Intelligence: Hermes + Affectionbot
+
+Two AI agents are running in the stack with complementary roles and evolving self-improvement loops. Full design reference: [`docs/design/2026-06-30_agent-architecture-affectionbot-hermes.md`](design/2026-06-30_agent-architecture-affectionbot-hermes.md).
+
+### Governance model (shared)
+
+Both agents converge on the same three-tier structure:
+
+| Tier | Who acts | Hermes example | Affectionbot example |
+|---|---|---|---|
+| **Autonomous** | Agent acts alone | Write a skill; update MEMORY.md | (none planned) |
+| **Cron-mediated** | Deterministic process; LLM reads output | Daily portfolio health check | Daily/weekly memory synthesis |
+| **Human-gated** | Owner reviews; Claude implements | Capability request → new DB grant | Reflection doc → new tool |
+
+The human gate is not a bottleneck — it is the architecture.
+
+### Hermes — research conscience
+
+**Container:** `hermes` · non-root `1000:1000` · `read_only` rootfs · `cap_drop: ALL` · networks `hermes_egress` + `hermes_db` (no `root_default`/`agent_net`) · `hermes_ro` 24-table SELECT allowlist, 15s timeout.
+
+**Self-improvement (live):** `background_review` fork runs after every conversation turn — autonomously writes new skills, updates `MEMORY.md`, and spawns cron jobs into `/workspace`. Three cron jobs self-authored: portfolio health check, World Cup briefing, dispatch monitor.
+
+**Capability request channel** *(formalising, not yet a plan):* Hermes writes structured requests to `/docs/hermes/requests/YYYY-MM-DD_<slug>.md`; owner reviews; Claude implements. Proven pattern — 2026-06-29 software install request (nodejs, pandoc, weasyprint). Hermes never self-expands its sandbox.
+
+**In-progress workstreams (see parent roadmap `docs/plans/2026-06-29_reflexive-alpha-system.md`):**
+
+| Workstream | Status |
+|---|---|
+| **WS-A** System visibility: Windmill health + container metrics → `/research/system/` | 🔄 Partial — host metrics collector live; Windmill feed pending |
+| **WS-B** Analysis takeover: Hermes interprets; StraitsAgent keeps dispatch/writes | 🔄 In progress — 4 automations de-pushed, YouTube daily-only |
+| **WS-C** Research `.md` quality: unified schema, recency metadata, cross-linking | 🔲 Not started — C0 schema design first |
+| **SSH sandbox backend** | 🔲 Approved plan (`2026-06-29_hermes-ssh-backend.md`); blocked on VPS provisioning (P1-P3) |
+| **Skill development S1–S5** | 🔄 Hermes executing autonomously |
+
+### Affectionbot — social presence
+
+**Container:** `affectionbot` · non-root `bot` user · FastAPI/uvicorn port 8002 · Telegram webhook via Caddy (`/webhook/affection*`) · `affection_user` owns separate `affection` Postgres DB (structurally unreachable by `hermes_ro`/`openclaw_ro`).
+
+**Status:** Live. Conversations stored in `affection_conversation`. No memory yet — each conversation starts from the same baseline.
+
+**Planned direction (both plans written 2026-06-30, pending execution):**
+
+| Step | Plan | Status |
+|---|---|---|
+| **Data separation** | `2026-06-30_affection-data-separation.md` | 📋 Draft — MEDIUM-HIGH risk live migration; 365 rows |
+| **Two-tier memory** | `2026-06-30_affection-auto-memory.md` | 📋 Draft — depends on data separation |
+| **Capability reflection cron** | (not yet planned) | 💡 Designed — weekly LLM reflection → `/docs/affection/requests/YYYY-MM-DD.md` |
+| **Tool expansion** | Incremental; driven by reflection cron output | 💡 Web search live; calendar/link-summary planned |
+
+### Security invariants (both agents)
+
+1. Neither agent modifies its own infrastructure — agents request, Claude implements.
+2. PII and secrets are unreachable by read-only roles (`hermes_ro`, `openclaw_ro`).
+3. Hermes never dispatches jobs — analysis-only; all Windmill API calls stay with StraitsAgent.
+4. Affectionbot's memory is cron-written, LLM-read — the LLM never writes its own memory.
+5. Capability requests are documents, not code — a request changes nothing until the owner approves and Claude implements.
+
+---
+
 ## Deleted / Parked
 
 ### Professional Intelligence — REMOVED
@@ -342,6 +401,7 @@ Revisit only after the portfolio advisor track is materially complete:
 | `docs/audit/260612_search_api_audit.md` | Search API audit — all available APIs, pricing, live tests, recommendations |
 | `docs/design/2026-06-13_portfolio-rationalization-framework.md` | Full design spec: 5-factor scoring model, 4 weighting scenarios, per-position scorecard |
 | `docs/design/2026-06-15_portfolio-candidate-eval-framework.md` | Full design spec v1.1: 3-gate candidate evaluation, ADD/WATCH/PASS verdict |
+| `docs/design/2026-06-30_agent-architecture-affectionbot-hermes.md` | Agent architecture comparison: Hermes vs Affectionbot — philosophy, memory, self-improvement governance, capability roadmaps, security invariants |
 
 ### Key Paths
 
