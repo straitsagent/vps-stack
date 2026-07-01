@@ -1,7 +1,7 @@
 ---
 Subject: Fix affection bot tool-call XML leak (DSML markup in user-visible Telegram messages)
 Date: 2026-07-01
-Status: executing
+Status: done
 Planner model: deepseek-v4-flash (opencode)
 Executor model: any
 Risk tier: LOW

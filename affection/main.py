@@ -546,5 +546,6 @@ async def handle_affection(request: Request):
 
     print(f"[affection] {chat_id} ({msg['display_name']}): {text[:80]}")
     reply = await chat_with_search(chat_id)
+    reply = _sanitize_content(reply)
     await send_telegram(chat_id, reply)
     return {"status": "ok"}

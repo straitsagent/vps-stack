@@ -5684,10 +5684,10 @@ def test_health_check_spec_check_macro_valid():
         "front_matter": {
             "tg_date": "22 Jun",
             "indicators": {
-                "yahoo": {"SP500": 5000, "NDX": 20000, "HSI": 24000, "CSI300": 3500,
-                          "VIX": 15, "UST10Y": 4.5, "DXY": 104, "EURUSD": 1.08,
-                          "USDJPY": 157, "USDSGD": 1.35, "USDHKD": 7.82,
-                          "Gold": 2350, "Brent": 82},
+                "market": {"SP500": 5000, "NDX": 20000, "HSI": 24000, "CSI300": 3500,
+                           "VIX": 15, "UST10Y": 4.5, "DXY": 104, "EURUSD": 1.08,
+                           "USDJPY": 157, "USDSGD": 1.35, "USDHKD": 7.82,
+                           "Gold": 2350, "Brent": 82},
                 "fred": {"FF": 5.33, "SOFR": 5.3, "T2Y": 4.9, "T10Y2Y": -0.4,
                          "T10Y3M": -1.2, "CPIAUCSL": 3.4, "PCEPI": 2.7,
                          "T5YIE": 2.4, "T10YIE": 2.3, "BAMLH0A0HYM2": 3.1,
@@ -6921,7 +6921,7 @@ def test_injection_orders_long_then_short():
     assert lt_idx < st_idx
 
 
-AFFECTION_SCRIPT = "/tmp/affection_main.py"
+AFFECTION_SCRIPT = AFFECTION_BOT  # reuse existing constant pointing to affection/main.py
 
 
 def _read_affection_source() -> str:
