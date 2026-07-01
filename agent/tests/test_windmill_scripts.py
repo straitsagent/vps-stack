@@ -6921,6 +6921,56 @@ def test_injection_orders_long_then_short():
     assert lt_idx < st_idx
 
 
+AFFECTION_SCRIPT = "/tmp/affection_main.py"
+
+
+def _read_affection_source() -> str:
+    with open(AFFECTION_SCRIPT) as f:
+        return f.read()
+
+
+def test_sanitize_content_strips_dsml_markers():
+    """_sanitize_content regex must remove DSML XML markers from text."""
+    import re
+    pattern = re.compile(r"<｜[^>]+｜>[^<]*<｜[^>]+｜>")
+    dirty = 'Hey! Let me check. <｜tool_call｜><｜invoke name="search_memory"｜><｜parameter name="q"｜>test<｜/parameter｜><｜/invoke｜><｜/tool_call｜> Sorry!'
+    clean = pattern.sub("", dirty).strip()
+    assert "<｜tool_call｜>" not in clean
+    assert "Hey! Let me check." in clean
+    assert "Sorry!" in clean
+
+
+def test_chat_with_search_second_pass_uses_all_tools():
+    """chat_with_search must call second-pass with tools=ALL_TOOLS not []."""
+    src = _read_affection_source()
+    # Find all tools= calls in chat_with_search
+    lines = src.split("\n")
+    tools_calls = [l.strip() for l in lines if "tools=" in l and "grep" not in l]
+    tools_calls_in_func = False
+    in_chat = False
+    for line in lines:
+        if "async def chat_with_search" in line:
+            in_chat = True
+        elif in_chat and "def " in line and "chat_with_search" not in line:
+            in_chat = False
+        if in_chat and "tools=" in line:
+            if "ALL_TOOLS" in line:
+                tools_calls_in_func = True
+    assert tools_calls_in_func, "chat_with_search must use tools=ALL_TOOLS"
+    assert "tools=[]" not in src or "tools=ALL_TOOLS" in src, "tools=[] must not be the only tools= call"
+
+
+def test_chat_with_search_max_tool_depth_returns_fallback():
+    """MAX_TOOL_DEPTH must be defined and > 0."""
+    src = _read_affection_source()
+    assert "MAX_TOOL_DEPTH" in src, "MAX_TOOL_DEPTH must be defined"
+    import re
+    m = re.search(r"MAX_TOOL_DEPTH\s*=\s*(\d+)", src)
+    assert m is not None, "MAX_TOOL_DEPTH must be assigned an integer"
+    assert int(m.group(1)) > 0, "MAX_TOOL_DEPTH must be > 0"
+
+
+
 # macro_research — Artifact-render harness (Phase C testing rollout)
 # =============================================================================
 

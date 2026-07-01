@@ -4,6 +4,7 @@ Receives Telegram webhook, responds when @mentioned, tool-calls web_search as ne
 """
 import json
 import os
+import re
 from collections import deque
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone, timedelta
@@ -26,6 +27,7 @@ TELEGRAM_URL   = f"https://api.telegram.org/bot{BOT_TOKEN}"
 MODEL          = "deepseek-chat"
 MAX_HISTORY    = 15
 MAX_RESP_TOKENS = 512
+MAX_TOOL_DEPTH = 3
 DB_URL         = os.environ.get("DB_URL", "")
 
 _db_conn = None
@@ -370,8 +372,17 @@ async def send_telegram(chat_id: str, text: str) -> bool:
             ok = False
     return ok
 
+# ── Content sanitization ─────────────────────────────────────────────────────────
+_DSML_RE = re.compile(r"<｜[^>]+｜>[^<]*<｜[^>]+｜>")
+
+
+def _sanitize_content(text: str) -> str:
+    """Remove DSML XML tool-call markers from outgoing text."""
+    return _DSML_RE.sub("", text).strip()
+
+
 # ── Core logic ────────────────────────────────────────────────────────────────
-async def chat_with_search(chat_id: str) -> str:
+async def chat_with_search(chat_id: str, depth: int = 0) -> str:
     messages = build_messages(chat_id)
 
     resp = await deepseek_chat(messages, tools=ALL_TOOLS)
@@ -416,15 +427,48 @@ async def chat_with_search(chat_id: str) -> str:
                 tool_content = format_memory_results(rows)
                 remember(chat_id, "tool", tool_content, tool_call_id=tc.get("id", ""))
 
+        if depth >= MAX_TOOL_DEPTH:
+            return "Sorry, I kept looking but couldn't find a clear answer — could you rephrase?"
+
         messages = build_messages(chat_id)
-        resp = await deepseek_chat(messages, tools=[])
+        resp = await deepseek_chat(messages, tools=ALL_TOOLS)
         if not resp:
             return "Sorry, I couldn't look that up — try again?"
 
         choice = resp.get("choices", [{}])[0]
         msg = choice.get("message", {})
 
+        if msg.get("tool_calls"):
+            tool_calls = msg["tool_calls"]
+            remember(chat_id, "assistant", None, tool_calls=tool_calls)
+            for tc in tool_calls:
+                fn = tc.get("function", {})
+                name = fn.get("name", "")
+                try:
+                    args = json.loads(fn.get("arguments", "{}"))
+                except json.JSONDecodeError:
+                    args = {}
+                if name == "web_search":
+                    query = args.get("query", "")
+                    if query:
+                        results = await perplexity_search(query)
+                        tc_content = format_search_results(results)
+                        remember(chat_id, "tool", tc_content, tool_call_id=tc.get("id", ""))
+                        for i, r in enumerate(results.get("results", [])[:10], 1):
+                            url = r.get("url", "")
+                            if url:
+                                search_urls.append((i, r.get("title", ""), url))
+                elif name == "search_memory":
+                    q = args.get("query", "")
+                    fd = args.get("from_date", "")
+                    td = args.get("to_date", "")
+                    rows = search_conversation(chat_id, q, fd, td)
+                    tc_content = format_memory_results(rows)
+                    remember(chat_id, "tool", tc_content, tool_call_id=tc.get("id", ""))
+            return await chat_with_search(chat_id, depth + 1)
+
     reply = msg.get("content", "")
+    reply = _sanitize_content(reply)
     if not reply or not reply.strip():
         return "..."
 
