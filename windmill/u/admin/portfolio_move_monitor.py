@@ -150,18 +150,18 @@ def _build_move_narrative(portfolio_move: float, total_impact: float,
                            pos_threshold: float, time_str: str,
                            trigger_desc: str, index_desc: str,
                            total_portfolio_value: float,
-                           breadth: dict, deepseek_key: str = "") -> str:
+                           breadth: dict, session: str = "", deepseek_key: str = "") -> str:
     if deepseek_key:
         pos_desc = "\n".join(
             f"  {p['ticker']} ({p.get('company','')}, {p.get('shares',0):.0f} shares): {p['intraday_pct']:+.2f}% "
-            f"($${abs(p.get('dollar_impact',0)):,.0f} impact, {p.get('currency','USD')} "
+            f"(${abs(p.get('dollar_impact',0)):,.0f} impact, {p.get('currency','USD')} "
             f"{p.get('previous_close',0):.2f} -> {p.get('current_price',0):.2f})\n"
             f"    News: " + ("; ".join(f"[{n['source']}] {n['title']}" for n in p.get('news',[])) if p.get('news') else "none found")
             for p in position_alerts
         )
         prompt = (
             f"You are a portfolio risk analyst. A portfolio move alert was triggered at {time_str} "
-            f"({INDEX_SYMBOLS.get('session','').keys() or '?'} session).\n\n"
+            f"({session or '?'} session).\n\n"
             f"What triggered this alert: {trigger_desc}\n"
             f"Portfolio value: ${total_portfolio_value:,.0f} | Dollar impact of this move: ${abs(total_impact):,.0f}\n"
             f"Market breadth: {breadth.get('up',0)} up / {breadth.get('down',0)} down / "
@@ -529,7 +529,7 @@ def main(
     narrative = _build_move_narrative(
         portfolio_move, total_impact, pct_threshold_pct,
         position_alerts, pos_threshold_pct, time_str,
-        trigger_desc, index_desc, total_value, breadth, deepseek_key,
+        trigger_desc, index_desc, total_value, breadth, session, deepseek_key,
     )
     _os.makedirs("/research/portfolio", exist_ok=True)
     md_path = f"/research/portfolio/move_{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"

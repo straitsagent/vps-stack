@@ -6715,7 +6715,9 @@ def test_affection_ping_group_id_is_negative():
 SYNTHESIS_SCRIPT = os.path.join(
     os.path.dirname(__file__), "../../windmill/u/admin/affection_memory_synthesis.py"
 )
-AFFECTION_BOT = "/tmp/affection_main.py"
+AFFECTION_BOT = os.path.join(
+    os.path.dirname(__file__), "../../affection/main.py"
+)
 
 
 def _load_synthesis_mod():
@@ -6903,7 +6905,7 @@ def test_injection_orders_long_then_short():
     assert lt_idx < st_idx
 
 
-AFFECTION_SCRIPT = "/tmp/affection_main.py"  # docker-cp'd host path
+AFFECTION_SCRIPT = AFFECTION_BOT  # reuse existing constant pointing to affection/main.py
 
 
 def _read_affection_source() -> str:
@@ -8174,11 +8176,15 @@ _PMMM_WORLD = {
 def _load_portfolio_move_monitor_module():
     import importlib.util, pathlib
     from unittest.mock import MagicMock
+    from datetime import timezone as _tz, timedelta as _td
     for _pkg in ("openai", "yfinance", "feedparser"):
         sys.modules.setdefault(_pkg, MagicMock())
-    for _pkg in ("pytz",):
-        if _pkg not in sys.modules:
-            sys.modules[_pkg] = type(sys)(_pkg)
+    if "pytz" not in sys.modules:
+        _pytz_mod = type(sys)("pytz")
+        _pytz_mod.timezone = lambda name: _tz(_td(hours=8))
+        sys.modules["pytz"] = _pytz_mod
+    elif not callable(getattr(sys.modules["pytz"], "timezone", None)):
+        sys.modules["pytz"].timezone = lambda name: _tz(_td(hours=8))
     path = (pathlib.Path(__file__).parent.parent.parent
             / "windmill" / "u" / "admin" / "portfolio_move_monitor.py")
     spec = importlib.util.spec_from_file_location("portfolio_move_monitor", path)
