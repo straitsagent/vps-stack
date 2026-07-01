@@ -64,7 +64,7 @@ Everything below is live and running unattended unless noted.
 | Daily Price Fetcher | 5:45 AM + 5:45 PM SGT, 7 days/week | yfinance EOD prices + USDHKD FX rate → `price_history`, `fx_rates` |
 | Portfolio Email | 6:00 AM + 6:00 PM SGT | ADR consolidation, top movers, Google News per mover. Email only. Telegram retired 2026-06-29. |
 | Weekly Portfolio Review | Saturday 8:00 AM SGT | Week P&L, Finnhub news, Deepseek commentary. Email + Telegram. |
-| Move Monitor | Hourly, Mon–Fri (HK + US sessions) | Alert on portfolio ±1.5% or position ±5%. Telegram. |
+| Move Monitor | Hourly, Mon–Fri (HK + US sessions) | Alert on portfolio ±1.5% or position ±5%. Richer .md output with per-ticker news (4 sources), index context, price/share data. Telegram retired 2026-07-01 — Hermes consumes `.md` hourly. |
 | Fundamentals Fetcher | Sunday 6:00 PM SGT | Finnhub + yfinance → `fundamental_data` (P/E, targets, margins, ROE, ROIC) |
 | Portfolio Rationalization | Weekly Saturday 6AM SGT (+ on-demand via Telegram) | ✅ Live. 5-factor scoring × 4 scenarios, Grok-4.3 + Deepseek fallback. Writes `portfolio_scores`. |
 | Portfolio Candidate Eval | On-demand (Telegram: `evaluate TICKER`) | ✅ Live. 3-gate ADD/WATCH/PASS. Auto-fetches quant data + research. Writes `portfolio_candidate_evals`. |
@@ -473,7 +473,7 @@ Every Windmill notification uses a **canonical markdown → dedicated formatter*
 | `u/admin/portfolio_email_telegram` | `u/admin/portfolio_email` | ⚠️ Retained on disk — dispatch removed 2026-06-29 (Hermes will consume `.md`) |
 | `u/admin/portfolio_review_telegram` | `u/admin/portfolio_review` | ✅ Live |
 | `u/admin/portfolio_rationalization_telegram` | `u/admin/portfolio_rationalization` | ✅ Live |
-| `u/admin/portfolio_move_monitor_telegram` | `u/admin/portfolio_move_monitor` | ✅ Live |
+| `u/admin/portfolio_move_monitor_telegram` | `u/admin/portfolio_move_monitor` | ⚠️ Retained on disk — dispatch removed 2026-07-01 (Hermes consumes `.md` hourly) |
 | `u/admin/portfolio_analyst_alert_telegram` | `u/admin/portfolio_analyst_alert` | ✅ Live |
 | `u/admin/health_check_telegram` | `u/admin/health_check` | ⚠️ Retained on disk — dispatch removed 2026-06-30 (system monitor; Telegram retired) |
 | `u/admin/youtube_monitor_telegram` | `u/admin/youtube_monitor` | ⚠️ Retained on disk — dispatch removed 2026-06-29 (Hermes will consume `.md`) |
