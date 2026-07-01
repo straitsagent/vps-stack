@@ -98,3 +98,38 @@ Before declaring any task done, answer "no" to all of these:
 3. Is any asserted value pre-sized to the threshold it's checking? (tautology)
 4. Did I change a locked assertion to make it pass? (oracle tampering)
 5. Did I mark anything done on `success: True` instead of a read artifact? (claim-not-evidence)
+
+---
+
+## Lessons from caught regressions
+
+Every item below is a real plan that an executor reported as "all PASS," which then **failed when a
+reviewer independently re-ran the exact same gates.** These are not hypothetical — check for all five
+before writing `PASS` in the log.
+
+1. **Stale-evidence.** Did you paste LOCKED ORACLE / G4 output from a run that happened *before* your
+   last code edit? Re-run both, in a fresh process, as the last step before writing the implementation
+   log — not from an earlier pass, a warm REPL, or a partial run. A stubbed module (`pytz`) only
+   "passed" because an unrelated, earlier-running test had already imported the real package into
+   `sys.modules` — the same G4 script failed deterministically the moment it was run standalone.
+2. **Dead-branch.** If the plan wires up a previously-unreachable code path (a new API key passed
+   through so an LLM/network branch finally executes, a new `if` arm), does the test suite include a
+   test that actually *executes* that branch with a mocked success case — not just a test that the
+   wiring exists? "The key is now passed in the schedule" is not the same as "the code that runs when
+   the key is present doesn't crash." A move-monitor plan wired `deepseek_key` through correctly, but
+   every test used the empty-key fallback path — hiding an `AttributeError` in the LLM-prompt branch
+   that would have crashed on the very next real alert.
+3. **Scope-creep.** Diff your full changeset against the pre-change file. Does every hunk map to a row
+   in the plan's Files-Changed table? Large shared test files (500+ tests in one file) make it easy to
+   silently revert someone else's unrelated, already-verified fix while making your own edit nearby —
+   an affection-bot test constant was reverted to a broken hardcoded path (with a new comment
+   justifying the wrong value) while an unrelated move-monitor test was being added, undoing a
+   previous reviewer's fix.
+4. **Pipe-masking.** Does any verification command pipe test output through `tail`/`head`/`grep` for
+   readability? In a shell pipeline, the exit code reflects the *last* command in the pipe, not your
+   test runner — `pytest ... | tail -3` can report exit 0 even when pytest failed. Capture the test
+   command's own exit code (`${PIPESTATUS[0]}` in bash) before piping, or don't pipe at all.
+5. **Prompt-drift.** If the plan contains a Hard-Rule-10 "approved, copy verbatim" LLM prompt block,
+   diff your shipped f-string against it character-for-character (outside the named interpolation
+   variables). A stray typo (`$$` instead of `$`) changes what the model actually sees and is a
+   Hard Rule 10 violation, not a cosmetic slip.

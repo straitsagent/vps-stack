@@ -36,6 +36,25 @@ Plans live in `docs/plans/YYYY-MM-DD_<slug>.md`, git-tracked, copy `docs/plans/_
 - **G5 STOP on deviation** — if any output differs from the plan's "Expected", halt and report. Never
   improvise, retry blindly, edit the oracle, or mark an item done to keep moving.
 
+### Before writing "PASS" in the log — 5 real failures, now checklist items
+
+`docs/EXECUTOR_CONTRACT.md` → "Lessons from caught regressions" has the full detail. Five real plans
+were reported "all PASS" by the executor and then **failed when a reviewer independently re-ran the
+same gates.** Check for all five, every time:
+
+1. **Stale-evidence** — re-run the LOCKED ORACLE and G4 fresh, in a new process, as the last step
+   before writing the log. A pasted result from an earlier or partial run is not evidence.
+2. **Dead-branch** — if this plan makes a previously-unreachable code path reachable (e.g. wiring a
+   key so an LLM branch finally runs), the test suite must *execute* that branch with a mocked success
+   case, not just assert the wiring exists.
+3. **Scope-creep** — diff your full changeset against the pre-change file; every hunk must map to the
+   plan's Files-Changed table. Shared test files make it easy to silently revert someone else's
+   unrelated, already-verified fix.
+4. **Pipe-masking** — `pytest ... | tail -3` reports the exit code of `tail`, not `pytest`. Capture the
+   test command's own exit code (`${PIPESTATUS[0]}`) or don't pipe verification commands at all.
+5. **Prompt-drift** — a Hard-Rule-10 "approved, copy verbatim" prompt block must match character-for-
+   character (outside named interpolation variables). A stray typo is a Hard Rule 10 violation.
+
 ## Hard Rules every executor must internalize
 
 These are the highest-cost mistakes from prior sessions — see `CLAUDE.md` for the full list.
