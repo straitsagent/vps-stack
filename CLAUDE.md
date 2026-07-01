@@ -200,6 +200,7 @@ Claude Code is configured with hooks and permissions that enforce the Hard Rules
 - Enforces the GitOps workflow automatically — saving a script file IS the deployment
 
 **Custom skills** (`~/.claude/commands/`)
+- `/review-hermes [YYYY-MM-DD | --days N] [--logs]` — synthesise Hermes' daily outputs into a decision-ready briefing: MAJOR findings (with day-count for persistent ones), pending capability requests, production log gaps, cron health view, and a "what needs a decision" summary. Cross-references recent commits to flag already-resolved findings. Add `--logs` to include the last 100 lines of the Hermes docker log.
 - `/verify-implementations` — post-implementation verification sweep: independently re-run each plan's LOCKED ORACLE + verify script (never trust the log), check the artifact (G3), fix loose ends, update docs, archive, commit + push. Honest waiver (override_log) over a fake pass; STOP + report on failure. Call after opencode/another model implements an approved plan.
 
 **Hookify block rules** (`~/.claude/hookify.*.local.md`)
