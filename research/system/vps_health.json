@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-06-30T17:30:02.722180+00:00",
+  "collected_at": "2026-07-01T01:00:05.900922+00:00",
   "disk": [
     {
       "mount": "/run",
@@ -163,7 +163,7 @@
       "pct_used": "26"
     },
     {
-      "mount": "/var/lib/docker/rootfs/overlayfs/59eb066b08c15686b7ba2c27ca2d30b87f2aab1f6792bcae9611fb1ebc929809",
+      "mount": "/var/lib/docker/rootfs/overlayfs/f958f235e11f1cadef59620154a774ea00cf2f9e011defe618a902089e63025c",
       "total_gb": "193",
       "used_gb": "51",
       "available_gb": "143",
@@ -172,15 +172,15 @@
   ],
   "memory": {
     "total_mib": 24031,
-    "used_mib": 5991,
-    "available_mib": 18040,
-    "pct_used": 24.9,
-    "pct_available": 75.1
+    "used_mib": 5227,
+    "available_mib": 18804,
+    "pct_used": 21.8,
+    "pct_available": 78.2
   },
   "load": {
-    "load_1m": 0.74,
-    "load_5m": 0.94,
-    "load_15m": 1.48,
+    "load_1m": 0.89,
+    "load_5m": 1.11,
+    "load_15m": 0.97,
     "cores": 8
   },
   "docker": {
@@ -189,8 +189,8 @@
     "restarting": 0,
     "total": 16,
     "containers": {
-      "root-affectionbot-1": "Up 31 minutes",
-      "hermes": "Up 10 hours",
+      "root-affectionbot-1": "Up 7 hours",
+      "hermes": "Up 18 hours",
       "root-portfolio_postgres-1": "Up 2 days (healthy)",
       "openclaw": "Up 2 days",
       "root-straitsagent-1": "Up 3 days",
@@ -201,22 +201,22 @@
       "root-caddy-1": "Up 2 weeks",
       "root-windmill_worker_native-1": "Up 10 days",
       "root-windmill_server-1": "Up 13 days",
-      "root-windmill_extra-1": "Up 4 weeks",
-      "root-db-1": "Up 4 weeks (healthy)",
-      "root-dind-1": "Up 4 weeks (healthy)",
+      "root-windmill_extra-1": "Up 5 weeks",
+      "root-db-1": "Up 5 weeks (healthy)",
+      "root-dind-1": "Up 5 weeks (healthy)",
       "n8n-n8n-1": "Up 7 weeks"
     }
   },
   "backup": {
     "service": {
       "Result": "success",
-      "ExecMainExitTimestamp": "Mon 2026-06-29 22:02:55 CEST",
+      "ExecMainExitTimestamp": "Wed 2026-07-01 00:01:57 CEST",
       "ExecMainStatus": "0"
     },
     "timer_active": true
   },
   "uptime": {
-    "uptime_seconds": 4804610.45,
-    "uptime_formatted": "55d 14h 36m"
+    "uptime_seconds": 4831613.48,
+    "uptime_formatted": "55d 22h 6m"
   }
 }

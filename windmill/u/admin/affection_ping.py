@@ -216,8 +216,8 @@ def main(
     """Hourly affection sticker ping. Returns a dict describing the send."""
     now = datetime.now(SGT)
     hour = now.hour
-    if hour < 8 or hour > 22:
-        log.info(f"[Affection] Skipping — hour {hour} outside 8AM–10PM SGT window")
+    if hour < 9 or hour > 23:
+        log.info(f"[Affection] Skipping — hour {hour} outside 9AM–11PM SGT window")
         return {"skipped": True, "hour": hour, "sent_at": now.isoformat()}
 
     packs = [p.strip() for p in affection_sticker_packs.split(",") if p.strip()]
