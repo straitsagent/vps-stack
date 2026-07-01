@@ -1,9 +1,9 @@
 ---
 Subject: Portfolio Move Monitor — prices/shares/news/index context in .md + retire StraitsAgent Telegram ping
 Date: 2026-07-01
-Status: approved
+Status: executing
 Planner model: claude-sonnet-4-6
-Executor model: opencode
+Executor model: opencode (deepseek-v4-flash)
 Risk tier: HIGH (planner-locked oracle — different executor model, live market-hours production script, 4 new external data sources)
 Hard Rules in force: [1, 4, 6, 7, 10, 12, 15, 16, 17, 18, 19, 20, 22]
 Complies with: docs/EXECUTOR_CONTRACT.md
