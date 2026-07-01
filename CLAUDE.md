@@ -238,6 +238,7 @@ Broad `wmill sync *` pre-approval removed — replaced with specific `wmill sync
 20. **Apply Testing Critic checklist before committing artifact tests.** 5 failure modes: empty-artifact, template-string, tautology, ASD-derived, completeness. See `docs/TESTING.md`.
 21. **Verify the response, not the request.** Assert on API response body, not request payload (Telegram silently drops `sendSticker` caption). Applies to all sends.
 22. **Cross-model handoff contract.** Any plan intended for execution must satisfy `docs/EXECUTOR_CONTRACT.md`: a locked oracle (G1), RED-before-GREEN proof (G2), artifact evidence not claims (G3), an asserting verify script (G4), and STOP-on-deviation (G5). Completion is gated by review, not self-report. Never edit a `# LOCKED ORACLE` block.
+23. **Always write the implementation log.** After verification passes and before flipping a plan's `Status:` to `done`, write `docs/logs/YYYY-MM-DD_<slug>.md` documenting what was built, key decisions, deviations, verification output, and remaining items (see existing logs for the required format). A missing or placeholder log is a review-gate violation even if the code is correct.
 
 ---
 
