@@ -64,6 +64,7 @@ cp /etc/systemd/system/drive-backup.timer "$WORK_DIR/config/drive-backup.timer"
 cp /root/.claude/settings.json "$WORK_DIR/config/claude-settings.json"
 rclone copy "$WORK_DIR/config/" "$DEST/config/" 2>&1 | logger -t "$LOG_TAG"
 rclone copy /root/.claude/commands/ "$DEST/config/claude-commands/" 2>&1 | logger -t "$LOG_TAG"
+rclone copy /root/.claude/projects/-root/memory/ "$DEST/config/claude-memory/" 2>&1 | logger -t "$LOG_TAG"
 log "Config files uploaded"
 
 # 5. Hermes agent state — the hermes_state Docker volume (authoritative /workspace/.env,
