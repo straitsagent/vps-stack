@@ -1,9 +1,9 @@
 args:
+  deepseek_key: $var:u/admin/deepseek_key
+  finnhub_key: $var:u/admin/finnhub_key
   gmail_smtp: $res:u/admin/gmail_smtp
   portfolio_db: $res:u/admin/portfolio_db
   recipient_email: $var:u/admin/recipient_email
-  telegram_bot_token: $var:u/admin/telegram_bot_token
-  telegram_owner_id: $var:u/admin/telegram_owner_id
 cron_version: v2
 enabled: true
 has_permissioned_as: false

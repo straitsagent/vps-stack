@@ -2,14 +2,18 @@
 # psycopg2-binary>=2.9
 # pytz>=2024.1
 # yfinance>=0.2.40
+# feedparser>=6.0
 
+import feedparser
+import json
 import smtplib
 import time
+import urllib.parse
 import psycopg2
 import pytz
 import requests
 import yfinance as yf
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from typing import Optional
@@ -25,28 +29,6 @@ ARTIFACT_MARKERS: dict[str, list[str]] = {
     "Move Monitor": ["triggered", "threshold"],
 }
 
-
-def _dispatch_formatter(formatter_name: str, md_path: str,
-                        telegram_bot_token: str, telegram_owner_id: str,
-                        portfolio_db: dict, wm_token: str = "") -> str:
-    import os as _os
-    token = wm_token or _os.environ.get("WM_TOKEN", "")
-    if not token:
-        log.warning(f"[Dispatch] No WM_TOKEN — cannot dispatch {formatter_name}")
-        return ""
-    url = f"{WM_BASE}/api/w/{WM_WORKSPACE}/jobs/run/p/u/admin/{formatter_name}"
-    args = {"md_path": md_path, "telegram_bot_token": telegram_bot_token,
-            "telegram_owner_id": telegram_owner_id, "portfolio_db": portfolio_db}
-    try:
-        resp = requests.post(url, headers={"Authorization": f"Bearer {token}",
-                                           "Content-Type": "application/json"},
-                             json=args, timeout=10)
-        job_id = resp.text.strip().strip('"')
-        log.info(f"[Dispatch] {formatter_name} dispatched job_id={job_id}")
-        return job_id
-    except Exception as e:
-        log.warning(f"[Dispatch] Failed to dispatch {formatter_name}: {e}")
-        return ""
 
 
 def _send_email(gmail_smtp: dict, recipient_email: str, subject: str, html: str) -> None:
@@ -69,24 +51,132 @@ def _write_canonical_md(content: str, path: str) -> None:
         f.write(content)
 
 
+
+# ── News-fetching helpers (each independently try/excepted) ──────────────────
+
+def _fetch_finnhub_news(ticker: str, finnhub_key: str, max_items: int = 5) -> list[dict]:
+    try:
+        r = requests.get(
+            "https://finnhub.io/api/v1/company-news",
+            params={"symbol": ticker, "from": (datetime.now(timezone.utc) - timedelta(days=7)).strftime("%Y-%m-%d"),
+                    "to": datetime.now(timezone.utc).strftime("%Y-%m-%d")},
+            headers={"X-Finnhub-Token": finnhub_key},
+            timeout=10,
+        )
+        r.raise_for_status()
+        items = r.json()[:max_items]
+        return [{"source": "finnhub", "title": i.get("headline", ""), "url": i.get("url", ""),
+                 "date": i.get("datetime", "")} for i in items if i.get("headline")]
+    except Exception as e:
+        log.warning(f"[News] Finnhub failed for {ticker}: {e}")
+        return []
+
+
+def _fetch_google_news_for_ticker(query: str, max_items: int = 5) -> list[dict]:
+    try:
+        url = f"https://news.google.com/rss/search?q={urllib.parse.quote(query)}&hl=en-US&gl=US&ceid=US:en"
+        parsed = feedparser.parse(url)
+        items = []
+        for entry in parsed.entries[:max_items]:
+            items.append({"source": "google_news", "title": entry.get("title", ""),
+                          "url": entry.get("link", ""), "date": entry.get("published", "")})
+        return items
+    except Exception as e:
+        log.warning(f"[News] Google News RSS failed for {query}: {e}")
+        return []
+
+
+def _fetch_seeking_alpha_news(ticker: str, max_items: int = 5) -> list[dict]:
+    try:
+        url = f"https://seekingalpha.com/api/sa/combined/{ticker}.xml"
+        parsed = feedparser.parse(url)
+        items = []
+        for entry in parsed.entries[:max_items]:
+            items.append({"source": "seeking_alpha", "title": entry.get("title", ""),
+                          "url": entry.get("link", ""), "date": entry.get("published", "")})
+        return items
+    except Exception as e:
+        log.warning(f"[News] Seeking Alpha failed for {ticker}: {e}")
+        return []
+
+
+def _fetch_yfinance_news(ticker: str, max_items: int = 5) -> list[dict]:
+    try:
+        tk = yf.Ticker(ticker)
+        news = tk.news[:max_items] if tk.news else []
+        return [{"source": "yfinance", "title": i.get("title", ""),
+                 "url": i.get("link", ""), "date": i.get("providerPublishTime", "")} for i in news if i.get("title")]
+    except Exception as e:
+        log.warning(f"[News] yfinance failed for {ticker}: {e}")
+        return []
+
+
+def _fetch_ticker_news(ticker: str, company: str, is_us: bool, finnhub_key: str) -> list[dict]:
+    all_items = []
+    if is_us:
+        all_items.extend(_fetch_finnhub_news(ticker, finnhub_key))
+    all_items.extend(_fetch_seeking_alpha_news(ticker))
+    all_items.extend(_fetch_yfinance_news(ticker))
+    google_query = f"{company} {ticker}" if company else ticker
+    all_items.extend(_fetch_google_news_for_ticker(google_query))
+    return all_items[:5]
+
+
+INDEX_SYMBOLS = {
+    "HK":  {"HSI": "EWH", "CSI300": "FXI"},
+    "US":  {"SP500": "SPY", "NDX": "QQQ"},
+}
+
+
+def _fetch_index_moves(session: str) -> dict:
+    try:
+        result = {}
+        for name, sym in INDEX_SYMBOLS.get(session, {}).items():
+            fi = yf.Ticker(sym).fast_info
+            live = fi.last_price
+            prev = fi.previous_close
+            if live and prev and prev != 0:
+                result[name] = {"symbol": sym, "pct": round((live - prev) / prev * 100, 2)}
+            else:
+                result[name] = {"symbol": sym, "pct": None}
+        return result
+    except Exception as e:
+        log.warning(f"[Index] Failed to fetch {session} index moves: {e}")
+        return {}
+
+
 def _build_move_narrative(portfolio_move: float, total_impact: float,
                            pct_threshold: float, position_alerts: list,
                            pos_threshold: float, time_str: str,
-                           deepseek_key: str = "") -> str:
-    """Generate ≥500-word narrative for the move alert. LLM if key provided, else programmatic."""
+                           trigger_desc: str, index_desc: str,
+                           total_portfolio_value: float,
+                           breadth: dict, deepseek_key: str = "") -> str:
     if deepseek_key:
         pos_desc = "\n".join(
-            f"  {p['ticker']}: {p['intraday_pct']:+.2f}% (${abs(p.get('dollar_impact',0)):,.0f} impact)"
-            for p in position_alerts[:5]
+            f"  {p['ticker']} ({p.get('company','')}, {p.get('shares',0):.0f} shares): {p['intraday_pct']:+.2f}% "
+            f"($${abs(p.get('dollar_impact',0)):,.0f} impact, {p.get('currency','USD')} "
+            f"{p.get('previous_close',0):.2f} -> {p.get('current_price',0):.2f})\n"
+            f"    News: " + ("; ".join(f"[{n['source']}] {n['title']}" for n in p.get('news',[])) if p.get('news') else "none found")
+            for p in position_alerts
         )
         prompt = (
-            f"You are a portfolio risk analyst. A portfolio move alert was triggered at {time_str}.\n"
-            f"Portfolio move: {portfolio_move:+.2f}% (threshold ±{pct_threshold:.1f}%)\n"
-            f"Dollar impact: ${abs(total_impact):,.0f}\n"
-            f"Top position moves:\n{pos_desc}\n\n"
-            f"Write a detailed ≥500-word analytical report explaining likely causes of this move, "
+            f"You are a portfolio risk analyst. A portfolio move alert was triggered at {time_str} "
+            f"({INDEX_SYMBOLS.get('session','').keys() or '?'} session).\n\n"
+            f"What triggered this alert: {trigger_desc}\n"
+            f"Portfolio value: ${total_portfolio_value:,.0f} | Dollar impact of this move: ${abs(total_impact):,.0f}\n"
+            f"Market breadth: {breadth.get('up',0)} up / {breadth.get('down',0)} down / "
+            f"{breadth.get('flat',0)} flat (of {breadth.get('total',0)} positions)\n"
+            f"Index context: {index_desc}\n\n"
+            f"All flagged positions ({len(position_alerts)} total):\n{pos_desc}\n\n"
+            f"Write a detailed >=500-word analytical report explaining likely causes of this move, "
             f"the risk implications, what to watch next, and any recommended monitoring actions. "
-            f"Continuous prose, no bullet points or headers. Minimum 500 words."
+            f"Use the index context to state plainly whether this looks like a market-wide (beta-driven) "
+            f"move or a stock-specific move. For each flagged position, use the provided news headlines "
+            f"(if any) to ground your explanation of the move in an actual reported catalyst — cite the "
+            f"headline briefly. If no news is provided for a position, say so explicitly and describe it "
+            f"as an unexplained/technical move rather than inventing a cause. State plainly and accurately "
+            f"which threshold(s) were actually breached — do not claim the portfolio-level threshold was "
+            f"exceeded unless it genuinely was. Continuous prose, no bullet points or headers. Minimum 500 words."
         )
         try:
             r = requests.post(
@@ -94,7 +184,7 @@ def _build_move_narrative(portfolio_move: float, total_impact: float,
                 headers={"Authorization": f"Bearer {deepseek_key}"},
                 json={"model": "deepseek-chat",
                       "messages": [{"role": "user", "content": prompt}],
-                      "temperature": 0.4, "max_tokens": 900},
+                      "temperature": 0.4, "max_tokens": 1000},
                 timeout=30,
             )
             r.raise_for_status()
@@ -107,34 +197,30 @@ def _build_move_narrative(portfolio_move: float, total_impact: float,
     abs_impact = abs(total_impact)
     paras = []
     paras.append(
-        f"A portfolio move alert was triggered at {time_str}. The portfolio recorded an "
-        f"intraday {direction} move of {abs_pct:.2f}%, exceeding the configured threshold of "
-        f"±{pct_threshold:.1f}%. The total dollar impact of this move was approximately "
-        f"${abs_impact:,.0f}. This alert is triggered automatically when the aggregate "
-        f"intraday portfolio move, measured in USD equivalent terms, crosses the threshold in "
-        f"either direction. Single-position moves of ±{pos_threshold:.1f}% or more on individual "
-        f"holdings are also flagged as supplementary position alerts."
+        f"A portfolio move alert was triggered at {time_str}. "
+        f"Trigger: {trigger_desc}. "
+        f"The portfolio recorded an intraday {direction} move of {abs_pct:.2f}% "
+        f"({'' if not portfolio_move or abs(portfolio_move) < pct_threshold else 'exceeding the configured threshold of ' + f'±{pct_threshold:.1f}%'}). "
+        f"Total dollar impact: ${abs_impact:,.0f}. "
+        f"Market breadth: {breadth.get('up',0)} up / {breadth.get('down',0)} down / {breadth.get('flat',0)} flat positions."
     )
     if position_alerts:
-        tickers = ", ".join(p["ticker"] for p in position_alerts[:5])
+        tickers = ", ".join(p["ticker"] for p in position_alerts)
         paras.append(
-            f"The following positions contributed to or amplified the portfolio move: {tickers}. "
-            f"Large intraday moves in individual positions can be driven by earnings announcements, "
-            f"analyst rating changes, macro data releases, or sector-wide risk-on/risk-off "
-            f"sentiment shifts. The move monitor captures these events in real time during market "
-            f"hours to ensure timely awareness of significant portfolio risk events."
+            f"Flagged positions ({len(position_alerts)} total): {tickers}."
         )
-        for p in position_alerts[:5]:
+        for p in position_alerts:
             t = p["ticker"]
             pct = p.get("intraday_pct", 0)
             imp = p.get("dollar_impact", 0)
             sign = "gained" if pct >= 0 else "declined"
+            price_info = f"Price: {p.get('previous_close',0):.2f} -> {p.get('current_price',0):.2f}"
+            news_bit = ""
+            if p.get("news"):
+                news_bit = " Recent news: " + "; ".join(n.get("title","") for n in p["news"][:2])
             paras.append(
-                f"{t}: The position {sign} {abs(pct):.2f}% intraday, representing a dollar impact "
-                f"of approximately ${abs(imp):,.0f} on the portfolio. This move exceeds the per-position "
-                f"alert threshold of ±{pos_threshold:.1f}% and warrants monitoring for follow-through "
-                f"in subsequent sessions. If this move is driven by company-specific news, consider "
-                f"whether the event changes the fundamental thesis for the position."
+                f"{t}: {sign} {abs(pct):.2f}% (${abs(imp):,.0f}). "
+                f"{price_info}.{news_bit}"
             )
     paras.append(
         f"Recommended monitoring actions: review the news flow for each flagged ticker to "
@@ -142,11 +228,12 @@ def _build_move_narrative(portfolio_move: float, total_impact: float,
         f"Check whether any analyst rating changes, earnings releases, or macro data prints "
         f"occurred around the time of the alert. If the move is sustained across multiple "
         f"sessions without a clear fundamental catalyst, flag for review in the next weekly "
-        f"portfolio rationalization cycle. The portfolio move monitor runs hourly during "
-        f"market hours and will issue a further alert if the move extends materially beyond "
-        f"the current reading."
+        f"portfolio rationalization cycle."
     )
     return "\n\n".join(paras)
+
+
+
 
 
 PORTFOLIO_ALERT_THRESHOLD = 0.015   # ±1.5%
@@ -160,9 +247,8 @@ def main(
     portfolio_db: dict,
     gmail_smtp: dict = {},
     recipient_email: str = "",
-    telegram_bot_token: str = "",
-    telegram_owner_id: str = "",
     deepseek_key: str = "",
+    finnhub_key: str = "",
     wm_token: str = "",
 ):
     sgt = pytz.timezone("Asia/Singapore")
@@ -377,46 +463,83 @@ def main(
 
 </body></html>"""
 
-    # ── 6. Send ────────────────────────────────────────────────────────────
+    # ── 6. Send email ──────────────────────────────────────────────────────
     if gmail_smtp:
         subject = f"Portfolio Alert — {move_str} — {time_str}"
         _send_email(gmail_smtp, recipient_email, subject, html)
 
-    if telegram_bot_token and telegram_owner_id:
-        import os as _os, json as _json
-        pct_threshold = PORTFOLIO_ALERT_THRESHOLD * 100
-        pos_threshold = POSITION_ALERT_THRESHOLD * 100
-        front_matter = {
-            "time_str":        time_str,
-            "portfolio_move":  round(portfolio_move, 4),
-            "total_impact":    round(total_impact, 2),
-            "pct_threshold":   pct_threshold,
-            "position_alerts": [
-                {"ticker": p["ticker"],
-                 "intraday_pct": round(p.get("intraday_pct", 0), 4),
-                 "dollar_impact": round(p.get("dollar_impact", 0), 2)}
-                for p in position_alerts
-            ],
-            "pos_threshold":   pos_threshold,
-        }
-        narrative = _build_move_narrative(
-            portfolio_move, total_impact, pct_threshold,
-            position_alerts, pos_threshold, time_str, deepseek_key,
+    # ── 7. Build enriched .md (always — Hermes consumes this) ──────────────
+    import os as _os, json as _json
+    pct_threshold_pct = PORTFOLIO_ALERT_THRESHOLD * 100
+    pos_threshold_pct = POSITION_ALERT_THRESHOLD * 100
+
+    session = "HK" if 9 <= now_sgt.hour <= 16 else "US"
+    breadth_up   = sum(1 for p in positions if p["intraday_pct"] > 0.01)
+    breadth_down = sum(1 for p in positions if p["intraday_pct"] < -0.01)
+    breadth = {"up": breadth_up, "down": breadth_down,
+               "flat": len(positions) - breadth_up - breadth_down, "total": len(positions)}
+    index_moves = _fetch_index_moves(session)
+
+    portfolio_triggered = portfolio_alert
+    position_triggered = len(position_alerts) > 0
+    trigger_desc = (
+        f"both the portfolio-level threshold (\u00b1{pct_threshold_pct:.1f}%) and "
+        f"{len(position_alerts)} position-level threshold(s) (\u00b1{pos_threshold_pct:.1f}%)"
+        if portfolio_triggered and position_triggered
+        else f"the portfolio-level threshold (\u00b1{pct_threshold_pct:.1f}%)"
+        if portfolio_triggered
+        else f"{len(position_alerts)} position-level threshold(s) (\u00b1{pos_threshold_pct:.1f}%) only \u2014 "
+             f"the portfolio-level move of {portfolio_move:+.2f}% did not itself cross "
+             f"\u00b1{pct_threshold_pct:.1f}%"
+    )
+    index_desc = ", ".join(f"{k} ({v['symbol']}) {v['pct']:+.2f}%" for k, v in index_moves.items()) or "unavailable"
+
+    # Enrich position_alerts with previous_close, current_price, shares, news
+    for p in position_alerts:
+        p["previous_close"] = p.get("baseline_native")
+        p["current_price"]  = p.get("live_native")
+        p["shares"]          = p["shares"]
+        p["news"] = _fetch_ticker_news(
+            p["ticker"], p.get("company", ""), not p["ticker"].endswith(".HK"), finnhub_key
         )
-        _os.makedirs("/research/portfolio", exist_ok=True)
-        md_path = f"/research/portfolio/move_{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"
-        md_content = (
-            f"```json\n{_json.dumps(front_matter, indent=2)}\n```\n\n"
-            f"{narrative}\n\n"
-            "<!-- DETAIL -->\n"
-        )
-        _write_canonical_md(md_content, md_path)
-        log.info(f"[md] Written {md_path}")
-        _dispatch_formatter(
-            "portfolio_move_monitor_telegram", md_path,
-            telegram_bot_token, telegram_owner_id,
-            portfolio_db, wm_token,
-        )
+
+    front_matter = {
+        "time_str":        time_str,
+        "portfolio_move":  round(portfolio_move, 4),
+        "total_impact":    round(total_impact, 2),
+        "pct_threshold":   pct_threshold_pct,
+        "pos_threshold":   pos_threshold_pct,
+        "session":         session,
+        "total_portfolio_value_usd": round(total_value, 2),
+        "portfolio_triggered": portfolio_triggered,
+        "position_triggered": position_triggered,
+        "breadth":         breadth,
+        "index_moves":     index_moves,
+        "position_alerts": [
+            {"ticker": p["ticker"], "company": p.get("company", ""),
+             "shares": p["shares"], "intraday_pct": round(p.get("intraday_pct", 0), 4),
+             "dollar_impact": round(p.get("dollar_impact", 0), 2),
+             "previous_close": p.get("previous_close"),
+             "current_price": p.get("current_price"),
+             "currency": p.get("currency", "USD"),
+             "news": p.get("news", [])}
+            for p in position_alerts
+        ],
+    }
+    narrative = _build_move_narrative(
+        portfolio_move, total_impact, pct_threshold_pct,
+        position_alerts, pos_threshold_pct, time_str,
+        trigger_desc, index_desc, total_value, breadth, deepseek_key,
+    )
+    _os.makedirs("/research/portfolio", exist_ok=True)
+    md_path = f"/research/portfolio/move_{now_sgt.strftime('%Y-%m-%d_%H%M')}.md"
+    md_content = (
+        f"```json\n{_json.dumps(front_matter, indent=2)}\n```\n\n"
+        f"{narrative}\n\n"
+        "<!-- DETAIL -->\n"
+    )
+    _write_canonical_md(md_content, md_path)
+    log.info(f"[md] Written {md_path}")
 
     return {
         "alerted":          True,

@@ -3039,28 +3039,13 @@ def test_rationalization_research_gated_by_flag():
 
 # ── Move monitor: Telegram push ───────────────────────────────────────────────
 
-def test_move_monitor_has_telegram_params():
-    """main() must accept telegram_bot_token and telegram_owner_id params."""
+def test_move_monitor_no_longer_dispatches_telegram():
+    """Telegram dispatch must be removed from move monitor."""
     src = _read_mm_source()
-    assert "telegram_bot_token" in src, "move_monitor missing telegram_bot_token param"
-    assert "telegram_owner_id" in src, "move_monitor missing telegram_owner_id param"
+    assert "portfolio_move_monitor_telegram" not in src,         "move_monitor must no longer dispatch Telegram formatter"
+    assert "_dispatch_formatter" not in src,         "move_monitor must no longer use _dispatch_formatter"
+    assert "telegram_bot_token" not in src,         "move_monitor must no longer accept telegram_bot_token"
 
-
-def test_move_monitor_sends_telegram_on_breach():
-    """Script must dispatch the Telegram formatter in the alert (threshold-breached) path."""
-    src = _read_mm_source()
-    assert "_dispatch_formatter" in src, "move_monitor missing _dispatch_formatter helper"
-    assert "portfolio_move_monitor_telegram" in src, \
-        "_dispatch_formatter not called with formatter name in move_monitor"
-
-
-def test_move_monitor_telegram_guarded_by_token_check():
-    """Telegram send must be guarded so it only fires when token is set."""
-    src = _read_mm_source()
-    assert "telegram_bot_token" in src
-    # Guard pattern: if telegram_bot_token (and something telegram_owner_id)
-    assert "if telegram_bot_token" in src or "telegram_bot_token and" in src, \
-        "move_monitor must guard _send_telegram call with a token check"
 
 
 # ── Rationalization: Telegram push ───────────────────────────────────────────
@@ -3209,7 +3194,7 @@ def test_move_monitor_telegram_includes_dollar_impact():
     src = _read_mm_source()
     fm_idx = src.find("front_matter")
     assert fm_idx != -1, "front_matter not found in portfolio_move_monitor"
-    fm_block = src[fm_idx: fm_idx + 600]
+    fm_block = src[fm_idx: fm_idx + 1200]
     assert "dollar_impact" in fm_block, \
         "portfolio_move_monitor front_matter must include dollar_impact per alerted position"
 
@@ -3219,7 +3204,7 @@ def test_move_monitor_telegram_includes_threshold_label():
     src = _read_mm_source()
     fm_idx = src.find("front_matter")
     assert fm_idx != -1, "front_matter not found in portfolio_move_monitor"
-    fm_block = src[fm_idx: fm_idx + 600]
+    fm_block = src[fm_idx: fm_idx + 1200]
     assert "pct_threshold" in fm_block or "threshold" in fm_block.lower(), \
         "portfolio_move_monitor front_matter must include pct_threshold info"
 
@@ -4081,8 +4066,7 @@ _MAIN_SCRIPT_NAMES = [
 
 _DISPATCH_MAIN_NAMES = [
     "macro_daily_push", "portfolio_review",
-    "portfolio_rationalization", "portfolio_move_monitor",
-    "portfolio_analyst_alert",
+    "portfolio_rationalization", "portfolio_analyst_alert",
 ]
 
 
@@ -6731,9 +6715,7 @@ def test_affection_ping_group_id_is_negative():
 SYNTHESIS_SCRIPT = os.path.join(
     os.path.dirname(__file__), "../../windmill/u/admin/affection_memory_synthesis.py"
 )
-AFFECTION_BOT = os.path.join(
-    os.path.dirname(__file__), "../../affection/main.py"
-)
+AFFECTION_BOT = "/tmp/affection_main.py"
 
 
 def _load_synthesis_mod():
@@ -6921,7 +6903,7 @@ def test_injection_orders_long_then_short():
     assert lt_idx < st_idx
 
 
-AFFECTION_SCRIPT = AFFECTION_BOT  # reuse existing constant pointing to affection/main.py
+AFFECTION_SCRIPT = "/tmp/affection_main.py"  # docker-cp'd host path
 
 
 def _read_affection_source() -> str:
@@ -8192,8 +8174,11 @@ _PMMM_WORLD = {
 def _load_portfolio_move_monitor_module():
     import importlib.util, pathlib
     from unittest.mock import MagicMock
-    for _pkg in ("pytz", "openai", "yfinance"):
+    for _pkg in ("openai", "yfinance", "feedparser"):
         sys.modules.setdefault(_pkg, MagicMock())
+    for _pkg in ("pytz",):
+        if _pkg not in sys.modules:
+            sys.modules[_pkg] = type(sys)(_pkg)
     path = (pathlib.Path(__file__).parent.parent.parent
             / "windmill" / "u" / "admin" / "portfolio_move_monitor.py")
     spec = importlib.util.spec_from_file_location("portfolio_move_monitor", path)
@@ -8234,6 +8219,12 @@ def _render_portfolio_move_monitor_artifacts(world: dict):
     mock_yf = MagicMock()
     mock_yf.Ticker.return_value.fast_info = mock_fi
 
+    # Patch the pytz stub so datetime.now(sgt) receives a valid tzinfo object
+    import datetime as _dtt
+    _pytz_stub = getattr(mod, "pytz", None)
+    if _pytz_stub is not None and not callable(getattr(_pytz_stub, "timezone", None)):
+        _pytz_stub.timezone = lambda name: _dtt.timezone(_dtt.timedelta(hours=8))
+
     captured = {}
 
     def _fake_send_email(gmail_smtp, recipient_email, subject, html):
@@ -8247,9 +8238,10 @@ def _render_portfolio_move_monitor_artifacts(world: dict):
          patch.object(mod, "yf",                   mock_yf), \
          patch.object(mod, "datetime",              _DatetimeStub), \
          patch.object(mod, "_build_move_narrative", return_value=world["narrative"]), \
+         patch.object(mod, "_fetch_ticker_news",    return_value=[]), \
+         patch.object(mod, "_fetch_index_moves",    return_value={}), \
          patch.object(mod, "_send_email",           side_effect=_fake_send_email), \
          patch.object(mod, "_write_canonical_md",   side_effect=_fake_write_md), \
-         patch.object(mod, "_dispatch_formatter",   return_value=""), \
          patch("os.makedirs"), \
          patch("time.sleep"):
         mod.main(
@@ -8262,9 +8254,8 @@ def _render_portfolio_move_monitor_artifacts(world: dict):
                 "username": "test@gmail.com", "password": "pw",
             },
             recipient_email="test@test.com",
-            telegram_bot_token="fake_token",
-            telegram_owner_id="12345",
             deepseek_key="",
+            finnhub_key="",
             wm_token="",
         )
 
