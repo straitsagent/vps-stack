@@ -1,5 +1,5 @@
 {
-  "collected_at": "2026-07-01T01:30:03.590416+00:00",
+  "collected_at": "2026-07-01T09:30:06.066161+00:00",
   "disk": [
     {
       "mount": "/run",
@@ -172,15 +172,15 @@
   ],
   "memory": {
     "total_mib": 24031,
-    "used_mib": 5087,
-    "available_mib": 18944,
-    "pct_used": 21.2,
-    "pct_available": 78.8
+    "used_mib": 5359,
+    "available_mib": 18672,
+    "pct_used": 22.3,
+    "pct_available": 77.7
   },
   "load": {
-    "load_1m": 1.16,
-    "load_5m": 1.53,
-    "load_15m": 1.45,
+    "load_1m": 1.06,
+    "load_5m": 1.19,
+    "load_15m": 1.36,
     "cores": 8
   },
   "docker": {
@@ -189,16 +189,16 @@
     "restarting": 0,
     "total": 16,
     "containers": {
-      "root-affectionbot-1": "Up 8 hours",
-      "hermes": "Up 18 hours",
+      "root-affectionbot-1": "Up 16 hours",
+      "hermes": "Up 26 hours",
       "root-portfolio_postgres-1": "Up 2 days (healthy)",
-      "openclaw": "Up 2 days",
+      "openclaw": "Up 3 days",
       "root-straitsagent-1": "Up 3 days",
-      "n8n-caddy-1": "Up 2 weeks",
+      "n8n-caddy-1": "Up 3 weeks",
       "root-windmill_worker-1": "Up 10 days",
       "root-windmill_worker-3": "Up 10 days",
       "root-windmill_worker-2": "Up 10 days",
-      "root-caddy-1": "Up 2 weeks",
+      "root-caddy-1": "Up 3 weeks",
       "root-windmill_worker_native-1": "Up 10 days",
       "root-windmill_server-1": "Up 13 days",
       "root-windmill_extra-1": "Up 5 weeks",
@@ -216,7 +216,7 @@
     "timer_active": true
   },
   "uptime": {
-    "uptime_seconds": 4833411.91,
-    "uptime_formatted": "55d 22h 36m"
+    "uptime_seconds": 4862214.21,
+    "uptime_formatted": "56d 6h 36m"
   }
 }
