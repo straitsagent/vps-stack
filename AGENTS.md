@@ -54,6 +54,11 @@ same gates.** Check for all five, every time:
    test command's own exit code (`${PIPESTATUS[0]}`) or don't pipe verification commands at all.
 5. **Prompt-drift** — a Hard-Rule-10 "approved, copy verbatim" prompt block must match character-for-
    character (outside named interpolation variables). A stray typo is a Hard Rule 10 violation.
+6. **Superseded-oracle** — if a frozen oracle fails on re-run, check whether a *later, separately-
+   approved* plan legitimately changed the same shared code (a required-param addition, a schema bump)
+   before calling it a regression. Prove it by re-testing the failing assertion's actual property under
+   the current signature; if it holds, log a waiver (`shared/override_log.md`) — never edit the frozen
+   oracle, never silently skip re-running it.
 
 ## Hard Rules every executor must internalize
 

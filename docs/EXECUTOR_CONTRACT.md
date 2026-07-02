@@ -133,3 +133,18 @@ before writing `PASS` in the log.
    diff your shipped f-string against it character-for-character (outside the named interpolation
    variables). A stray typo (`$$` instead of `$`) changes what the model actually sees and is a
    Hard Rule 10 violation, not a cosmetic slip.
+6. **Superseded-oracle.** If a `# LOCKED ORACLE` fails when re-run today, check *why* before reporting
+   FAIL or silently skipping it: did a **later, separately-approved plan** make a legitimate breaking
+   change to the same shared code this oracle exercises? If so, the failure can be expected supersession,
+   not a regression — but you must prove it, not assume it: re-test the specific property the failing
+   assertion checks, using the *current* required signature/shape, and confirm it still holds. If it
+   does, this is a documented waiver (`shared/override_log.md`), never an edit to the frozen oracle text
+   (Hard Rule 22) and never a silent skip. Two plans shipped the same day both touched
+   `shared/python/utils/hermes_nudge.py`: `2026-07-02_hermes-nudge-inbox.md`'s frozen oracle called
+   `write_nudge()` without `category`; `2026-07-02_hermes-nudge-taxonomy.md` later made `category` a
+   required parameter (an approved, independently-verified breaking change). Re-running the first
+   plan's oracle verbatim now fails at the exact line that omits `category` — confirmed by direct test
+   that the underlying property (chown/permission bootstrap) still holds once `category` is supplied,
+   so this was supersession, not a defect. The general risk: any plan touching shared/reused code that
+   a later plan also touches will produce this exact ambiguity — don't default to either "stale oracles
+   don't matter" or "any oracle failure blocks archival forever."
