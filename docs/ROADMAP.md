@@ -425,6 +425,7 @@ Revisit only after the portfolio advisor track is materially complete:
 | `docs/WORKFLOW_ARCHITECTURE.md` | Full pseudocode spec for every workflow |
 | `docs/TESTING.md` | Artifact-driven testing philosophy |
 | `docs/OPERATIONS.md` | Operational runbooks: credential restore, schedule push, Docker rebuild |
+| `docs/HERMES-PROTOCOL.md` | Hermes ↔ stack communication contract — outbound feedback channel + inbound nudge inbox |
 | `/root/research/news/` | Morning digest .md files — `YYYY-MM-DD.md` |
 | `/root/research/youtube/` | YouTube digest .md files — `YYYY-MM-DD_HHMM.md` per run |
 | `/root/research/portfolio/` | Portfolio email .md files — `YYYY-MM-DD_{am\|pm}.md` |

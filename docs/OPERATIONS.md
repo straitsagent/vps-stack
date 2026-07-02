@@ -149,6 +149,38 @@ docker compose -f /root/docker-compose.yml restart hermes
 
 ---
 
+## Hermes: Nudge Inbox (send an advisory notification)
+
+Full schema/contract: `docs/HERMES-PROTOCOL.md` §3. This is the quick how-to.
+
+**Send one:**
+```bash
+python3 scripts/nudge-hermes.py \
+  --source claude-code \
+  --category general \
+  --subject "Short subject line" \
+  --urgency whenever \
+  --body-file /path/to/body.md \
+  --evidence "plan=docs/plans/2026-07-02_hermes-nudge-inbox.md"
+```
+`--category` must be `general` or `research-published` (the two currently documented in
+`HERMES-PROTOCOL.md`'s "Known categories" table — extending the taxonomy is a doc change there, not a
+code change). `--urgency` is one of `whenever`/`soon`/`now`. `--evidence` is repeatable, `TYPE=REF`.
+Prints the written path on success; exits 1 with a message on stderr if any field is invalid.
+
+**Check what's live vs. already read:**
+```bash
+ls /root/docs/hermes/inbox/            # unprocessed — Hermes hasn't consumed these yet
+ls /root/docs/hermes/inbox/processed/  # already read and moved by Hermes (or by hand during verification)
+```
+
+**Nothing pushes to Hermes.** A nudge sitting in `inbox/` is invisible until Hermes' own self-authored
+cron job polls the directory (§4 of the protocol doc) — there is no interrupt/webhook. As of 2026-07-02,
+Hermes has not yet self-authored that polling job; see `docs/HERMES-PROTOCOL.md` §4 for the message to
+send it.
+
+---
+
 ## OpenClaw: Multi-Provider LLM Setup
 
 OpenClaw (`@StraitsClawBot`) uses a 3-provider fallback chain to avoid OpenAI
