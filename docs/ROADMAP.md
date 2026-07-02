@@ -344,13 +344,18 @@ Hermes has proven useful enough to graduate from A/B trial to a planned **integr
 
 Recommended order: **WS-A → WS-C → WS-B**. Each workstream spawns its own `EXECUTOR_CONTRACT`-compliant child plan when picked up.
 
-**Inbound channel — ✅ mechanism live (2026-07-02), CLI-only.** The mirror-image of WS-1: an advisory
-nudge inbox (`docs/hermes/inbox/`) for Claude Code (and, later, Windmill) to push notifications to
-Hermes. Nudge-only by design — INV-6 stays locked, Hermes decides what to do with a nudge, nothing
-dispatches it. Full contract in [`docs/HERMES-PROTOCOL.md`](HERMES-PROTOCOL.md). Producer utility
-(`shared/python/utils/hermes_nudge.py` + `scripts/nudge-hermes.py`) and schema are live; **Windmill
-wiring is explicitly deferred** (no consumer exists yet — see plan for the dead-branch reasoning); the
-`health_check.py` CRIT-branch is the named phase-2 candidate. **Still outstanding:** Hermes has not yet
+**Inbound channel — ✅ mechanism live (2026-07-02), CLI-only, schema v2.** The mirror-image of WS-1: an
+advisory nudge inbox (`docs/hermes/inbox/`) for Claude Code (and, later, Windmill) to push notifications
+to Hermes. Nudge-only by design — INV-6 stays locked, Hermes decides what to do with a nudge, nothing
+dispatches it. **Schema v2 (2026-07-02):** every nudge now carries a required `category` field plus a
+mandatory three-step processing procedure (category check → evidence check → execute the category's
+documented default action) — replaces open-ended "use your judgment" with a fixed playbook, still
+without granting Hermes any new capability. Two categories defined so far: `general` (today's freeform
+behavior) and `research-published` (read + summarize to owner — producer not wired yet). Full contract
+in [`docs/HERMES-PROTOCOL.md`](HERMES-PROTOCOL.md). Producer utility (`shared/python/utils/hermes_nudge.py`
++ `scripts/nudge-hermes.py`) and schema are live; **Windmill wiring is explicitly deferred** (no consumer
+exists yet — see plan for the dead-branch reasoning); the `health_check.py` CRIT-branch is the named
+phase-2 candidate. **Still outstanding:** Hermes has not yet
 self-authored a polling cron job for the inbox — that's a manual, owner-mediated step (see
 `docs/plans/2026-07-02_hermes-nudge-inbox.md`), not something this build could complete.
 
