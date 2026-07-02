@@ -1,7 +1,7 @@
 ---
 Subject: Hermes nudge inbox — inbound Claude Code → Hermes advisory channel + HERMES-PROTOCOL.md
 Date: 2026-07-02
-Status: approved
+Status: executing
 Planner model: claude-sonnet-5
 Executor model: Claude Code (same session)
 Risk tier: LOW-MEDIUM (new, additive; touches Hermes' existing RW host mount, not its container spec; no existing workflow modified; CLI-only producer, no Windmill script touched)
