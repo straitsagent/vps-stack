@@ -173,6 +173,11 @@ the SessionStart-hook pattern; the cron suggestion-accept consent flow; the `res
 I fix it, I flip its status in that document with the commit SHA, and Hermes confirms the fix on its next tick and
 stops carrying it forward — all without the director re-typing the observation, and with the full dated trail intact.
 
+**Mirror-image inbound channel:** the reverse direction (Claude Code/Windmill → Hermes) is a separate,
+smaller workstream, not numbered here — see [`docs/plans/2026-07-02_hermes-nudge-inbox.md`](2026-07-02_hermes-nudge-inbox.md)
+and `docs/HERMES-PROTOCOL.md`. Same advisory-only posture (INV-6/8/9 apply symmetrically); nudge-inbox
+mechanism shipped 2026-07-02, CLI-only producer, Hermes-side polling cron still pending owner handoff.
+
 ### WS-2 — Sharpen the conscience: institutional review rubric  (depends on WS-1)
 
 Make Hermes' critique *institutional*, not ad-hoc. Encode the four-pillar rubric from its own

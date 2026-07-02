@@ -344,6 +344,16 @@ Hermes has proven useful enough to graduate from A/B trial to a planned **integr
 
 Recommended order: **WS-A → WS-C → WS-B**. Each workstream spawns its own `EXECUTOR_CONTRACT`-compliant child plan when picked up.
 
+**Inbound channel — ✅ mechanism live (2026-07-02), CLI-only.** The mirror-image of WS-1: an advisory
+nudge inbox (`docs/hermes/inbox/`) for Claude Code (and, later, Windmill) to push notifications to
+Hermes. Nudge-only by design — INV-6 stays locked, Hermes decides what to do with a nudge, nothing
+dispatches it. Full contract in [`docs/HERMES-PROTOCOL.md`](HERMES-PROTOCOL.md). Producer utility
+(`shared/python/utils/hermes_nudge.py` + `scripts/nudge-hermes.py`) and schema are live; **Windmill
+wiring is explicitly deferred** (no consumer exists yet — see plan for the dead-branch reasoning); the
+`health_check.py` CRIT-branch is the named phase-2 candidate. **Still outstanding:** Hermes has not yet
+self-authored a polling cron job for the inbox — that's a manual, owner-mediated step (see
+`docs/plans/2026-07-02_hermes-nudge-inbox.md`), not something this build could complete.
+
 ### The Reflexive Alpha System 🔲 (draft 2026-06-29) — the overarching objective
 
 The integration roadmap above wires Hermes *into* the stack. This parent roadmap sets the **why**: build an institutional-grade investment research and portfolio management system that reliably generates alpha, by making the stack **self-improving**. Three agents, each with a complementary strength: **Hermes = always-on conscience** (observes outputs, critiques against an institutional rubric, self-improves via `background_review`); **Claude Code = stateless hands** (builds/fixes anything, plan-driven, artifact-tested); **owner = director** (sets objective, approves). The keystone is **WS-1: a Hermes→Claude feedback channel** (dated docs in `/docs/hermes/feedback/` → read at my SessionStart) that closes the broken loop edge where the human currently relays Hermes' observations by hand. Then WS-2 (institutional review rubric as a Hermes skill), WS-3 (= integration WS-C corpus quality), WS-4 (heavy risk analytics via the SSH sandbox), WS-5 (the four institutional pillars, prioritised *by the loop itself*). The channel is a **suggestion channel, never imperative** (INV-8) and **injection-contained** (INV-9): Hermes suggests, nothing is implemented without the director and I discussing it first, then I build through the normal gated pipeline. Producer runs **daily**; feedback documents are dated (append-only audit trail). ([`docs/plans/2026-06-29_reflexive-alpha-system.md`](plans/2026-06-29_reflexive-alpha-system.md), building on Hermes' own [`docs/hermes/2026-06-28_institutional-grade-roadmap.md`](hermes/2026-06-28_institutional-grade-roadmap.md))
