@@ -175,9 +175,10 @@ ls /root/docs/hermes/inbox/processed/  # already read and moved by Hermes (or by
 ```
 
 **Nothing pushes to Hermes.** A nudge sitting in `inbox/` is invisible until Hermes' own self-authored
-cron job polls the directory (§4 of the protocol doc) — there is no interrupt/webhook. As of 2026-07-02,
-Hermes has not yet self-authored that polling job; see `docs/HERMES-PROTOCOL.md` §4 for the message to
-send it.
+cron job polls the directory (§4 of the protocol doc) — there is no interrupt/webhook. **Live as of
+2026-07-02:** Hermes self-authored "Inbox Nudge Poller" (job id `1c1bbea370f8`, `*/15 * * * *`) —
+confirmed independently against `/workspace/cron/jobs.json` inside the container, not just its chat
+reply. Check job status: `docker exec hermes cat /workspace/cron/jobs.json | python3 -m json.tool`.
 
 ---
 

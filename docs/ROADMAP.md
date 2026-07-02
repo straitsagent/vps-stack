@@ -355,9 +355,11 @@ behavior) and `research-published` (read + summarize to owner — producer not w
 in [`docs/HERMES-PROTOCOL.md`](HERMES-PROTOCOL.md). Producer utility (`shared/python/utils/hermes_nudge.py`
 + `scripts/nudge-hermes.py`) and schema are live; **Windmill wiring is explicitly deferred** (no consumer
 exists yet — see plan for the dead-branch reasoning); the `health_check.py` CRIT-branch is the named
-phase-2 candidate. **Still outstanding:** Hermes has not yet
-self-authored a polling cron job for the inbox — that's a manual, owner-mediated step (see
-`docs/plans/2026-07-02_hermes-nudge-inbox.md`), not something this build could complete.
+phase-2 candidate. **Poller live (2026-07-02):** Hermes self-authored its own polling cron job
+("Inbox Nudge Poller", job id `1c1bbea370f8`, `*/15 * * * *`) via its consent-first flow, independently
+confirmed against its own `jobs.json` (not just its chat reply) — schedule, prompt, and embedded
+processing procedure all match `docs/HERMES-PROTOCOL.md` §3 exactly. Both plans' "still outstanding"
+item is now closed; the channel is fully end-to-end live.
 
 ### The Reflexive Alpha System 🔲 (draft 2026-06-29) — the overarching objective
 
