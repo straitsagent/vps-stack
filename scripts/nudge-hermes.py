@@ -33,6 +33,7 @@ def _parse_evidence(pairs):
 def main():
     parser = argparse.ArgumentParser(description="Write an advisory nudge to Hermes' inbox")
     parser.add_argument("--source", required=True)
+    parser.add_argument("--category", required=True, help="a known category from HERMES-PROTOCOL.md §3")
     parser.add_argument("--subject", required=True)
     parser.add_argument("--urgency", default="whenever", choices=URGENCY_LEVELS)
     parser.add_argument("--body-file", required=True, help="path to a file containing the nudge body")
@@ -49,6 +50,7 @@ def main():
         if args.inbox_dir:
             kwargs["inbox_dir"] = args.inbox_dir
         path = write_nudge(
+            category=args.category,
             source=args.source,
             subject=args.subject,
             body=body,

@@ -1,7 +1,7 @@
 ---
 Subject: Hermes nudge taxonomy — category field + deterministic processing procedure (schema v2)
 Date: 2026-07-02
-Status: executing
+Status: done
 Planner model: claude-sonnet-5
 Executor model: unassigned — plan only, not to be executed without explicit instruction
 Risk tier: LOW-MEDIUM (breaking schema change to a not-yet-consumed schema — no live poller exists yet, so version bump is low-blast-radius; still held to Hard Rule 18's rigor since HERMES-PROTOCOL.md §7 already commits to it)

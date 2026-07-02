@@ -63,9 +63,10 @@ the directory (see §4).
 
 ```yaml
 ---
-schema_version: 1
+schema_version: 2
 nudge_id: "2026-07-02T091533Z-claude-code-ws1-consumer-live"
 source: "claude-code"
+category: "general"
 created_at: "2026-07-02T09:15:33Z"
 urgency: "soon"              # whenever | soon | now
 expires_at: null              # optional ISO8601; null if not time-bound
@@ -97,9 +98,10 @@ in a future feedback document you read, without having re-raised them yourself.
 
 | Field | Required | Notes |
 |---|---|---|
-| `schema_version` | yes | Currently `1`. See §7 for change control. |
+| `schema_version` | yes | Currently `2`. See §7 for change control. |
 | `nudge_id` | yes | Matches the filename stem exactly — always derivable, no separate lookup needed. |
 | `source` | yes | Producer slug, e.g. `claude-code`. Matches `^[a-z0-9][a-z0-9\-_.]{0,49}$`. |
+| `category` | yes | Slug matching `^[a-z0-9][a-z0-9\-_.]{0,49}$`. Must match a known category documented below. |
 | `created_at` | yes | ISO8601 UTC, second precision. |
 | `urgency` | yes | One of `whenever` / `soon` / `now` (see below). |
 | `expires_at` | no | ISO8601 UTC or `null`. Set only for genuinely time-bound conditions. |
@@ -124,6 +126,25 @@ vocabulary (`blocker`/`major`/`minor`/`idea`) so the two can never be confused e
 `rename()`). No in-place status-field edit, no YAML mutation required. "List `inbox/` minus
 `inbox/processed/`" is the entire unprocessed-nudge query. This is bookkeeping, not an acknowledgement
 of obligation — Hermes is free to do nothing with a nudge's content and still move it once read.
+
+### Known categories
+
+| Category | Producer | Meaning | Evidence expectation | Default action |
+|---|---|---|---|---|
+| `general` | any | No specific playbook — informational, same as today's behavior | none required | Read; use your own judgment; no mandated response |
+| `research-published` | a Windmill research script (not wired yet) | New research artifact written to `/research/**` | `evidence` must include one `{type: "research-md", ref: <path under /research/>}` entry pointing at an existing, non-empty file | Read the referenced file; produce a summary; send it to the owner via your Telegram bot |
+
+New categories may be added by extending this table in a future plan. No code change is needed to add a category — only this table and the producer that emits the new category value.
+
+### Processing procedure
+
+When Hermes encounters a nudge in the inbox, the following three-step decision procedure is the protocol — not a suggestion:
+
+1. **Category check.** Does the nudge parse and declare a `category` that is documented in the "Known categories" table above? If not → do not act, log/flag the anomaly, stop.
+2. **Evidence check.** Does the nudge's `evidence` satisfy the category's evidence expectation (referenced file exists, is non-empty, content plausibly matches what the category/subject claims)? If not → do not act, file a `feedback/` finding flagging the mismatch, stop.
+3. **Execute default action.** Only now, execute that category's mapped default action **exactly as documented** — no reinterpretation of the action itself.
+
+This validation gate is itself part of the protocol, not a discretion clause. Step 1 and step 2 are not optional — Hermes does not skip them or choose to "trust" a nudge whose category is unknown or whose evidence does not check out. A failed validation is a defined outcome (log, flag, stop), not permission to improvise.
 
 ## 4. Expected polling behavior
 
@@ -164,7 +185,7 @@ producer once Hermes is actually polling the inbox — also not built yet (see
 
 ## 7. Versioning / change control
 
-`schema_version` (currently `1`) tracks the inbound nudge schema in §3. Any breaking change to that
+`schema_version` (currently `2`) tracks the inbound nudge schema in §3. Any breaking change to that
 schema requires, in the same commit: updating this document, updating
 `shared/python/utils/hermes_nudge.py`'s validation, and a round-trip test in
 `agent/tests/test_hermes_nudge.py` — the same discipline Hard Rule 18 already requires for the
@@ -174,3 +195,7 @@ outbound Telegram formatter schemas, applied here to a new schema rather than an
 
 - **2026-07-02** — Initial version. Ships the inbound nudge inbox (§3) and CLI producer
   (`scripts/nudge-hermes.py`). Outbound channel (§2) recapped from existing WS-1 design, not changed.
+- **2026-07-02 (v1→v2)** — Adds required `category` field to the nudge schema. Bumps
+  `schema_version` to `2`. Documents two known categories (`general`, `research-published`) and a
+  mandatory three-step processing procedure (§3). Updates `hermes_nudge.py` (validation + version
+  bump), `nudge-hermes.py` (`--category` flag), and test file. No Windmill script changed.

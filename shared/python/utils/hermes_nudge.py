@@ -25,7 +25,11 @@ def _slugify(text: str, max_len: int = 50) -> str:
     return slug[:max_len].strip("-") or "untitled"
 
 
-def _validate(source, subject, body, urgency, evidence, expires_at):
+def _validate(category, source, subject, body, urgency, evidence, expires_at):
+    if not category or not _SOURCE_RE.match(category):
+        raise ValueError(
+            f"category must be a non-empty slug matching {_SOURCE_RE.pattern!r}, got {category!r}"
+        )
     if not source or not _SOURCE_RE.match(source):
         raise ValueError(
             f"source must be a non-empty slug matching {_SOURCE_RE.pattern!r}, got {source!r}"
@@ -75,13 +79,14 @@ def _bootstrap_dir(inbox_dir: str) -> None:
             pass
 
 
-def _render(nudge_id, source, created_at, urgency, expires_at, evidence, subject, body):
+def _render(nudge_id, category, source, created_at, urgency, expires_at, evidence, subject, body):
     evidence = evidence or []
     lines = [
         "---",
-        "schema_version: 1",
+        "schema_version: 2",
         f'nudge_id: "{nudge_id}"',
         f'source: "{source}"',
+        f'category: "{category}"',
         f'created_at: "{created_at}"',
         f'urgency: "{urgency}"',
         f"expires_at: {('null' if expires_at is None else repr(expires_at))}",
@@ -115,6 +120,7 @@ def write_nudge(
     source: str,
     subject: str,
     body: str,
+    category=None,
     urgency: str = "whenever",
     evidence=None,
     expires_at=None,
@@ -126,7 +132,7 @@ def write_nudge(
     input -- fail loud, this is a producer-side bug, not a runtime
     degradation case.
     """
-    _validate(source, subject, body, urgency, evidence, expires_at)
+    _validate(category, source, subject, body, urgency, evidence, expires_at)
     _bootstrap_dir(inbox_dir)
 
     created_dt = datetime.now(timezone.utc)
@@ -143,7 +149,7 @@ def write_nudge(
         final_path = os.path.join(inbox_dir, filename)
 
     nudge_id = os.path.splitext(filename)[0]
-    content = _render(nudge_id, source, ts_iso, urgency, expires_at, evidence, subject, body)
+    content = _render(nudge_id, category, source, ts_iso, urgency, expires_at, evidence, subject, body)
 
     tmp_fd, tmp_path = tempfile.mkstemp(prefix=".tmp-", dir=inbox_dir)
     try:
