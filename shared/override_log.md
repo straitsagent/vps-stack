@@ -22,6 +22,28 @@ Fix needed: [yes/no — what needs to change in the script]
 
 ---
 
+Date: 2026-07-02
+Workflow: /verify-implementations sweep — docs/plans/2026-07-02_hermes-nudge-inbox.md
+Action: Documenting a waiver on re-running that plan's frozen `# LOCKED ORACLE` and G4 verify script
+verbatim today. Both were written and passed against the v1 nudge schema (`write_nudge(source, subject,
+body, ...)` — no `category` param). Later the same day, `docs/plans/2026-07-02_hermes-nudge-taxonomy.md`
+(its own plan, independently Locked-Oracle-verified PASS, approved, executed by another model) made a
+legitimate breaking change: `category` became a required parameter (schema v1→v2), exactly per the
+change-control process `HERMES-PROTOCOL.md` §7 itself specifies (doc + validation + round-trip test in
+one commit — all three were updated). Re-running the nudge-inbox plan's original oracle verbatim today:
+O1-O4 PASS, O5 fails with `ValueError: category must be a non-empty slug... got None` — because the
+frozen oracle text (correctly, per Hard Rule 22, left unedited) still calls `write_nudge()` without
+`category`. The plan's G4 script fails identically (CLI now requires `--category`).
+Reason for deferral: this is not a regression. Directly confirmed the underlying property O5 actually
+tests (fresh-directory bootstrap: chown to uid 1000, not world-writable) still holds by calling
+`write_nudge(category="general", ...)` with the current, superseding signature — passed cleanly. The
+failure is 100% attributable to the later, approved, already-independently-verified schema change, not
+to any defect in how nudge-inbox was originally implemented or delivered.
+Fix needed: No code fix — the nudge-inbox plan's implementation is correct as delivered; its frozen
+oracle is simply a snapshot of the v1 signature and is expected to diverge from current code after any
+future approved breaking change (that's what "frozen" means — it verifies "was this right at the time,"
+not "is this eternally re-runnable unmodified forever"). No further action; both plans archived together.
+
 Date: 2026-06-30
 Workflow: youtube_monitor (remove daily synthesis commentary)
 Action: Logging a Hard Rule 17 live-verify deferral. The synthesis-removal change (plan
